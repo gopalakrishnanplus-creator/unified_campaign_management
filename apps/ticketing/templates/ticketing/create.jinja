@@ -1,0 +1,25 @@
+{% extends "base.jinja" %}
+{% block title %}Create Ticket{% endblock %}
+{% block content %}
+<div class="col-lg-8 mx-auto">
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-4">
+            <p class="eyebrow mb-1">Ticketing System</p>
+            <h1 class="h3 mb-4">Create a manual ticket</h1>
+            <form method="post">
+                {{ csrf_input }}
+                <div class="row g-3">
+                    {% for field in form %}
+                        <div class="col-12 {% if field.name in ['priority', 'department', 'campaign', 'user_type', 'source_system'] %}col-md-6{% endif %}">
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+                <button class="btn btn-primary mt-4" type="submit">Create ticket</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

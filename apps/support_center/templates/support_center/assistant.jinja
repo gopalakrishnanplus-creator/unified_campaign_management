@@ -1,0 +1,163 @@
+{% extends "base.jinja" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-4">
+    <div>
+        <p class="eyebrow mb-1">{{ role_title }}</p>
+        <h1 class="mb-1">{{ page_title }}</h1>
+        <p class="text-secondary mb-0">This guided flow works through FAQs first, then switches to ticket cases only when the issue still needs escalation.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="{{ url('support_center:landing', user_type=user_type) }}">Browse full catalog</a>
+        <form method="post">
+            {{ csrf_input }}
+            <input type="hidden" name="action" value="restart">
+            <button class="btn btn-outline-primary" type="submit">Restart assistant</button>
+        </form>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body p-4 chat-shell">
+                {% for message in transcript %}
+                    <div class="chat-message {{ 'chat-message-user' if message.speaker == 'user' else 'chat-message-bot' }}">
+                        <div class="chat-bubble">
+                            <div class="chat-role">{{ message.title }}</div>
+                            {% if message.heading %}<h2 class="h5 mb-2">{{ message.heading }}</h2>{% endif %}
+                            <p class="mb-0">{{ message.body }}</p>
+                            {% if message.item %}
+                                <div class="d-flex gap-2 flex-wrap mt-3">
+                                    <a class="btn btn-sm btn-outline-secondary" href="{{ url('support_center:item_detail', user_type=user_type, super_slug=message.item.category.super_category.slug, category_slug=message.item.category.slug, item_slug=message.item.slug) }}">Open article</a>
+                                    {% if message.item.associated_pdf_url %}
+                                        <a class="btn btn-sm btn-outline-secondary" href="{{ message.item.associated_pdf_url }}" target="_blank">PDF</a>
+                                    {% endif %}
+                                    {% if message.item.associated_video_url %}
+                                        <a class="btn btn-sm btn-outline-secondary" href="{{ message.item.associated_video_url }}" target="_blank">Video</a>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="h5 mb-0">Next step</h2>
+                    {% if selected_system or selected_flow or selected_category or selected_ticket_case %}
+                        <form method="post">
+                            {{ csrf_input }}
+                            <input type="hidden" name="action" value="back">
+                            <button class="btn btn-sm btn-outline-secondary" type="submit">Back</button>
+                        </form>
+                    {% endif %}
+                </div>
+
+                {% if stage == 'system' %}
+                    <p class="text-secondary">Choose the product or support system you need help with.</p>
+                    <div class="d-grid gap-2">
+                        {% for system_name in systems %}
+                            <form method="post">
+                                {{ csrf_input }}
+                                <input type="hidden" name="action" value="choose_system">
+                                <input type="hidden" name="system" value="{{ system_name }}">
+                                <button class="btn btn-outline-primary text-start w-100" type="submit">{{ system_name }}</button>
+                            </form>
+                        {% endfor %}
+                    </div>
+                {% elif stage == 'flow' %}
+                    <p class="text-secondary">Choose the flow that matches the screen or journey you are on.</p>
+                    <div class="d-grid gap-2">
+                        {% for flow_name in flows %}
+                            <form method="post">
+                                {{ csrf_input }}
+                                <input type="hidden" name="action" value="choose_flow">
+                                <input type="hidden" name="flow" value="{{ flow_name }}">
+                                <button class="btn btn-outline-primary text-start w-100" type="submit">{{ flow_name }}</button>
+                            </form>
+                        {% endfor %}
+                    </div>
+                {% elif stage == 'category' %}
+                    <p class="text-secondary">Choose the screen or section where the issue is happening.</p>
+                    <div class="d-grid gap-2">
+                        {% for category in categories %}
+                            <form method="post">
+                                {{ csrf_input }}
+                                <input type="hidden" name="action" value="choose_category">
+                                <input type="hidden" name="category_id" value="{{ category.pk }}">
+                                <button class="btn btn-outline-primary text-start w-100" type="submit">{{ category.name }}</button>
+                            </form>
+                        {% endfor %}
+                    </div>
+                {% elif stage == 'faq' %}
+                    <p class="text-secondary mb-3">Did the FAQ above solve the issue?</p>
+                    <div class="d-grid gap-2">
+                        <form method="post">
+                            {{ csrf_input }}
+                            <input type="hidden" name="action" value="faq_feedback">
+                            <input type="hidden" name="resolution" value="resolved">
+                            <button class="btn btn-primary w-100" type="submit">Yes, this solved it</button>
+                        </form>
+                        <form method="post">
+                            {{ csrf_input }}
+                            <input type="hidden" name="action" value="faq_feedback">
+                            <input type="hidden" name="resolution" value="unresolved">
+                            <button class="btn btn-outline-primary w-100" type="submit">No, show the next step</button>
+                        </form>
+                    </div>
+                    <div class="small text-secondary mt-3">FAQ progress: {{ faq_index + 1 }} / {{ faqs|length }}</div>
+                {% elif stage == 'ticket_case' %}
+                    <p class="text-secondary">Choose the ticket case that best matches the unresolved problem.</p>
+                    <div class="d-grid gap-2">
+                        {% for item in ticket_cases %}
+                            <form method="post">
+                                {{ csrf_input }}
+                                <input type="hidden" name="action" value="select_ticket_case">
+                                <input type="hidden" name="item_id" value="{{ item.pk }}">
+                                <button class="btn btn-outline-primary text-start w-100" type="submit">
+                                    <strong>{{ item.name }}</strong>
+                                    <div class="small text-secondary mt-1">{{ item.ticket_department.name if item.ticket_department else 'Configured department' }}</div>
+                                </button>
+                            </form>
+                        {% endfor %}
+                    </div>
+                {% elif stage == 'ticket_form' %}
+                    <p class="text-secondary">This case should be escalated. Please fill in the request details so we can create the ticket.</p>
+                    <div class="small text-secondary mb-3">Department: {{ selected_ticket_case.ticket_department.name if selected_ticket_case.ticket_department else 'Configured department' }}</div>
+                    <form method="post" class="vstack gap-3">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="create_ticket">
+                        {% for field in ticket_form %}
+                            <div>
+                                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
+                            </div>
+                        {% endfor %}
+                        <button class="btn btn-primary" type="submit">Create ticket</button>
+                    </form>
+                {% elif stage == 'ticket_case_info' %}
+                    <div class="alert alert-info rounded-4 mb-0">
+                        <p class="mb-2">This imported case is marked as a non-ticket case.</p>
+                        <p class="mb-0">{{ selected_ticket_case.solution_body or 'Use the documented workaround, or go back and choose another matching case.' }}</p>
+                    </div>
+                {% elif stage == 'resolved' %}
+                    <div class="alert alert-success rounded-4">
+                        <p class="mb-0">The issue is marked as resolved. You can restart the assistant for another case or browse the full catalog.</p>
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning rounded-4">
+                        <p class="mb-0">No matching FAQ or ticket case is currently configured for this path.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

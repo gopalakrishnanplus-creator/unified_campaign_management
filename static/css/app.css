@@ -1,0 +1,201 @@
+:root {
+    --ink: #0f172a;
+    --muted: #64748b;
+    --surface: #f8fafc;
+    --surface-2: #ffffff;
+    --accent: #0f766e;
+    --accent-2: #1d4ed8;
+    --warm: #f59e0b;
+    --hero-a: #f0fdf4;
+    --hero-b: #ecfeff;
+}
+
+body {
+    background:
+        radial-gradient(circle at top right, rgba(29, 78, 216, 0.08), transparent 32%),
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 30%),
+        var(--surface);
+    color: var(--ink);
+}
+
+.navbar-brand {
+    letter-spacing: -0.02em;
+}
+
+.hero-surface {
+    background: linear-gradient(135deg, var(--hero-a), var(--hero-b));
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+}
+
+.eyebrow {
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.metric-card {
+    padding: 1.25rem;
+    background: var(--surface-2);
+    border-radius: 1.25rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.metric-label {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+}
+
+.metric-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.metric-row:last-child {
+    border-bottom: 0;
+}
+
+.support-item-card {
+    display: block;
+    height: 100%;
+    padding: 1rem;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    color: inherit;
+}
+
+.support-item-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+}
+
+.solution-panel {
+    background: rgba(15, 118, 110, 0.08);
+    border: 1px solid rgba(15, 118, 110, 0.12);
+}
+
+.chat-shell {
+    display: grid;
+    gap: 1rem;
+}
+
+.chat-message {
+    display: flex;
+}
+
+.chat-message-bot {
+    justify-content: flex-start;
+}
+
+.chat-message-user {
+    justify-content: flex-end;
+}
+
+.chat-bubble {
+    max-width: 88%;
+    padding: 1rem 1.1rem;
+    border-radius: 1.25rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
+}
+
+.chat-message-bot .chat-bubble {
+    background: #ffffff;
+}
+
+.chat-message-user .chat-bubble {
+    background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(29, 78, 216, 0.1));
+}
+
+.chat-role {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+}
+
+.faq-dock {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    width: min(28rem, calc(100vw - 2rem));
+    height: 42rem;
+    max-height: calc(100vh - 2rem);
+    background: #fff;
+    border-radius: 1.25rem;
+    overflow: hidden;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+    z-index: 1050;
+}
+
+.faq-dock-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff;
+}
+
+.faq-dock-frame {
+    width: 100%;
+    height: calc(100% - 4.4rem);
+    border: 0;
+    background: #fff;
+}
+
+.timeline {
+    display: grid;
+    gap: 1rem;
+}
+
+.timeline-item {
+    padding: 1rem;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.table > :not(caption) > * > * {
+    padding: 0.9rem 0.75rem;
+}
+
+.auth-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+}
+
+input,
+select,
+textarea {
+    width: 100%;
+    border-radius: 0.85rem !important;
+    border: 1px solid rgba(15, 23, 42, 0.14) !important;
+    padding: 0.75rem 0.95rem !important;
+    background: #fff;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: 0;
+}

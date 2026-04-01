@@ -1,0 +1,49 @@
+{% extends "base.jinja" %}
+{% block title %}Reporting API Contracts{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-4">
+    <div>
+        <p class="eyebrow mb-1">Reporting APIs</p>
+        <h1 class="mb-1">Subsystem contract definitions</h1>
+        <p class="text-secondary mb-0">These are the variables, value types, and payload requirements needed from the in-clinic, red flag alert, and patient education reporting subsystems.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ url('reporting:contracts_api') }}">JSON view</a>
+</div>
+
+{% for key, contract in contracts.items() %}
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-body">
+            <h2 class="h4 mb-3">{{ contract.label }}</h2>
+            {% if contract.endpoint %}
+                <div class="small text-secondary mb-3">
+                    Source: <strong>{{ contract.source }}</strong><br>
+                    Endpoint: <code>{{ contract.endpoint }}</code>
+                </div>
+            {% endif %}
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Variable</th>
+                            <th>Type</th>
+                            <th>Required</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for field in contract.variables %}
+                            <tr>
+                                <td><code>{{ field.name }}</code></td>
+                                <td>{{ field.type }}</td>
+                                <td>{{ "Yes" if field.required else "No" }}</td>
+                                <td>{{ field.description }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="small text-secondary">App feed: <code>{{ request.build_absolute_uri(url('reporting:subsystem_feed', subsystem=key)) }}</code></div>
+        </div>
+    </div>
+{% endfor %}
+{% endblock %}

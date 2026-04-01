@@ -1,0 +1,70 @@
+{% extends "base.jinja" %}
+{% block title %}{{ campaign.name }}{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <p class="eyebrow mb-1">{{ campaign.brand_name }}</p>
+    <h1 class="mb-1">{{ campaign.name }}</h1>
+    <p class="text-secondary mb-0">{{ campaign.description }}</p>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Campaign profile</h2>
+                <div class="vstack gap-2">
+                    <div class="metric-row"><span>Status</span><strong>{{ campaign.get_status_display() }}</strong></div>
+                    <div class="metric-row"><span>Geography</span><strong>{{ campaign.geography }}</strong></div>
+                    <div class="metric-row"><span>Start</span><strong>{{ campaign.start_date }}</strong></div>
+                    <div class="metric-row"><span>End</span><strong>{{ campaign.end_date }}</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0 rounded-4 mb-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Field rep assignments</h2>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead><tr><th>Field rep</th><th>Territory</th><th>Assigned</th></tr></thead>
+                        <tbody>
+                        {% for assignment in campaign.field_rep_assignments.all() %}
+                            <tr>
+                                <td>{{ assignment.field_rep.full_name or assignment.field_rep.email }}</td>
+                                <td>{{ assignment.territory }}</td>
+                                <td>{{ assignment.assigned_at }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="3" class="text-secondary">No field reps assigned.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Clinic enrollment</h2>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead><tr><th>Clinic</th><th>Doctor</th><th>System</th><th>Enrolled on</th></tr></thead>
+                        <tbody>
+                        {% for enrollment in campaign.clinic_enrollments.all() %}
+                            <tr>
+                                <td>{{ enrollment.clinic.name }}</td>
+                                <td>{{ enrollment.doctor.full_name }}</td>
+                                <td>{{ enrollment.get_source_system_display() }}</td>
+                                <td>{{ enrollment.enrolled_on }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" class="text-secondary">No clinic enrollments yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

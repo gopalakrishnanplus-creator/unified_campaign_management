@@ -1,0 +1,149 @@
+--- PAGE 1 ---
+PE-FAQs Flow1_Doctor_FAQS
+Super Category Category FAQ FAQ Answer
+Access & Credentials Doctor Credentials
+Email What is the Doctor ID in this email? The Doctor ID is a unique identiﬁcation code
+assigned to a speciﬁc doctor or clinic.
+Access & Credentials Doctor Credentials
+Email Do I use the login link or the clinic sharing link?
+For ﬁrst-time access, the doctor/clinic should
+use the login link with the provided credentials.
+After logging in once, the clinic sharing link
+can be used directly.
+Access & Credentials Doctor Credentials
+Email Is this email enough to log in?
+Yes, the email contains the login credentials
+(email and password), which can be used to log
+in.
+Login & Account Access Doctor Login Which email should I use on this page? Use the registered email address on which the
+login credentials were received.
+Login & Account Access Doctor Login What password should I enter here? Enter the password provided in the login
+credentials shared via email.
+Login & Account Access Doctor Login I forgot my password. What should I do?
+Click on the “Forgot Password” option on the
+login page. Updated credentials will be sent to
+your email.
+Video Selection & Search Share Patient Education Do I need to use the ﬁlters before searching? Using ﬁlters is optional; you may use them if
+needed.
+Video Selection & Search Share Patient Education What is the difference between Therapy Area,
+Trigger, and Bundle?
+Therapy Area refers to the medical category,
+Trigger refers to a speciﬁc condition or
+situation, and Bundle is a group of related
+videos under a common category or trigger.
+Video Selection & Search Share Patient Education Is the searched video already selected?
+No, searching only ﬁlters the results. The
+doctor can choose to select an individual video
+or the entire bundle it belongs to.
+Video Selection & Search Share Patient Education What is the difference between Select Bundle
+and Select Video?
+“Select Bundle” allows sharing multiple videos
+within the same group, trigger, or therapy area,
+while “Select Video” allows sharing a single
+video.
+Video Selection & Search Share Patient Education Can I send only one video instead of the whole
+bundle?
+Yes, you can send a single video by using the
+“Select Video” option.
+
+--- PAGE 2 ---
+PE-FAQs Flow1_Doctor_FAQS
+Super Category Category FAQ FAQ Answer
+Sharing Setup Share with Patient Form What number should I enter in Patient
+WhatsApp Number?
+Enter the patient’s 10-digit WhatsApp number
+without the country code.
+Sharing Setup Share with Patient Form Should I enter +91 or only 10 digits? Enter only the 10-digit WhatsApp number,
+without +91 or any country code.
+Sharing Setup Share with Patient Form What does the Language ﬁeld do?
+The Language ﬁeld allows the doctor to choose
+the preferred language for the message and
+the video/video bundle shared with the patient.
+WhatsApp Message Sharing Patient WhatsApp
+Message What message will the patient receive?
+The patient will receive a WhatsApp message
+that includes clinic branding, the doctor’s
+message, the video title, and a link to the
+patient video page.
+WhatsApp Message Sharing Patient WhatsApp
+Message Does the patient get a direct link to the video?
+Yes, the WhatsApp message includes a direct
+link to a page where the video is available
+below the title.
+WhatsApp Message Sharing Patient WhatsApp
+Message Will the patient know which video to watch?
+Yes, the WhatsApp message clearly displays
+the video title before the link, helping the
+patient identify the video.
+
+--- PAGE 3 ---
+PE-FAQs Flow1_Doctor_TicketCases
+Super Category Category Edge Case Ticket Required Ticket Department Notes
+Access & Credentials Doctor Credentials Email Credentials email shows multiple links andaccount values without step guidance, causinglogin/link confusion
+Escalate if doctors frequently open the wronglink ﬁrst
+Login & Account Access Doctor Login Doctor mistypes password and cannot verifyentry because no show/hide password controlis visible
+Use Forgot password if login fails andpassword cannot be veriﬁed
+Doctor Proﬁle & ClinicInformation Doctor Proﬁle Page Contact details or registration number shownon proﬁle page are incorrect Escalate only when visible data mismatch isconﬁrmed
+Sharing Setup Share with Patient Form Doctor enters a patient number, but it isunclear whether non-Indian or country-codeformats are accepted
+Current helper text only references 10-digitIndia format
+Yes
+Yes
+Yes
+Product
+Product
+Product
+No NA
+
+--- PAGE 4 ---
+PE-FAQs Flow2_Patient_FAQS
+Super Category Category FAQ FAQ Answer
+Patient Education Access Patient Education Video Page Is this page from my doctor or from the clinic?
+This page displays both the clinic name and
+the doctor’s proﬁle at the top, along with
+educational content below.
+Clinic & Provider
+Information Doctor/Clinic Header How do I contact the clinic from this page?
+The clinic’s phone number and WhatsApp
+number are available in the doctor information
+section.
+Clinic & Provider
+Information Doctor/Clinic Header What is the difference between clinic phone
+and WhatsApp?
+The clinic phone number is for regular calls,
+while the WhatsApp number is for messaging
+via WhatsApp. Both are listed separately in the
+proﬁle section.
+Language Selection Language Selector How do I change the language of the video? Use the Language ﬁeld displayed above the
+video to select your preferred language.
+Language Selection Language Selector Which language is currently selected? The currently selected language is shown in
+the Language ﬁeld.
+Language Selection Language Selector Did the language actually change?
+Yes, the selected language is reﬂected in the
+page content after the language option is
+changed.
+Language Selection Language Selector Is the whole page translated when I change the
+language?
+Some parts of the page are translated based on
+the selected language, while certain elements
+may still remain in English.
+Video Viewing Embedded Video Player How do I play the video? Click the play button located at the center of
+the embedded video.
+Video Viewing Embedded Video Player Can I watch this in Hindi? Yes, the content can be viewed in Hindi by
+selecting Hindi from the Language ﬁeld.
+
+--- PAGE 5 ---
+PE-FAQs Flow2_Patient_TicketCases
+Super Category Category Edge Case Ticket Required Ticket Department Notes
+Clinic & ProviderInformation Doctor/Clinic Header Clinic phone or WhatsApp details are shownincorrectly on the page Escalate when visible contact details do notmatch intended clinic information
+Language Selection Language Selector Patient changes language, but the page looksalmost unchanged and creates uncertaintyabout whether the switch worked
+Visual conﬁrmation is weak because thethumbnail remains the same
+Video Viewing Embedded Video Player Embedded YouTube video does not play whenthe patient presses the visible play button Escalate if reproducible across browser/device
+Video Viewing Embedded Video Player Selected Hindi view still shows Englishtitle/metadata below the video Content metadata localization issue
+Yes
+Yes
+Yes
+Yes
+Product
+Product
+Product
+Engineering

@@ -1,0 +1,256 @@
+--- PAGE 1 ---
+Inclinic-FAQs Flow1_Doctor_FAQS
+Super Category Category FAQ FAQ Answer
+Access & Veriﬁcation Doctor Number VeriﬁcationScreen Which WhatsApp number do I enter here? Enter the 10-digit WhatsApp number that was used for sharing.
+Access & Veriﬁcation Doctor Number VeriﬁcationScreen Should I type +91 or only 10 digits? Enter only the 10-digit number without +91 or any country code.
+Access & Veriﬁcation Doctor Number VeriﬁcationScreen Is this my number or someone else’s number? Use the WhatsApp number that was used for sharing.
+Access & Veriﬁcation Doctor Number VeriﬁcationScreen Will I receive an OTP on this screen? No, there is no OTP step in this process.
+Access & Veriﬁcation Doctor Number VeriﬁcationScreen What happens after I tap “Verify & Access Content”? After veriﬁcation, the content page will open.
+Access & Veriﬁcation Doctor Number VeriﬁcationScreen What if I enter the wrong number? Please enter the correct 10-digit WhatsApp number used for sharing.
+Access & Veriﬁcation Doctor Number VeriﬁcationScreen Can I access the content without WhatsApp veriﬁcation? No, WhatsApp veriﬁcation is required to access the content.
+Content Viewing Collateral Viewer Screen What am I supposed to use on this page: video or PDF? Both options are available. You can watch the video or view the PDF asneeded.
+Content Viewing Collateral Viewer Screen Where do I download the document? Click on the “Download PDF” option to download the document.
+Content Viewing Collateral Viewer Screen The embedded PDF is hard to read. What is the quickest option? You can download the PDF for a better reading experience.
+Content Viewing Collateral Viewer Screen What should I do if the PDF does not load? Please refresh the page if the PDF does not load properly.
+Content Viewing Collateral Viewer Screen Why do I need to scroll both sideways and downward in the PDF? The PDF is displayed in an embedded viewer, so both horizontal andvertical scrolling may be required.
+Content Viewing Collateral Viewer Screen Is this page showing the full document or just a preview? The full document is available, and you can also download it for easieraccess.
+Archives & AdditionalMaterials Archive Cards Section What are the items under “Archives”? These are additional items that you can open and view.
+Archives & AdditionalMaterials Archive Cards Section How do I open one of the archive items? Click on “Open” for the item you want to view.
+Archives & AdditionalMaterials Archive Cards Section How do I know which archive item is the correct one? You can identify the correct item based on the title shown.
+Archives & AdditionalMaterials Archive Cards Section Are the archive items separate from the main content above? Yes, they are listed separately from the main content.
+
+--- PAGE 2 ---
+Inclinic-FAQs Flow1_Doctor_TicketCases
+Super Category Category Edge Case Ticket Required Ticket
+Department Notes
+Access & Veriﬁcation Doctor Number
+Veriﬁcation Screen
+Correct 10-digit WhatsApp
+number is entered, but tapping
+“Verify & Access Content”
+does not open the content
+Retry once on another
+browser/network; escalate to
+Engineering if reproducible
+Access & Veriﬁcation Doctor Number
+Veriﬁcation Screen
+Doctor does not have access
+to the WhatsApp number
+required for veriﬁcation, and
+no alternate path is visible
+Access limitation on this screen
+unless another veriﬁcation route
+exists outside this ﬂow
+Access & Veriﬁcation Doctor Number
+Veriﬁcation Screen
+Screen does not show any
+visible invalid-number
+guidance, so the doctor cannot
+tell whether the format or
+ownership is wrong
+Validation and recovery behavior are
+not visible on this page
+Content Viewing Collateral Viewer
+Screen
+Embedded PDF does not load
+even after following the
+on-screen refresh instruction
+Escalate to Engineering if
+refresh/browser change fails
+Content Viewing Collateral Viewer
+Screen
+“Download PDF” is clicked but
+no ﬁle opens or downloads
+Escalate to Engineering if
+reproducible
+Content Viewing Collateral Viewer
+Screen
+Main content remains
+extremely small on desktop
+because the page stays in a
+narrow central column
+Layout issue; impacts quick reading
+during consultation
+Content Viewing Collateral Viewer
+Screen
+Overlay icons/controls on the
+right obstruct content or
+cannot be used
+Reproduce on same browser and
+viewport size
+Content Viewing Collateral Viewer
+Screen
+PDF viewer requires both
+horizontal and vertical
+scrolling, making the
+document impractical to read
+in-page
+Use “Download PDF” as the
+workaround unless the viewer is
+blank or broken
+Product
+Product
+Product
+Product
+Product
+NA
+NA
+Engineering
+
+--- PAGE 3 ---
+Inclinic-FAQs Flow1_Doctor_TicketCases
+Super Category Category Edge Case Ticket Required Ticket
+Department Notes
+Archives & Additional
+Materials Archive Cards Section
+Archive cards use generic
+titles, so doctor cannot
+conﬁdently identify the correct
+item
+Content labeling issue, not a
+browser issue
+Archives & Additional
+Materials Archive Cards Section
+Clicking “Open” on an archive
+card does nothing or opens the
+wrong content
+Functional defect if reproducible
+Product
+Engineering
+
+--- PAGE 4 ---
+Inclinic-FAQs Flow2_FieldRep_FAQS
+Super Category Category FAQ FAQ Answer
+Recruitment & Access Field Rep Gmail Login Do I need both Field ID and Email
+ID to log in? Yes, both Field ID and Email ID are required to log in.
+Recruitment & Access Field Rep Gmail Login What is the campaign box on this
+page?
+It displays the campaign associated with this login
+link.
+Registration & Account
+Setup Field Rep Registration Why are Field ID and Email ID
+already ﬁlled in?
+The values may be preﬁlled for convenience. Please
+review them before continuing.
+Registration & Account
+Setup Field Rep Registration Can I change the preﬁlled Field ID
+or Email ID? You may edit the ﬁelds if needed.
+Registration & Account
+Setup Field Rep Registration Should I enter the WhatsApp
+number with +91?
+No, enter the WhatsApp number without +91 or any
+country code.
+Registration & Account
+Setup Field Rep Registration What number format should I
+enter in the WhatsApp ﬁeld? Enter a 10-digit WhatsApp number.
+Registration & Account
+Setup Field Rep Registration What do I type in “Your answer”? Enter the answer to the selected security question.
+Registration & Account
+Setup Field Rep Registration I already have an account. What
+should I click? Click on the Login option to access your account.
+Collateral Sharing Share Collaterals Form Should I use the form on the left
+or the doctor list on the right?
+You can use either the manual entry form or select
+from the assigned doctor list.
+Collateral Sharing Share Collaterals Form What should I enter in Doctor
+WhatsApp Number? Enter the doctor’s 10-digit mobile number.
+Collateral Sharing Share Collaterals Form Can I choose which collateral to
+send?
+Yes, select the required collateral from the “Select
+Collaterals” dropdown.
+Collateral Sharing Share Collaterals Form Do I need to enter doctor name
+before submitting?
+Enter both the doctor’s name and WhatsApp number
+before submitting.
+Collateral Sharing Assigned Doctors List Can I search doctors by name or
+phone?
+Yes, you can search using the doctor’s name or phone
+number.
+Collateral Sharing Assigned Doctors List What does “Sent” mean on a
+doctor row?
+It indicates that a message has already been sent to
+that doctor.
+
+--- PAGE 5 ---
+Inclinic-FAQs Flow2_FieldRep_FAQS
+Super Category Category FAQ FAQ Answer
+Collateral Sharing Assigned Doctors List What does “Send Message” do? It starts the process of sending a message to the
+selected doctor.
+Collateral Sharing Assigned Doctors List How do I know which doctors are
+assigned to me?
+The assigned doctors are listed under the “Assigned
+Doctors” section.
+WhatsApp Handoff &
+Sending
+WhatsApp Open
+Prompt
+Why am I seeing an “Open
+WhatsApp?” popup?
+It is a prompt to open WhatsApp for sending the
+message.
+WhatsApp Handoff &
+Sending
+WhatsApp Open
+Prompt
+What should I click to continue
+sending?
+Choose to open WhatsApp in the app or continue on
+WhatsApp Web.
+WhatsApp Handoff &
+Sending
+Preﬁlled WhatsApp
+Message
+Has the message already been
+sent when this page opens?
+No, the message is only prepared. You need to send it
+from WhatsApp.
+WhatsApp Handoff &
+Sending
+Preﬁlled WhatsApp
+Message
+Can I see the message before
+sending it?
+Yes, the message is visible in WhatsApp before
+sending.
+WhatsApp Handoff &
+Sending
+WhatsApp Open
+Prompt
+What happens if I click Cancel on
+the popup? The WhatsApp opening process will be stopped.
+WhatsApp Handoff &
+Sending
+Preﬁlled WhatsApp
+Message
+Do I need the WhatsApp app, or
+can I use browser?
+You can use either the WhatsApp app or WhatsApp
+Web.
+
+--- PAGE 6 ---
+Inclinic-FAQs Flow2_FieldRep_TicketCases
+Super Category Category Edge Case Ticket Required Ticket Department Notes
+Registration & Account Setup Field Rep Registration Security Question dropdowndoes not load usable options
+Especially relevant becausequestion-loading debug text isalready visible
+Registration & Account Setup Field Rep Registration Preﬁlled Field ID or Email iswrong and the screen gives noclear correction path
+Escalate if user cannot safelyreplace the preﬁlled value
+Collateral Sharing Assigned Doctors List
+“Sent” status is visible, but notimestamp or collateral name isshown, so ﬁeld rep cannotconﬁrm what was already sent
+Status clarity issue
+Collateral Sharing Assigned Doctors List Clicking “Send Message” opensthe wrong doctor chat orunexpected doctor details
+Reproduce using the doctor rowclicked
+WhatsApp Handoff & Sending WhatsApp Open Prompt Browser prompt appears, butWhatsApp app/web does notopen after continuing
+Escalate to IT or Engineering ifbrowser/app switch failsrepeatedly
+WhatsApp Handoff & Sending Preﬁlled WhatsApp Message WhatsApp opens with blank orincomplete preﬁlled message Message generation defect
+WhatsApp Handoff & Sending WhatsApp Open Prompt User clicks Cancel on thebrowser prompt, so message isnot sent
+User-action issue; reopen thesend ﬂow and continue toWhatsApp
+WhatsApp Handoff & Sending Preﬁlled WhatsApp Message Field rep assumes openingWhatsApp means the messagewas already sent
+Sending still requires ﬁnalaction inside WhatsApp
+Engineering
+Engineering
+Engineering
+Product
+Product
+Product
+NA
+NA

@@ -1,0 +1,76 @@
+{% extends "base.jinja" %}
+{% block title %}Ticketing{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end mb-4">
+    <div>
+        <p class="eyebrow mb-1">Ticketing System</p>
+        <h1 class="mb-1">Tickets assigned across Inditech departments</h1>
+        <p class="text-secondary mb-0">Direct recipients can change status. Current assignees can delegate, add notes, and return work to the sender when needed.</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url('ticketing:create') }}">Create ticket</a>
+</div>
+
+<div class="card shadow-sm border-0 rounded-4 mb-4">
+    <div class="card-body">
+        <form class="row g-3" method="get">
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select class="form-select" name="status">
+                    {% for value, label in filter_form.fields.status.choices %}
+                        <option value="{{ value }}" {% if request.GET.get('status') == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Campaign ID</label>
+                <input class="form-control" name="campaign" value="{{ request.GET.get('campaign', '') }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Period</label>
+                <select class="form-select" name="period_days">
+                    {% for value, label in filter_form.fields.period_days.choices %}
+                        <option value="{{ value }}" {% if request.GET.get('period_days') == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary" type="submit">Apply filters</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 rounded-4">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Ticket</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th>Current assignee</th>
+                    <th>Campaign</th>
+                    <th>Raised</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ticket in tickets %}
+                    <tr>
+                        <td>
+                            <a class="fw-semibold text-decoration-none" href="{{ url('ticketing:detail', pk=ticket.pk) }}">{{ ticket.ticket_number }}</a>
+                            <div class="text-secondary small">{{ ticket.title }}</div>
+                        </td>
+                        <td>{{ ticket.department.name }}</td>
+                        <td><span class="badge text-bg-light">{{ ticket.get_status_display() }}</span></td>
+                        <td>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td>
+                        <td>{{ ticket.campaign.name if ticket.campaign else 'Unassigned' }}</td>
+                        <td>{{ ticket.created_at.strftime('%d %b %Y %H:%M') }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="p-4 text-secondary">No tickets match the current filters.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

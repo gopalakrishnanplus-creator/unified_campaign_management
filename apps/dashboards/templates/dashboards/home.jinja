@@ -1,0 +1,63 @@
+{% extends "base.jinja" %}
+{% block title %}Campaign Management System{% endblock %}
+{% block content %}
+<section class="hero-surface rounded-4 p-5 mb-5">
+    <div class="row align-items-center g-4">
+        <div class="col-lg-7">
+            <p class="eyebrow mb-2">Unified support and campaign intelligence</p>
+            <h1 class="display-5 fw-semibold mb-3">Customer support, ticketing, and campaign performance in one local Django workspace.</h1>
+            <p class="lead text-secondary mb-4">
+                This implementation combines the doctor, clinic staff, brand manager, and field-rep support entry points with a ticketing workflow,
+                campaign reporting APIs, and a project-management dashboard built for <strong>campaignpm@inditech.co.in</strong>.
+            </p>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-primary btn-lg" href="{{ url('dashboards:home') }}">Project Manager Dashboard</a>
+                <a class="btn btn-outline-primary btn-lg" href="{{ url('ticketing:list') }}">Ticketing Workspace</a>
+                <a class="btn btn-outline-secondary btn-lg" href="{{ url('reporting:contracts') }}">Reporting API Contracts</a>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body p-4">
+                    <h2 class="h5 mb-3">Campaigns in scope</h2>
+                    <div class="vstack gap-2">
+                        {% for campaign in campaigns %}
+                            <div class="metric-row">
+                                <div>
+                                    <strong>{{ campaign.name }}</strong>
+                                    <div class="text-secondary small">{{ campaign.brand_name }} · {{ campaign.get_status_display() }}</div>
+                                </div>
+                                <a class="btn btn-sm btn-outline-secondary" href="{{ url('campaigns:detail', slug=campaign.slug) }}">Open</a>
+                            </div>
+                        {% else %}
+                            <p class="text-secondary mb-0">Seed demo data after migrations to populate campaigns.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="row g-4">
+    {% set support_links = [
+        ('Doctor', 'doctor'),
+        ('Clinic Staff', 'clinic_staff'),
+        ('Brand Manager', 'brand_manager'),
+        ('Field Rep', 'field_rep'),
+        ('Patient', 'patient')
+    ] %}
+    {% for label, user_type in support_links %}
+        <div class="col-md-6 col-xl-3">
+            <div class="card h-100 shadow-sm border-0 rounded-4">
+                <div class="card-body">
+                    <p class="eyebrow mb-2">Support</p>
+                    <h2 class="h5">{{ label }} landing page</h2>
+                    <p class="text-secondary">Browse three-level issue menus, self-serve standardized solutions, or raise a ticket when help is needed.</p>
+                    <a class="btn btn-outline-primary" href="{{ url('support_center:landing', user_type=user_type) }}">Open support</a>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+</section>
+{% endblock %}

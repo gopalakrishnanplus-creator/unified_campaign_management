@@ -1,0 +1,54 @@
+name: CI and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Django checks
+        env:
+          DJANGO_SECRET_KEY: ci-secret-key
+          DEBUG: "false"
+          DB_ENGINE: sqlite
+          PROJECT_MANAGER_EMAIL: campaignpm@inditech.co.in
+          ENABLE_DEV_LOGIN: "false"
+        run: |
+          . .venv/bin/activate
+          python manage.py check
+          python manage.py migrate --noinput
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ${{ secrets.EC2_APP_DIR }}
+            git pull origin main
+            APP_DIR=${{ secrets.EC2_APP_DIR }} SERVICE_NAME=${{ secrets.EC2_SERVICE_NAME }} bash scripts/deploy_ec2.sh

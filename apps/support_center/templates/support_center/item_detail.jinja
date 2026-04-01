@@ -1,0 +1,76 @@
+{% extends "base.jinja" %}
+{% block title %}{{ item.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-4">
+    <a class="btn btn-outline-secondary" href="{{ url('support_center:landing', user_type=user_type) }}">Back to support catalog</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-primary" href="{{ url('support_center:faq_super_category', user_type=user_type, super_slug=item.category.super_category.slug) }}">Open FAQ page</a>
+        <a class="btn btn-outline-primary" href="{{ url('support_center:assistant', user_type=user_type) }}">Use guided assistant</a>
+    </div>
+</div>
+<div class="row g-4">
+    <div class="col-lg-7">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body p-4">
+                <p class="eyebrow mb-1">{{ item.source_system }} · {{ item.source_flow or item.category.super_category.name }}</p>
+                <h1 class="mb-3">{{ item.name }}</h1>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="badge text-bg-light">{{ item.get_knowledge_type_display() }}</span>
+                    <span class="badge text-bg-light">{{ item.category.super_category.name }}</span>
+                    <span class="badge text-bg-light">{{ item.category.name }}</span>
+                    {% if item.ticket_department %}
+                        <span class="badge text-bg-light">Dept: {{ item.ticket_department.name }}</span>
+                    {% endif %}
+                </div>
+                <p class="text-secondary">{{ item.summary }}</p>
+                {% if item.response_mode == 'standardized' %}
+                    <div class="solution-panel rounded-4 p-4 mb-4">
+                        <h2 class="h4">{{ item.solution_title or 'Suggested solution' }}</h2>
+                        <p class="mb-0">{{ item.solution_body }}</p>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if item.associated_pdf_url %}
+                            <a class="btn btn-outline-secondary" href="{{ item.associated_pdf_url }}" target="_blank">Associated PDF</a>
+                        {% endif %}
+                        {% if item.associated_video_url %}
+                            <a class="btn btn-outline-secondary" href="{{ item.associated_video_url }}" target="_blank">Associated video</a>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="alert alert-info rounded-4 mb-0">
+                        <p class="mb-2">This ticket case does not have a standardized solution.</p>
+                        {% if item.solution_body %}
+                            <p class="mb-2"><strong>Imported notes:</strong> {{ item.solution_body }}</p>
+                        {% endif %}
+                        <p class="mb-0">It will be routed directly to {{ item.ticket_department.name if item.ticket_department else 'the configured department' }}.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-4">
+                <h2 class="h5 mb-3">
+                    {% if item.response_mode == 'standardized' %}
+                        This did not solve the problem
+                    {% else %}
+                        Raise a ticket
+                    {% endif %}
+                </h2>
+                <form method="post" class="vstack gap-3">
+                    {{ csrf_input }}
+                    {% for field in request_form %}
+                        <div>
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                    {% endfor %}
+                    <button class="btn btn-primary" type="submit">Create support ticket</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

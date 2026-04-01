@@ -1,0 +1,103 @@
+{% extends "base.jinja" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-4">
+    <div>
+        <p class="eyebrow mb-1">{{ role_title }}</p>
+        <h1 class="mb-1">{{ super_category.name }}</h1>
+        <p class="text-secondary mb-0">Each screen or section below has its own FAQ-only support widget. Clicking `Open FAQ support` launches the widget on this page in the bottom-right corner.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="{{ url('support_center:landing', user_type=user_type) }}">Back to support home</a>
+        <a class="btn btn-outline-primary" href="{{ faq_links_api_url }}" target="_blank">All FAQ links API</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    {% for entry in category_entries %}
+        <div class="col-xl-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h2 class="h4 mb-1">{{ entry.category.name }}</h2>
+                            <p class="text-secondary mb-0">{{ entry.faq_count }} FAQs in this page-specific support flow</p>
+                        </div>
+                        <span class="badge text-bg-light">{{ entry.faq_count }} questions</span>
+                    </div>
+                    <div class="small text-secondary mb-3">
+                        {% for question in entry.sample_questions %}
+                            <div>{{ question }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-3">
+                        <button
+                            class="btn btn-primary"
+                            type="button"
+                            data-open-widget
+                            data-widget-url="{{ entry.embed_url }}"
+                            data-widget-label="{{ entry.category.name }}"
+                        >
+                            Open FAQ support
+                        </button>
+                        <a class="btn btn-outline-secondary" href="{{ entry.widget_url }}" target="_blank">Standalone widget</a>
+                    </div>
+                    <div class="small text-secondary">
+                        <div><strong>Config API</strong></div>
+                        <code class="d-block mt-1">{{ entry.api_url }}</code>
+                    </div>
+                    <div class="small text-secondary mt-2">
+                        <div><strong>Embed URL</strong></div>
+                        <code class="d-block mt-1">{{ entry.embed_url }}</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-warning rounded-4">No FAQ combinations are available for this super category and audience.</div>
+        </div>
+    {% endfor %}
+</div>
+
+<div class="faq-dock" id="faq-dock" hidden>
+    <div class="faq-dock-header">
+        <div>
+            <div class="small text-white-50">FAQ Support</div>
+            <strong id="faq-dock-title">Customer support</strong>
+        </div>
+        <button class="btn btn-sm btn-light" type="button" id="faq-dock-close">Close</button>
+    </div>
+    <iframe class="faq-dock-frame" id="faq-dock-frame" title="FAQ Support Widget"></iframe>
+</div>
+
+<script>
+(() => {
+    const dock = document.getElementById("faq-dock");
+    const frame = document.getElementById("faq-dock-frame");
+    const title = document.getElementById("faq-dock-title");
+    const closeButton = document.getElementById("faq-dock-close");
+
+    function openDock(widgetUrl, label) {
+        frame.src = widgetUrl;
+        title.textContent = label;
+        dock.hidden = false;
+        dock.classList.add("faq-dock-open");
+    }
+
+    function closeDock() {
+        dock.hidden = true;
+        dock.classList.remove("faq-dock-open");
+        frame.src = "";
+    }
+
+    document.querySelectorAll("[data-open-widget]").forEach((button) => {
+        button.addEventListener("click", () => {
+            openDock(button.dataset.widgetUrl, button.dataset.widgetLabel);
+        });
+    });
+
+    closeButton.addEventListener("click", closeDock);
+})();
+</script>
+{% endblock %}

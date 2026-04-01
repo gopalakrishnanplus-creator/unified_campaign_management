@@ -1,0 +1,328 @@
+--- PAGE 1 ---
+RFA-FAQs Flow1_Doctor_FAQS
+Super Category Category FAQ FAQ - Answer
+Access & Login Clinic Login Screen Do I have to check the “Terms and Conditions” box every time I log in? Yes, you must accept the Terms and Conditions every time you log in.
+Access & Login Clinic Login Screen Is my username my email ID or something else? Yes , your email ID used for doctor recruitment is your username.
+Access & Login Clinic Login Screen Is this login screen for doctors only or also for staff? The login screen remains the same for the doctor as well as all the users for the clinic.
+Access & Login Clinic Login Screen Can multiple staff members use the same login credentials? We recommend adding 2 staff members and using speciﬁc credentials to log in.
+Access & Login Clinic Login Screen Does this system remember me or do I need to log in every time? If same browser is used - and cache/cookies are not cleared - the system remembersyou for 30 days.
+Access & Login Clinic Login Screen Is there a mobile app, or should I always log in via browser? The system is web based interface and can be accessed using the  borswer - no appinstallation is needed.
+Sending Forms toPatients Send Full SystemLink What exactly does “Send the entire system with all forms” mean? The patient will recieve all the forms available for your clinic in a single link - and canﬁll the form for speciﬁc condition.
+Sending Forms toPatients Send Full SystemLink Will the patient receive multiple forms or just one link? The patient will recieve all the forms available for your clinic in a single link - in caseyou have shared the entire system.
+Sending Forms toPatients Send Full SystemLink Will the patient need to install anything? The system is web based interface and can be accessed using the  borswer - no appinstallation is needed.
+Sending Forms toPatients Send Full SystemLink Will I get notiﬁed when the patient completes the forms? You will get a summary of all the reports for the patient form ﬁlls at the end of the day.
+Sending Forms toPatients Send Full SystemLink Can I send this link again if needed? Yes , this link can be shared again.
+Sending Forms toPatients Patient PhoneNumber Entry Should I enter the phone number with country code (+91) or without? Enter the phone number without the country code. Enter 10 digit phone number only.
+Sending Forms toPatients Patient PhoneNumber Entry Can I paste the number from my phone contacts? Yes , ensure the number pasted is 10 digits only.
+Sending Forms toPatients Patient PhoneNumber Entry Can I edit the number after sending? No , the number can be edited only before sending.
+Sending Forms toPatients Patient PhoneNumber Entry Can I send it to international numbers? No, the system is available for Indian Phone numbers only as of now.
+Sending Forms toPatients Patient PhoneNumber Entry Can patients access these links directly? If users open the system through a link (for a single form or the full system), they mustverify themselves using the WhatsApp number they received the link on. If they accessit using a QR code at the clinic, they need to verify using the clinic’s WhatsApp number.
+Sending Forms toPatients Patient PhoneNumber Entry Should I copy and send these manually? You can enter the patients' whatsapp number and click the send button  - it will open upWhatsapp with a pre typed message that contains the link to the form. On hitting sendon Whatsapp - the patient will recieve the link.
+Sending Forms toPatients Share a Single Form Can I send multiple forms one by one? Yes  , you can send multiple forms one by one.
+Sending Forms toPatients Share a Single Form Can I preview the form before sending it? No, form previews are not available - however you can share the form to yourself - andﬁll it out as a patient.
+Sending Forms toPatients Share a Single Form Can I customize which questions are included? No , forms cannot be customised.
+
+--- PAGE 2 ---
+RFA-FAQs Flow1_Doctor_FAQS
+Super Category Category FAQ FAQ - Answer
+Sending Forms toPatients Share a Single Form If I select the wrong form, can I undo it? No , you can select the correct form and send it to the patient.
+Sending Forms toPatients Share a Single Form Does the patient need to ﬁll all questions in the form? Yes , all questions in the form are mandatory to ﬁll.
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+How do I open the PDF report?
+To open your PDF report for the ﬁrst time, you need to create a MailHippo account.Follow these steps:1. Open the email from MailHippo and click “View secure message”—this will take youto the MailHippo site.2. Enter the same email you use to log in to the system.3. Enter the OTP you receive on the maild ID to verify your account.4. Create a password for your MailHippo account.5. Check “Trust this device for 90 days.”6. Click Continue to access your PDF report.
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+Should the name be in uppercase or lowercase? Use the ﬁrst 4 letters of your ﬁrst name in lowercase for the PDF password.
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+Which phone number should I use for the password? Use the last 4 digits of your registered phone number.
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+Are Doctor PDF and Patient PDF passwords different?
+Yes. As a doctor, your PDF password is based on your own ﬁrst name and phonenumber, while the patient’s PDF password is based on the patient’s ﬁrst name andphone number.
+Example:
+Doctor: First 4 letters of your ﬁrst name + last 4 digits of your phone →  e.g., kuma2357
+Patient: First 4 letters of the patient’s ﬁrst name + last 4 digits of their phone →  e.g.,kaus7277
+This way, your PDF and the patient’s PDF each have a unique password.
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+Can I remove the password protection? No , all reports will be password protected.
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+Will the patient be able to open it easily? The patient does not receive the report on mail. You can share the report and they canaccess it using the patient password.
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint What happens when I click “Recommend follow ups”? You can create follow-ups for a particular Patient from their report by clicking thefollow-up option available on that Patient’s report page.
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Is this linked to the current patient automatically? Yes, the follow-up is automatically linked to the speciﬁc patient from whose report youclicked that 'Follow-up' button.
+
+--- PAGE 3 ---
+RFA-FAQs Flow1_Doctor_FAQS
+Super Category Category FAQ FAQ - Answer
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Can I skip this step and do it later? Yes, absolutely you can do it any time.
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Will the patient be notiﬁed immediately? Yes, they will receive WhatsApp reminder message as soon as you send them viaWhatsApp.
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Can I edit follow-ups after submitting? Yes, you can edit follow-ups any time before sending reminder for the particularfollow-ups.
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Does this create reminders automatically? Yes, it is create reminders automatically for the speciﬁc date that you have chosen.
+Follow-ups &Reminders RecommendFollow-Ups Page What is the difference between date-based and periodic follow-ups? In date-based follow-ups, you can schedule up to three speciﬁc follow-up dates.In periodic follow-ups, you can choose a start date, along with the duration andintervals between follow-ups.
+Follow-ups &Reminders RecommendFollow-Ups Page Should I ﬁll both sections or only one? We recommend you to ﬁll one section at a time.
+Follow-ups &Reminders RecommendFollow-Ups Page What happens if I submit both sections? It won't work this way, only one section you can submit at a time.
+Follow-ups &Reminders RecommendFollow-Ups Page Can I set more than 3 follow-up dates? To set more than 3 follow-up dates, you can use periodic follow-ups.
+Follow-ups &Reminders RecommendFollow-Ups Page What if I want weekly follow-ups instead of speciﬁc dates? To set weekly follow ups, use periodic follow-ups.
+Follow-ups &Reminders RecommendFollow-Ups Page Will the system send reminders automatically to the patient? No, you need to send them reminder via WhatsApp.
+Follow-ups &Reminders RecommendFollow-Ups Page Can I edit or delete follow-ups later? You can edit follow-up later, but you can't delete.
+Follow-ups &Reminders RecommendFollow-Ups Page Can I see already scheduled follow-ups? You can view already scheduled follow-ups on the “Send Reminder” page.
+Follow-ups &Reminders RecommendFollow-Ups Page What if I enter the wrong date? You can edit them on "Send Reminder" page.
+Clinic & StaffManagement Add Clinic Staff What does “add clinic staff” allow them to do? It allows you to add upto 2 staff members of your clinic to the system. They can accessthe system using their credentials and share forms to patient.
+Clinic & StaffManagement Add Clinic Staff Why can I only add up to 2 users? The current limit is set for 2 users , however the same credentials can be shared with1-2 more members if required.
+Clinic & StaffManagement Add Clinic Staff Will the staff receive a login email automatically? Yes , the staff will receive their login credentials on their email.
+Clinic & StaffManagement Add Clinic Staff Do I need to share the password with them manually? No , the staff will receive their login credentials on their email.
+Clinic & StaffManagement Add Clinic Staff How can I delete or edit a staff user later? Only doctors login can manage clinic staff. There is a dedicated button as"RemoveStaff" alongside the staff name on the Clinic Dashboard view that allows adding orremoving clinic staff, no edit functionality.
+Clinic & StaffManagement Add Clinic Staff Can multiple staff log in at the same time? Yes , mutliple staff members can login to the system with their unique credentials atthe same time.
+
+--- PAGE 4 ---
+RFA-FAQs Flow1_Doctor_FAQS
+Super Category Category FAQ FAQ - Answer
+Follow-ups &Reminders Today’s Follow-UpsTable How were these follow-ups scheduled? These follow-ups are scheduled directly from the patient’s report, either by selectingspeciﬁc dates or by setting periodic follow-up intervals.
+Follow-ups &Reminders Today’s Follow-UpsTable Can I see more details about the patient? No, you can only see the patient’s name and mobile number on the “Send Reminder”page.
+Follow-ups &Reminders Today’s Follow-UpsTable What does “Send reminder” actually send? The “Send Reminder” action sends a reminder notiﬁcation on WhatsApp to the patientusing their registered contact details.
+Follow-ups &Reminders Today’s Follow-UpsTable Can I edit the reminder before sending? Yes, you can edit Reminder dates any time before sending reminder for the particularfollow-ups on "Send Reminder Screen".
+Follow-ups &Reminders Today’s Follow-UpsTable Can I remove/edit a follow-up from the list? Yes, you can edit follow-ups any time before sending reminder for the particularfollow-ups but scheduled alerts cannot be removed.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers Is there a summary of the most critical issues? No, there is no summary available. However, you can view all the Red Flags in the emailreport along with the related videos for each red ﬂag.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers What does the “More info” link show? It opens the education video and related information for that speciﬁc red ﬂag,embedded on the page. This section is referred as “At a Glance".
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers Are these automatically generated insights? Yes, the results are evaluated based on the patient’s submission, and a report isgenerated accordingly.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers How can I share this directly with the patient? Yes, you can download the report as a PDF and share it with patients.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers Is there a simpler summary view available? No, there is no summary available. You need to review the report details or watch therelated videos for more information about the particular Red Flags.
+
+--- PAGE 5 ---
+RFA-FAQs Flow1_Doctor_TicketCases
+Super Category Category Edge Case Edge Case Ticket Ticket Department Notes
+Access & Login Clinic Login Screen Login button does nothing afterclicking (no response / silent failure).
+To come to engineering incase browser/networkswitch does not help
+Access & Login Clinic Login Screen Slow network →  login spinner neverends.
+To come to engineering incase browser/networkswitch does not help
+Access & Login Clinic Login Screen Server error after login (blank whitescreen).
+Access & Login Clinic Login Screen Redirect loop (login →  loginagain/loading).
+Sending Forms toPatients Send Full SystemLink Clicking “Send system link” doesnothing.
+Sending Forms toPatients Send Full SystemLink Button triggers loading but nevercompletes.
+To come to engineering incase browser/networkswitch does not help
+Sending Forms toPatients Send Full SystemLink WhatsApp does not open after clickingsend.
+To come to engineering incase browser/networkswitch does not help
+Sending Forms toPatients Send Full SystemLink UI freezes after clicking send. To come to engineering incase browser/networkswitch does not help
+Sending Forms toPatients Patient PhoneNumber Entry Automatically modiﬁes numberincorrectly (adds/removes digits). Provide a pre typedworking solution
+Sending Forms toPatients Patient PhoneNumber Entry Pasting formatted numbers (+91-xxxx)breaks sending. Provide a pre typedworking solution
+Sending Forms toPatients Share a Single Form Form list fails to load (blankdropdown).
+Sending Forms toPatients Share a Single Form Clicking share opens WhatsApp withempty message.
+Sending Forms toPatients Share a Single Form Clicking links leads to error/404 page.
+Product
+Product
+Product
+Product
+Product
+Engineering
+Engineering
+Engineering
+Engineering
+Engineering
+NA
+NA
+IT
+
+--- PAGE 6 ---
+RFA-FAQs Flow1_Doctor_TicketCases
+Super Category Category Edge Case Edge Case Ticket Ticket Department Notes
+Sending Forms toPatients Share a Single Form Links expire without warning.
+Sending Forms toPatients Share a Single Form PDF rendering issue →  links overlap orunreadable.
+Sending Forms toPatients Share a Single Form Links not clickable in somebrowsers/PDF viewers.
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+PDF fails to download. To come to engineering incase browser/networkswitch does not help
+Reports & PDFs
+Doctor Report Email -PDF Attachments &PasswordInstructions
+PDF opens but password rejecteddespite correct input.
+To come to engineering incase browser/networkswitch does not help
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Button click does nothing.
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Redirect fails →  blank page. To come to engineering incase browser/networkswitch does not help
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint
+Slow loading →  doctor assumes itfailed and retries.
+To come to engineering incase browser/networkswitch does not help
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Session expired →  redirected to login.
+Follow-ups &Reminders
+RecommendFollow-ups EntryPoint Network drop during redirect. To come to engineering incase browser/networkswitch does not help
+Follow-ups &Reminders RecommendFollow-Ups Page Dates entered incorrectly but accepted. Provide a pre typedworking solution
+Follow-ups &Reminders RecommendFollow-Ups Page Server error after submission →unclear if saved.
+To come to engineering incase browser/networkswitch does not help
+Engineering
+Engineering
+Engineering
+Engineering
+Product
+Product
+Product
+Product
+Product
+Product
+Product
+
+--- PAGE 7 ---
+RFA-FAQs Flow1_Doctor_TicketCases
+Super Category Category Edge Case Edge Case Ticket Ticket Department Notes
+Clinic & StaffManagement Add Clinic Staff Staff user created but cannot log in.
+Clinic & StaffManagement Add Clinic Staff No email sent to staff after creation.
+Clinic & StaffManagement Add Clinic Staff Typo in email →  account created butunusable.
+Help creating new account-> alert Engineering todelete old/wrong user
+Follow-ups &Reminders Today’s Follow-UpsTable Table not updating in real-time.
+Follow-ups &Reminders Today’s Follow-UpsTable Server error while sending reminder.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers “More info” links broken or not loading.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers Missing or incomplete patient answers.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers
+Email truncation on mobile (content cutoff). Device speciﬁc issues
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers
+Formatting issues →  hard to readquickly.
+Reports & PDFs Doctor Report Email -Red Flags & PatientAnswers Duplicate or redundant red ﬂags.
+Engineering
+Engineering
+Engineering
+Engineering
+Engineering
+Engineering
+Engineering
+Engineering
+Product
+
+--- PAGE 8 ---
+RFA-FAQs Flow2_FieldRep_FAQS
+Super Category Category FAQ FAQ Answer
+Doctor Onboarding Doctor RecruitmentForm What is this form for? This form is used for doctor recruitment and onboarding into the Red-Flag AlertSystem.
+Doctor Onboarding Doctor RecruitmentForm How detailed should the clinic address be? Enter the complete clinic address, including street, area, city, and other relevant details.
+Doctor Onboarding Doctor RecruitmentForm What happens after I enter the PIN code? After entering the 6-digit PIN code, the state and district are automatically derived.
+Doctor Onboarding Doctor RecruitmentForm What ﬁle types can I upload for Doctor’s Photo? You can upload images in JPEG, JPG, or PNG format.
+Access & Login Field Rep Login Where do I get the password for this login? The password is sent to your registered email address.
+Access & Login Field Rep Login What should I do if I do not remember my login? Click on the “Forgot Password” option available below the Login button.
+Access & Login Field Rep Login What happens after I click Login? After logging in, the next screen displays the Field Rep Actions section.
+Navigation & Actions Field Rep Actions Should I use the tabs or the buttons on this page? Both can be used. Tabs help switch between sections, while the buttons highlight keyactions within the current section.
+Navigation & Actions Field Rep Actions What does Onboard Doctor do? This option allows you to enter the doctor’s WhatsApp number, check eligibility, andproceed with onboarding.
+Navigation & Actions Field Rep Actions What does Check Clinic Outcome Numbers do? This option opens the Clinic Outcomes section to view form-ﬁll and red-ﬂag counts.
+Doctor Search &Onboarding Doctor WhatsAppLookup What number should I enter for doctor onboarding? Enter the doctor’s WhatsApp number in the format speciﬁed on the screen.
+Doctor Search &Onboarding Doctor WhatsAppLookup Should I enter +91 or only 10 digits? Enter only the 10-digit number, as the screen speciﬁes India numbers only.
+Doctor Search &Onboarding Doctor Not FoundState What does “Doctor not found in system yet” mean? This message indicates that the entered number is not currently found in the system.
+Doctor Search &Onboarding Doctor Not FoundState What happens if I click Onboard Doctor after doctor not found? You can still proceed with onboarding even if the doctor is not found in the system.
+Clinic Outcomes Clinic OutcomeLookup What number should I enter in Clinic Outcomes? Enter the doctor’s WhatsApp number as per the ﬁeld instructions.
+Clinic Outcomes Clinic OutcomeLookup Can I enter +91 in Clinic Outcomes? Yes, adding +91 is optional on this screen.
+Clinic Outcomes Clinic OutcomeLookup What happens after I click Submit in Clinic Outcomes? The system retrieves and displays the form-ﬁll and red-ﬂag counts for the enterednumber.
+
+--- PAGE 9 ---
+RFA-FAQs Flow2_FieldRep_TicketCases
+Super Category Category Edge Case Ticket Required Ticket Department Notes
+Doctor Onboarding Doctor Recruitment
+Form
+User completes the form but cannot
+tell which missing ﬁeld is blocking
+submission
+The missing ﬁeld is
+highlighted when submit
+button is clicked.
+Doctor Onboarding Doctor Recruitment
+Form
+Clinic Appointment Booking Number
+appears preﬁlled incorrectly
+Escalate if the preﬁlled
+number cannot be edited or
+is wrong
+Doctor Onboarding Doctor Recruitment
+Form
+Doctor photo upload accepts
+unsupported ﬁle behavior despite only
+showing JPEG/JPG/PNG
+Escalate if upload fails or
+accepts invalid types
+silently
+Access & Login Field Rep Login Password never received by email and
+no resend option is visible
+Email delivery or account
+provisioning issue
+Doctor Search &
+Onboarding
+Doctor Not Found
+State
+Valid doctor is incorrectly shown as
+“Doctor not found in system yet”
+Escalate if reproducible
+with known valid doctor
+records
+Clinic Outcomes Clinic Outcome
+Lookup
+Submit returns no visible outcome data
+after number entry
+Escalate if the lookup
+produces no result or blank
+response
+Yes
+Yes
+Yes
+Yes
+Yes
+Yes
+Product
+Product
+Engineering
+Engineering
+Engineering
+IT
+
+--- PAGE 10 ---
+RFA-FAQs Flow3_Patient_FAQS
+Super Category Category FAQ FAQ Answer
+Consent & Access Terms & ConditionsScreen Why do I need to accept the terms? You must accept the Terms and Conditions shown on the screen before proceeding.
+Consent & Access Terms & ConditionsScreen Why is the Continue button not working? The Continue button will only work after selecting the checkbox to accept the Termsand Conditions.
+Consent & Access Terms & ConditionsScreen Do I need to read the full terms? A link to the full Terms and Conditions is provided for your review before acceptance.
+Consent & Access Terms & ConditionsScreen How do I contact the clinic? The clinic’s contact number is displayed at the bottom of the page.
+Red Flag Results Red Flag Alert Screen What does “Report Flag: RED” mean? This indicates a high-severity result based on the responses you submitted.
+Red Flag Results Red Flag Alert Screen What should I do after seeing this result? You are advised to visit a doctor. The screen also provides options to contact the clinicor book an appointment.
+Red Flag Results Red Flag Alert Screen Why am I seeing these warning signs? The warning signs are generated based on the answers you provided earlier in theprocess.
+Red Flag Results Red Flag Alert Screen Do I need to show this to the doctor? Yes, the screen instructs you to capture and share this information with the doctor.
+Red Flag Results Red Flag Alert Screen What are the symptom cards shown below? Each card highlights a speciﬁc warning sign identiﬁed from your responses.
+Red Flag Results Red Flag Alert Screen What does “Watch a short video about this” mean? Each symptom card includes a link to an educational video related to that speciﬁc sign.
+Red Flag Results Red Flag Alert Screen Should I watch all videos? Multiple videos are provided, each corresponding to a listed symptom. You may watchthem as needed.
+Red Flag Results Red Flag Alert Screen Should I call or book on WhatsApp? Both options are available for contacting the clinic or booking an appointment.
+Red Flag Results Red Flag Alert Screen Has my report been shared with the doctor? Yes, the screen indicates that your report has been emailed to the doctor.
+Video Education Red Flag EducationVideo What is this video about? The video provides educational information related to the identiﬁed red-ﬂag condition.
+
+--- PAGE 11 ---
+RFA-FAQs Flow3_Patient_TicketCases
+Super Category Category Edge Case Ticket Required Ticket Department Notes
+Consent & Access Terms & Conditions
+Screen
+Continue button does not respond after
+checkbox selection Functional blocker
+Consent & Access Terms & Conditions
+Screen
+Terms link does not open or loads
+blank Critical compliance issue
+Red Flag Results Red Flag Alert Screen RED ﬂag shown incorrectly for
+non-severe input Requires logic validation
+Red Flag Results Red Flag Alert Screen Call/WhatsApp buttons do not trigger
+action Critical action failure
+Red Flag Results Red Flag Alert Screen Same video link opens for all
+symptoms incorrectly Content mapping issue
+Video Education Red Flag Education
+Video Video does not load or play Player or embed issue
+Yes
+Yes
+Yes
+Yes
+Yes
+Yes
+Engineering
+Engineering
+Engineering
+Engineering
+Product
+Product

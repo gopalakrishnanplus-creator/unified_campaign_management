@@ -1,0 +1,24 @@
+--- PAGE 1 ---
+The ticketing system
+The ticketing system automatically assigns a ticket to a department in Inditech and
+also sends the ticket by email to the department email address specified in the
+system.
+A ticket can be closed only by the direct recipient of the ticket from the ticketing
+system. The ticket can be delegated to another email address by the recipient or
+reassigned to the sender by the recipient. Every recipient of a ticket, whether a
+direct recipient or a delegated recipient, can add notes to the ticket. Each note is
+automatically time-tagged, and they can also add supporting material to their note
+in the form of file uploads, limited to 5 MB per file, maximum of three file
+attachments per note. The ticket has status flags which only the direct recipient
+can change. These status flags could be completed, in process, cannot be
+completed, on hold, not started. 
+The ticketing system database retains the status and details of all tickets that have
+been raised so far. 
+Every recipient or a delegated recipient has an account on the ticketing system
+and can log in using their email address along with Google Auth. They see a
+dashboard which gives them all the tickets that have been raised on them, which
+can be filtered by status and by period, etc. 
+The project manager has the ability to Add users, Remove users and perform
+other admin activities that a ticketing system usually requires. 
+The ticketing system
+1

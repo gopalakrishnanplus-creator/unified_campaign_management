@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --faq-accent: #0f766e;
+            --faq-accent-2: #1d4ed8;
+            --faq-ink: #0f172a;
+            --faq-muted: #64748b;
+            --faq-surface: #f8fafc;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(180deg, #f8fafc, #ffffff);
+            color: var(--faq-ink);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .widget-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .widget-header {
+            padding: 1rem 1.25rem;
+            background: linear-gradient(135deg, var(--faq-accent), var(--faq-accent-2));
+            color: white;
+        }
+
+        .widget-header p {
+            margin: 0;
+            opacity: 0.85;
+            font-size: 0.85rem;
+        }
+
+        .widget-body {
+            padding: 1rem;
+            display: grid;
+            gap: 1rem;
+            flex: 1;
+            background: var(--faq-surface);
+        }
+
+        .transcript {
+            display: grid;
+            gap: 0.75rem;
+            max-height: 46vh;
+            overflow-y: auto;
+            padding-right: 0.25rem;
+        }
+
+        .bubble-row {
+            display: flex;
+        }
+
+        .bubble-row-user {
+            justify-content: flex-end;
+        }
+
+        .bubble {
+            max-width: 92%;
+            border-radius: 1rem;
+            padding: 0.85rem 1rem;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            background: white;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
+        }
+
+        .bubble-row-user .bubble {
+            background: rgba(29, 78, 216, 0.08);
+        }
+
+        .bubble-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--faq-accent);
+            margin-bottom: 0.3rem;
+        }
+
+        .question-list {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .question-option {
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 1rem;
+            background: white;
+            padding: 0.85rem 1rem;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .support-link-list {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+        }
+
+        .widget-footer {
+            padding: 0 1rem 1rem;
+            color: var(--faq-muted);
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget-shell">
+        <div class="widget-header">
+            <strong>{{ faq_payload.super_category.name }}</strong>
+            <div class="h5 mb-1 mt-1">{{ faq_payload.category.name }}</div>
+            <p>{{ faq_payload.faq_count }} FAQ questions for this page-specific support widget</p>
+        </div>
+        <div class="widget-body">
+            <div class="transcript" id="transcript"></div>
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h1 class="h5 mb-1">Customer chat support</h1>
+                            <p class="text-secondary mb-0">Select a question, get the answer, then either ask another one or click `Issue Resolved`.</p>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
+                    </div>
+                    <form id="faq-form">
+                        <div class="question-list" id="question-list"></div>
+                        <div class="action-row mt-3">
+                            <button class="btn btn-primary" type="submit" id="answer-button">Show Answer</button>
+                            <button class="btn btn-outline-success" type="button" id="resolve-button">{{ faq_payload.completion_label }}</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% if not embedded %}
+            <div class="widget-footer">
+                Config API: <code>{{ faq_payload.api_url }}</code>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        (() => {
+            const apiUrl = {{ faq_payload.api_url|tojson }};
+            const transcriptElement = document.getElementById("transcript");
+            const questionListElement = document.getElementById("question-list");
+            const faqForm = document.getElementById("faq-form");
+            const resolveButton = document.getElementById("resolve-button");
+            const restartButton = document.getElementById("restart-button");
+
+            const state = {
+                faqs: [],
+                resolved: false,
+            };
+
+            function appendMessage(role, title, body, links = []) {
+                const row = document.createElement("div");
+                row.className = `bubble-row ${role === "user" ? "bubble-row-user" : ""}`;
+
+                const bubble = document.createElement("div");
+                bubble.className = "bubble";
+
+                const label = document.createElement("div");
+                label.className = "bubble-label";
+                label.textContent = title;
+                bubble.appendChild(label);
+
+                const text = document.createElement("div");
+                text.textContent = body;
+                bubble.appendChild(text);
+
+                if (links.length) {
+                    const linkList = document.createElement("div");
+                    linkList.className = "support-link-list";
+                    links.forEach((link) => {
+                        const anchor = document.createElement("a");
+                        anchor.className = "btn btn-sm btn-outline-secondary";
+                        anchor.href = link.url;
+                        anchor.target = "_blank";
+                        anchor.rel = "noopener noreferrer";
+                        anchor.textContent = link.label;
+                        linkList.appendChild(anchor);
+                    });
+                    bubble.appendChild(linkList);
+                }
+
+                row.appendChild(bubble);
+                transcriptElement.appendChild(row);
+                transcriptElement.scrollTop = transcriptElement.scrollHeight;
+            }
+
+            function renderQuestions() {
+                questionListElement.innerHTML = "";
+                if (!state.faqs.length) {
+                    const empty = document.createElement("div");
+                    empty.className = "alert alert-warning rounded-4 mb-0";
+                    empty.textContent = "No FAQ questions are configured for this page.";
+                    questionListElement.appendChild(empty);
+                    return;
+                }
+                state.faqs.forEach((faq) => {
+                    const wrapper = document.createElement("label");
+                    wrapper.className = "question-option";
+                    wrapper.innerHTML = `
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="faq_id" value="${faq.id}" id="faq-${faq.id}">
+                            <span class="form-check-label" for="faq-${faq.id}">${faq.question}</span>
+                        </div>
+                    `;
+                    questionListElement.appendChild(wrapper);
+                });
+            }
+
+            function resetState() {
+                state.resolved = false;
+                transcriptElement.innerHTML = "";
+                appendMessage(
+                    "bot",
+                    "Support Bot",
+                    "Select the FAQ question that best matches your issue. I’ll answer it, and you can continue asking until the issue is resolved."
+                );
+                renderQuestions();
+            }
+
+            async function loadFaqs() {
+                const response = await fetch(apiUrl);
+                const payload = await response.json();
+                state.faqs = payload.faqs || [];
+                resetState();
+            }
+
+            faqForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+                if (state.resolved) {
+                    return;
+                }
+                const selected = faqForm.querySelector("input[name='faq_id']:checked");
+                if (!selected) {
+                    appendMessage("bot", "Support Bot", "Please select a question first.");
+                    return;
+                }
+                const faq = state.faqs.find((entry) => String(entry.id) === selected.value);
+                if (!faq) {
+                    return;
+                }
+                appendMessage("user", "You", faq.question);
+                const links = [];
+                if (faq.pdf_url) {
+                    links.push({label: "Open PDF", url: faq.pdf_url});
+                }
+                if (faq.video_url) {
+                    links.push({label: "Open Video", url: faq.video_url});
+                }
+                appendMessage("bot", "Answer", faq.answer, links);
+                selected.checked = false;
+            });
+
+            resolveButton.addEventListener("click", () => {
+                if (state.resolved) {
+                    return;
+                }
+                state.resolved = true;
+                appendMessage("user", "You", "{{ faq_payload.completion_label }}");
+                appendMessage("bot", "Support Bot", "Glad that helped. You can restart this FAQ support widget if you need anything else.");
+            });
+
+            restartButton.addEventListener("click", resetState);
+
+            loadFaqs();
+        })();
+    </script>
+</body>
+</html>

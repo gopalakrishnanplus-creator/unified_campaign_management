@@ -1,0 +1,125 @@
+{% extends "base.jinja" %}
+{% block title %}{{ ticket.ticket_number }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+    <div>
+        <p class="eyebrow mb-1">Ticket {{ ticket.ticket_number }}</p>
+        <h1 class="mb-1">{{ ticket.title }}</h1>
+        <p class="text-secondary mb-0">{{ ticket.description }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <span class="badge text-bg-light fs-6">{{ ticket.get_status_display() }}</span>
+        <span class="badge text-bg-warning-subtle fs-6">{{ ticket.priority|title }}</span>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 rounded-4 mb-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Assignment</h2>
+                <div class="vstack gap-2">
+                    <div class="metric-row"><span>Department</span><strong>{{ ticket.department.name }}</strong></div>
+                    <div class="metric-row"><span>Direct recipient</span><strong>{{ ticket.direct_recipient.full_name or ticket.direct_recipient.email }}</strong></div>
+                    <div class="metric-row"><span>Current assignee</span><strong>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</strong></div>
+                    <div class="metric-row"><span>Requester</span><strong>{{ ticket.requester_name }}</strong></div>
+                    <div class="metric-row"><span>Email</span><strong>{{ ticket.requester_email }}</strong></div>
+                    <div class="metric-row"><span>Campaign</span><strong>{{ ticket.campaign.name if ticket.campaign else 'Unassigned' }}</strong></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 rounded-4 mb-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Status update</h2>
+                <form method="post" class="vstack gap-3">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="status">
+                    {{ status_form.status }}
+                    <button class="btn btn-primary" type="submit">Change status</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Delegate ticket</h2>
+                <form method="post" class="vstack gap-3">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="delegate">
+                    {{ delegation_form.assignee }}
+                    <button class="btn btn-outline-primary" type="submit">Delegate</button>
+                </form>
+                {% if ticket.created_by %}
+                    <form method="post" class="mt-3">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="return">
+                        <button class="btn btn-outline-secondary" type="submit">Return to sender</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0 rounded-4 mb-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Add note</h2>
+                <form method="post" enctype="multipart/form-data" class="vstack gap-3">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="note">
+                    {{ note_form.body }}
+                    {{ note_form.attachments }}
+                    <p class="small text-secondary mb-0">Up to three attachments, 5 MB each.</p>
+                    <button class="btn btn-primary align-self-start" type="submit">Add note</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 rounded-4 mb-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Notes</h2>
+                <div class="timeline">
+                    {% for note in ticket.notes.all() %}
+                        <div class="timeline-item">
+                            <div class="d-flex justify-content-between mb-2">
+                                <strong>{{ note.author.full_name or note.author.email }}</strong>
+                                <span class="text-secondary small">{{ note.created_at.strftime('%d %b %Y %H:%M') }}</span>
+                            </div>
+                            <p class="mb-2">{{ note.body }}</p>
+                            {% if note.attachments.all() %}
+                                <div class="d-flex gap-2 flex-wrap">
+                                    {% for attachment in note.attachments.all() %}
+                                        <a class="btn btn-sm btn-outline-secondary" href="{{ attachment.file.url }}">{{ attachment.file.name.split('/')[-1] }}</a>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mb-0">No notes yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Routing history</h2>
+                <div class="timeline">
+                    {% for event in ticket.routing_events.all() %}
+                        <div class="timeline-item">
+                            <div class="d-flex justify-content-between mb-1">
+                                <strong>{{ event.get_action_display() }}</strong>
+                                <span class="text-secondary small">{{ event.created_at.strftime('%d %b %Y %H:%M') }}</span>
+                            </div>
+                            <p class="mb-0 text-secondary">{{ event.description }}</p>
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mb-0">No routing activity yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
