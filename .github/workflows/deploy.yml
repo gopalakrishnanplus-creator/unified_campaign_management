@@ -1,0 +1,67 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy project to EC2
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT }}
+          source: "."
+          target: "/tmp/unified_campaign_management_deploy"
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT }}
+          script: |
+            set -e
+
+            APP_DIR=/var/www/unified_campaign_management
+            DEPLOY_DIR=/tmp/unified_campaign_management_deploy
+
+            mkdir -p $APP_DIR
+
+            rsync -av --delete \
+              --exclude '.git' \
+              --exclude '.github' \
+              --exclude 'venv' \
+              --exclude '__pycache__' \
+              --exclude '*.pyc' \
+              $DEPLOY_DIR/ $APP_DIR/
+
+            cd $APP_DIR
+
+            source /var/www/venv/bin/activate
+
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            python manage.py migrate
+
+            python manage.py collectstatic --noinput || true
+
+            sudo systemctl restart campaign_management.service
+            sudo systemctl restart nginx
+
+            rm -rf $DEPLOY_DIR
