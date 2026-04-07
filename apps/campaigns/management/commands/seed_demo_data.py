@@ -9,7 +9,7 @@ from apps.campaigns.models import Campaign, CampaignClinicEnrollment, CampaignFi
 from apps.reporting.models import AdoptionSnapshot, ExternalGrowthSnapshot, InClinicSnapshot, PatientEducationSnapshot, RedFlagSnapshot
 from apps.support_center.models import SupportCategory, SupportItem, SupportRequest, SupportSuperCategory
 from apps.ticketing.models import Department, Ticket, TicketNote
-from apps.ticketing.services import change_ticket_status, create_ticket
+from apps.ticketing.services import change_ticket_status, create_ticket, resolve_ticket_classification, seed_default_ticket_taxonomy
 
 
 class Command(BaseCommand):
@@ -18,6 +18,7 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         today = date.today()
+        seed_default_ticket_taxonomy()
 
         pm_user, _ = User.objects.update_or_create(
             email=settings.PROJECT_MANAGER_EMAIL,
@@ -366,6 +367,26 @@ class Command(BaseCommand):
                 "requester_company": "GlucoCare",
             },
         )
+
+        for ticket, support_item in [
+            (ticket_1, SupportItem.objects.get(slug="in-clinic-collateral-not-opening")),
+            (ticket_2, SupportItem.objects.get(slug="weekly-report-missing")),
+            (manual_ticket, None),
+        ]:
+            classification = resolve_ticket_classification(
+                title=ticket.title,
+                ticket_type_name=None,
+                ticket_category=None,
+                ticket_type_definition=None,
+                department=ticket.department,
+                source_system=ticket.source_system,
+                priority=ticket.priority,
+                support_item=support_item,
+            )
+            ticket.ticket_category = classification["ticket_category"]
+            ticket.ticket_type_definition = classification["ticket_type_definition"]
+            ticket.ticket_type = classification["ticket_type_name"]
+            ticket.save(update_fields=["ticket_category", "ticket_type_definition", "ticket_type", "updated_at"])
 
         for ticket, body, author in [
             (ticket_1, "Checked the content package and confirmed the PDF loads. Investigating the video embed issue.", operations_user),

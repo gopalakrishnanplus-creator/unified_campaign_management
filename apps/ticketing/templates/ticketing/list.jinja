@@ -1,53 +1,109 @@
 {% extends "base.jinja" %}
 {% block title %}Ticketing{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-end mb-4">
+<div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
     <div>
         <p class="eyebrow mb-1">Ticketing System</p>
-        <h1 class="mb-1">Tickets assigned across Inditech departments</h1>
-        <p class="text-secondary mb-0">Direct recipients can change status. Current assignees can delegate, add notes, and return work to the sender when needed.</p>
+        <h1 class="mb-1">Central ticket queue</h1>
+        <p class="text-secondary mb-0">Review all tickets in one place, then sort, filter, and drill down into the items that need action.</p>
     </div>
-    <a class="btn btn-primary" href="{{ url('ticketing:create') }}">Create ticket</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="{{ url('ticketing:distribution') }}">Ticket distribution</a>
+        <a class="btn btn-primary" href="{{ url('ticketing:create') }}">Create ticket</a>
+    </div>
+</div>
+
+{% if active_scope %}
+    <div class="alert alert-info rounded-4">
+        This queue was opened from a dashboard drill-down. The current quick scope is <strong>{{ active_scope|replace('_', ' ')|title }}</strong>.
+    </div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    {% for label, value, css_class in [
+        ('Low', priority_summary.low, 'priority-low'),
+        ('Medium', priority_summary.medium, 'priority-medium'),
+        ('High', priority_summary.high, 'priority-high'),
+        ('Critical', priority_summary.critical, 'priority-critical')
+    ] %}
+        <div class="col-md-3">
+            <div class="metric-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="metric-label">{{ label }} priority</span>
+                    <span class="priority-pill {{ css_class }}">{{ label }}</span>
+                </div>
+                <div class="metric-value">{{ value }}</div>
+            </div>
+        </div>
+    {% endfor %}
 </div>
 
 <div class="card shadow-sm border-0 rounded-4 mb-4">
     <div class="card-body">
         <form class="row g-3" method="get">
-            <div class="col-md-4">
+            {% if active_scope %}
+                <input type="hidden" name="scope" value="{{ active_scope }}">
+            {% endif %}
+            <div class="col-lg-4">
+                <label class="form-label">Search</label>
+                {{ filter_form.query }}
+            </div>
+            <div class="col-lg-2 col-md-4">
                 <label class="form-label">Status</label>
-                <select class="form-select" name="status">
-                    {% for value, label in filter_form.fields.status.choices %}
-                        <option value="{{ value }}" {% if request.GET.get('status') == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
+                {{ filter_form.status }}
             </div>
-            <div class="col-md-4">
-                <label class="form-label">Campaign ID</label>
-                <input class="form-control" name="campaign" value="{{ request.GET.get('campaign', '') }}">
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label">Priority</label>
+                {{ filter_form.priority }}
             </div>
-            <div class="col-md-4">
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label">Category</label>
+                {{ filter_form.ticket_category }}
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label">Ticket Type</label>
+                {{ filter_form.ticket_type_definition }}
+            </div>
+            <div class="col-lg-3 col-md-4">
+                <label class="form-label">Campaign</label>
+                {{ filter_form.campaign }}
+            </div>
+            <div class="col-lg-2 col-md-4">
                 <label class="form-label">Period</label>
-                <select class="form-select" name="period_days">
-                    {% for value, label in filter_form.fields.period_days.choices %}
-                        <option value="{{ value }}" {% if request.GET.get('period_days') == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
+                {{ filter_form.period_days }}
             </div>
-            <div class="col-12">
+            <div class="col-lg-3 col-md-4">
+                <label class="form-label">Sort by</label>
+                {{ filter_form.sort_by }}
+            </div>
+            <div class="col-12 d-flex gap-2 flex-wrap">
                 <button class="btn btn-primary" type="submit">Apply filters</button>
+                <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Reset</a>
             </div>
         </form>
     </div>
 </div>
 
 <div class="card shadow-sm border-0 rounded-4">
-    <div class="table-responsive">
+    <div class="card-body border-bottom">
+        <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+            <div>
+                <h2 class="h5 mb-1">Ticket queue</h2>
+                <p class="text-secondary mb-0">Priority and status colors make urgent work visible immediately.</p>
+            </div>
+            <div class="small text-secondary">{{ paginator.count if paginator else tickets|length }} ticket{{ '' if (paginator.count if paginator else tickets|length) == 1 else 's' }} in current result set</div>
+        </div>
+    </div>
+    <div class="table-responsive table-scroll">
         <table class="table align-middle mb-0">
             <thead>
                 <tr>
                     <th>Ticket</th>
-                    <th>Department</th>
+                    <th>Category</th>
+                    <th>Type</th>
+                    <th>Priority</th>
                     <th>Status</th>
+                    <th>Department</th>
                     <th>Current assignee</th>
                     <th>Campaign</th>
                     <th>Raised</th>
@@ -55,22 +111,45 @@
             </thead>
             <tbody>
                 {% for ticket in tickets %}
-                    <tr>
+                    <tr class="{% if ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
                         <td>
                             <a class="fw-semibold text-decoration-none" href="{{ url('ticketing:detail', pk=ticket.pk) }}">{{ ticket.ticket_number }}</a>
                             <div class="text-secondary small">{{ ticket.title }}</div>
                         </td>
+                        <td>{{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }}</td>
+                        <td>
+                            {{ ticket.ticket_type }}
+                            {% if ticket.ticket_type_definition and ticket.ticket_type_definition.description %}
+                                <div class="text-secondary small">{{ ticket.ticket_type_definition.description }}</div>
+                            {% endif %}
+                        </td>
+                        <td><span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span></td>
+                        <td><span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span></td>
                         <td>{{ ticket.department.name }}</td>
-                        <td><span class="badge text-bg-light">{{ ticket.get_status_display() }}</span></td>
                         <td>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td>
                         <td>{{ ticket.campaign.name if ticket.campaign else 'Unassigned' }}</td>
                         <td>{{ ticket.created_at.strftime('%d %b %Y %H:%M') }}</td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="6" class="p-4 text-secondary">No tickets match the current filters.</td></tr>
+                    <tr><td colspan="9" class="p-4 text-secondary">No tickets match the current filters.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+    {% if is_paginated %}
+        <div class="card-body border-top d-flex justify-content-between align-items-center gap-3 flex-wrap">
+            <div class="small text-secondary">
+                Page {{ page_obj.number }} of {{ paginator.num_pages }}
+            </div>
+            <div class="d-flex gap-2">
+                {% if page_obj.has_previous() %}
+                    <a class="btn btn-sm btn-outline-secondary" href="?{{ page_query_prefix }}page={{ page_obj.previous_page_number() }}">Previous</a>
+                {% endif %}
+                {% if page_obj.has_next() %}
+                    <a class="btn btn-sm btn-outline-secondary" href="?{{ page_query_prefix }}page={{ page_obj.next_page_number() }}">Next</a>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
 </div>
 {% endblock %}

@@ -203,5 +203,6 @@ def submit_support_request(*, item, user_type, form, request_user):
         requester_email=support_request.requester_email,
         requester_company=support_request.requester_company,
         support_request=support_request,
+        support_item=item,
     )
     return support_request, ticket, None

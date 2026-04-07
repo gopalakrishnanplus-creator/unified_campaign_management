@@ -4,7 +4,12 @@ from django.views.generic import TemplateView
 
 from apps.campaigns.models import Campaign
 
-from .services import get_performance_dashboard_data, get_selected_campaign, get_support_dashboard_data
+from .services import (
+    get_performance_dashboard_data,
+    get_selected_campaign,
+    get_support_dashboard_data,
+    get_system_status_dashboard_data,
+)
 
 
 class HomeView(TemplateView):
@@ -28,10 +33,23 @@ class ProjectManagementDashboardView(ProjectManagerRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        selected_campaign = get_selected_campaign(self.request.GET.get("campaign"))
+        selected_campaign = get_selected_campaign(self.request.GET.get("campaign"), default_to_active=False)
         context["campaigns"] = Campaign.objects.order_by("name")
         context["selected_campaign"] = selected_campaign
         context["support_data"] = get_support_dashboard_data(selected_campaign)
+        context["status_data"] = get_system_status_dashboard_data(self.request.build_absolute_uri("/").rstrip("/"))
+        return context
+
+
+class CampaignPerformanceDashboardView(ProjectManagerRequiredMixin, TemplateView):
+    template_name = "dashboards/performance.jinja"
+    template_engine = "jinja2"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        selected_campaign = get_selected_campaign(self.request.GET.get("campaign"), default_to_active=False)
+        context["campaigns"] = Campaign.objects.order_by("name")
+        context["selected_campaign"] = selected_campaign
         context["performance_data"] = get_performance_dashboard_data(selected_campaign)
         return context
 

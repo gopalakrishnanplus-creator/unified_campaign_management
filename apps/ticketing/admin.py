@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Department, Ticket, TicketAttachment, TicketNote, TicketRoutingEvent
+from .models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketRoutingEvent, TicketTypeDefinition
 
 
 @admin.register(Department)
@@ -29,11 +29,36 @@ class TicketRoutingEventInline(admin.TabularInline):
 
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
-    list_display = ("ticket_number", "title", "department", "status", "priority", "current_assignee", "campaign", "created_at")
-    list_filter = ("status", "priority", "department", "source_system", "user_type")
+    list_display = (
+        "ticket_number",
+        "title",
+        "ticket_category",
+        "ticket_type",
+        "department",
+        "status",
+        "priority",
+        "current_assignee",
+        "campaign",
+        "created_at",
+    )
+    list_filter = ("status", "priority", "department", "ticket_category", "source_system", "user_type")
     search_fields = ("ticket_number", "title", "requester_email", "requester_name", "campaign__name")
     readonly_fields = ("ticket_number", "created_at", "updated_at", "resolved_at")
     inlines = (TicketRoutingEventInline, TicketNoteInline)
+
+
+@admin.register(TicketCategory)
+class TicketCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "display_order", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("name", "description")
+
+
+@admin.register(TicketTypeDefinition)
+class TicketTypeDefinitionAdmin(admin.ModelAdmin):
+    list_display = ("name", "category", "default_department", "default_priority", "default_source_system", "is_active")
+    list_filter = ("category", "default_priority", "default_source_system", "is_active")
+    search_fields = ("name", "description", "category__name")
 
 
 @admin.register(TicketNote)

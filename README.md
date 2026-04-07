@@ -68,6 +68,22 @@ bash scripts/start_local.sh
 
 To enable real Google OAuth locally, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`.
 
+## External ticket mirroring
+
+PM-created tickets can optionally be mirrored into the internal `Ticketing_System` client-ticket API.
+
+Set these values in `.env` to enable the outbound sync:
+
+- `EXTERNAL_TICKETING_SYNC_ENABLED=true`
+- `EXTERNAL_TICKETING_BASE_URL=https://support.inditech.co.in`
+- `EXTERNAL_TICKETING_API_TOKEN=<shared-token>`
+- `EXTERNAL_TICKETING_TIMEOUT=10`
+- `EXTERNAL_TICKETING_SOURCE_SYSTEM=campaign_management`
+- `EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK=<fallback phone number>`
+
+The integration uses the local ticket number as `external_reference` and stores the returned external ticket number and URL on the local ticket record.
+If the sync fails, the local ticket is still created and the error is saved on the ticket for follow-up.
+
 ## Reporting feeds
 
 By default the dashboard and `/reporting/api/<subsystem>/` use these live endpoints:
@@ -79,6 +95,7 @@ By default the dashboard and `/reporting/api/<subsystem>/` use these live endpoi
 
 Set `REPORTING_API_USE_LIVE=false` in `.env` if you want to force the app back to local snapshot data while developing offline.
 If the Growth Clinic webinar or course IDs need to be narrowed, update `WORDPRESS_GROWTH_WEBINAR_FILTERS` and `WORDPRESS_CERTIFICATE_COURSE_IDS` in `.env`.
+To add more monitored system URLs in the next cycle, set `STATUS_MONITOR_EXTRA_TARGETS_JSON` in `.env` to a JSON list of objects with `system`, `label`, and `url`.
 
 ## Database
 
@@ -91,7 +108,9 @@ SQLite is used by default locally so the project runs immediately without Docker
 
 - `/` public landing page
 - `/app/` project manager dashboard
+- `/app/performance/` campaign performance page
 - `/ticketing/` ticketing workspace
+- `/ticketing/distribution/` ticket distribution drill-down
 - `/support/doctor/`
 - `/support/clinic_staff/`
 - `/support/brand_manager/`
