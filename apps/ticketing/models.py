@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
 
 
 def ticket_attachment_upload_to(instance, filename):
@@ -64,6 +65,20 @@ class Ticket(models.Model):
     ticket_number = models.CharField(max_length=20, unique=True, editable=False)
     title = models.CharField(max_length=255)
     description = models.TextField()
+    ticket_category = models.ForeignKey(
+        "ticketing.TicketCategory",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tickets",
+    )
+    ticket_type_definition = models.ForeignKey(
+        "ticketing.TicketTypeDefinition",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tickets",
+    )
     ticket_type = models.CharField(max_length=120)
     user_type = models.CharField(max_length=24, choices=UserType.choices, default=UserType.INTERNAL)
     source_system = models.CharField(max_length=24, choices=SourceSystem.choices, default=SourceSystem.MANUAL)
@@ -98,6 +113,11 @@ class Ticket(models.Model):
     requester_name = models.CharField(max_length=255)
     requester_email = models.EmailField()
     requester_company = models.CharField(max_length=255, blank=True)
+    external_ticket_number = models.CharField(max_length=20, blank=True)
+    external_ticket_url = models.URLField(blank=True)
+    external_ticket_status = models.CharField(max_length=32, blank=True)
+    external_ticket_synced_at = models.DateTimeField(null=True, blank=True)
+    external_ticket_error = models.TextField(blank=True)
     support_request = models.OneToOneField(
         "support_center.SupportRequest",
         null=True,
@@ -120,6 +140,11 @@ class Ticket(models.Model):
         is_new = self._state.adding
         if not self.ticket_number:
             self.ticket_number = f"TKT-{uuid.uuid4().hex[:8].upper()}"
+        if self.ticket_type_definition_id:
+            if not self.ticket_type:
+                self.ticket_type = self.ticket_type_definition.name
+            if not self.ticket_category_id:
+                self.ticket_category = self.ticket_type_definition.category
         if not self.direct_recipient_id and self.department.default_recipient_id:
             self.direct_recipient = self.department.default_recipient
         if not self.current_assignee_id and self.direct_recipient_id:
@@ -162,6 +187,80 @@ class Ticket(models.Model):
             self.created_by,
             self.submitted_by,
         }
+
+    @property
+    def priority_badge_class(self):
+        return {
+            self.Priority.LOW: "priority-low",
+            self.Priority.MEDIUM: "priority-medium",
+            self.Priority.HIGH: "priority-high",
+            self.Priority.CRITICAL: "priority-critical",
+        }.get(self.priority, "priority-medium")
+
+    @property
+    def status_badge_class(self):
+        return {
+            self.Status.NOT_STARTED: "status-not-started",
+            self.Status.IN_PROCESS: "status-in-process",
+            self.Status.ON_HOLD: "status-on-hold",
+            self.Status.CANNOT_COMPLETE: "status-cannot-complete",
+            self.Status.COMPLETED: "status-completed",
+        }.get(self.status, "status-not-started")
+
+
+class TicketCategory(models.Model):
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=140, unique=True, blank=True)
+    description = models.TextField(blank=True)
+    display_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["display_order", "name"]
+        verbose_name_plural = "Ticket categories"
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+
+class TicketTypeDefinition(models.Model):
+    category = models.ForeignKey(TicketCategory, on_delete=models.CASCADE, related_name="ticket_types")
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=140, blank=True)
+    description = models.TextField(blank=True)
+    default_priority = models.CharField(max_length=16, choices=Ticket.Priority.choices, default=Ticket.Priority.MEDIUM)
+    default_department = models.ForeignKey(
+        Department,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ticket_types",
+    )
+    default_source_system = models.CharField(
+        max_length=24,
+        choices=Ticket.SourceSystem.choices,
+        default=Ticket.SourceSystem.MANUAL,
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["category__display_order", "category__name", "name"]
+        unique_together = ("category", "slug")
+        verbose_name = "Ticket type"
+        verbose_name_plural = "Ticket types"
+
+    def __str__(self):
+        return f"{self.category.name} / {self.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
 
 
 class TicketRoutingEvent(models.Model):

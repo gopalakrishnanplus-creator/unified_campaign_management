@@ -1,8 +1,9 @@
 from django import forms
 
 from apps.accounts.models import User
+from apps.campaigns.models import Campaign
 
-from .models import Department, Ticket, TicketAttachment, TicketNote, TicketRoutingEvent
+from .models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketRoutingEvent, TicketTypeDefinition
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -22,12 +23,25 @@ class MultipleFileField(forms.FileField):
 
 
 class TicketCreateForm(forms.ModelForm):
+    ticket_category = forms.ModelChoiceField(queryset=TicketCategory.objects.none(), empty_label="Select category")
+    ticket_type_definition = forms.ModelChoiceField(
+        queryset=TicketTypeDefinition.objects.none(),
+        required=False,
+        empty_label="Select ticket type",
+    )
+    new_ticket_type_name = forms.CharField(
+        required=False,
+        max_length=120,
+        help_text="Use this when the required ticket type does not exist yet.",
+    )
+
     class Meta:
         model = Ticket
         fields = [
             "title",
             "description",
-            "ticket_type",
+            "ticket_category",
+            "ticket_type_definition",
             "user_type",
             "source_system",
             "priority",
@@ -37,6 +51,33 @@ class TicketCreateForm(forms.ModelForm):
             "requester_email",
             "requester_company",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["ticket_category"].queryset = TicketCategory.objects.filter(is_active=True).order_by("display_order", "name")
+        self.fields["ticket_type_definition"].queryset = TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by(
+            "category__display_order",
+            "category__name",
+            "name",
+        )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        category = cleaned_data.get("ticket_category")
+        ticket_type_definition = cleaned_data.get("ticket_type_definition")
+        new_ticket_type_name = (cleaned_data.get("new_ticket_type_name") or "").strip()
+
+        if not category:
+            self.add_error("ticket_category", "Please choose a ticket category.")
+
+        if not ticket_type_definition and not new_ticket_type_name:
+            self.add_error("ticket_type_definition", "Select a ticket type or create a new one.")
+
+        if ticket_type_definition and category and ticket_type_definition.category_id != category.id:
+            self.add_error("ticket_type_definition", "Selected ticket type does not belong to the chosen category.")
+
+        cleaned_data["new_ticket_type_name"] = new_ticket_type_name
+        return cleaned_data
 
 
 class TicketStatusForm(forms.ModelForm):
@@ -82,8 +123,27 @@ class TicketNoteForm(forms.ModelForm):
 
 
 class TicketFilterForm(forms.Form):
+    query = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "Search ticket number, title, or requester"}),
+    )
     status = forms.ChoiceField(required=False, choices=[("", "All statuses"), *Ticket.Status.choices])
-    campaign = forms.IntegerField(required=False)
+    priority = forms.ChoiceField(required=False, choices=[("", "All priorities"), *Ticket.Priority.choices])
+    ticket_category = forms.ModelChoiceField(
+        queryset=TicketCategory.objects.filter(is_active=True).order_by("display_order", "name"),
+        required=False,
+        empty_label="All categories",
+    )
+    ticket_type_definition = forms.ModelChoiceField(
+        queryset=TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by("category__name", "name"),
+        required=False,
+        empty_label="All ticket types",
+    )
+    campaign = forms.ModelChoiceField(
+        queryset=Campaign.objects.order_by("name"),
+        required=False,
+        empty_label="All campaigns",
+    )
     period_days = forms.ChoiceField(
         required=False,
         choices=[
@@ -92,4 +152,39 @@ class TicketFilterForm(forms.Form):
             ("30", "Last 30 days"),
             ("90", "Last 90 days"),
         ],
+    )
+    sort_by = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("newest", "Newest first"),
+            ("oldest", "Oldest first"),
+            ("priority_desc", "Priority: highest first"),
+            ("status", "Status order"),
+            ("updated", "Recently updated"),
+        ],
+        initial="newest",
+    )
+
+
+class TicketDistributionFilterForm(forms.Form):
+    ticket_category = forms.ModelChoiceField(
+        queryset=TicketCategory.objects.filter(is_active=True).order_by("display_order", "name"),
+        required=False,
+        empty_label="All categories",
+    )
+    ticket_type_definition = forms.ModelChoiceField(
+        queryset=TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by("category__name", "name"),
+        required=False,
+        empty_label="All ticket types",
+    )
+    source_system = forms.ChoiceField(required=False, choices=[("", "All systems"), *Ticket.SourceSystem.choices])
+    period_days = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("14", "Last 14 days"),
+            ("30", "Last 30 days"),
+            ("90", "Last 90 days"),
+            ("180", "Last 180 days"),
+        ],
+        initial="30",
     )

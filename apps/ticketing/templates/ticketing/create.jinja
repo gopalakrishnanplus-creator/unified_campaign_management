@@ -1,25 +1,165 @@
 {% extends "base.jinja" %}
 {% block title %}Create Ticket{% endblock %}
 {% block content %}
-<div class="col-lg-8 mx-auto">
-    <div class="card shadow-sm border-0 rounded-4">
-        <div class="card-body p-4">
-            <p class="eyebrow mb-1">Ticketing System</p>
-            <h1 class="h3 mb-4">Create a manual ticket</h1>
-            <form method="post">
-                {{ csrf_input }}
-                <div class="row g-3">
-                    {% for field in form %}
-                        <div class="col-12 {% if field.name in ['priority', 'department', 'campaign', 'user_type', 'source_system'] %}col-md-6{% endif %}">
-                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                            {{ field }}
-                            {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
-                        </div>
-                    {% endfor %}
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body p-4">
+                <p class="eyebrow mb-1">Ticketing System</p>
+                <h1 class="h3 mb-3">Create a manual ticket</h1>
+                <p class="text-secondary mb-4">
+                    Tickets are now classified with a required category and ticket type. If the required type does not exist,
+                    create it directly while submitting the form.
+                </p>
+                <div class="metric-row">
+                    <span>Classification flow</span>
+                    <strong>Category -> Type</strong>
                 </div>
-                <button class="btn btn-primary mt-4" type="submit">Create ticket</button>
-            </form>
+                <div class="metric-row">
+                    <span>Dynamic ticket types</span>
+                    <strong>Enabled</strong>
+                </div>
+                <div class="metric-row">
+                    <span>Priority highlighting</span>
+                    <strong>Color coded</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-4">
+                {% if form.non_field_errors() %}
+                    <div class="alert alert-danger rounded-4">{{ form.non_field_errors()|join(', ') }}</div>
+                {% endif %}
+                <form method="post" id="ticket-create-form">
+                    {{ csrf_input }}
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="{{ form.title.id_for_label }}">{{ form.title.label }}</label>
+                            {{ form.title }}
+                            {% if form.title.errors %}<div class="text-danger small mt-1">{{ form.title.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+                            {{ form.description }}
+                            {% if form.description.errors %}<div class="text-danger small mt-1">{{ form.description.errors|join(', ') }}</div>{% endif %}
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.ticket_category.id_for_label }}">Ticket Category</label>
+                            {{ form.ticket_category }}
+                            <div class="form-hint mt-1">Classification rules use this category first, then the selected or newly created ticket type.</div>
+                            {% if form.ticket_category.errors %}<div class="text-danger small mt-1">{{ form.ticket_category.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.ticket_type_definition.id_for_label }}">Ticket Type</label>
+                            {{ form.ticket_type_definition }}
+                            <div class="form-hint mt-1">The list is filtered by the chosen category.</div>
+                            {% if form.ticket_type_definition.errors %}<div class="text-danger small mt-1">{{ form.ticket_type_definition.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="{{ form.new_ticket_type_name.id_for_label }}">Create New Ticket Type</label>
+                            {{ form.new_ticket_type_name }}
+                            <div class="form-hint mt-1">{{ form.new_ticket_type_name.help_text }}</div>
+                            {% if form.new_ticket_type_name.errors %}<div class="text-danger small mt-1">{{ form.new_ticket_type_name.errors|join(', ') }}</div>{% endif %}
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.user_type.id_for_label }}">{{ form.user_type.label }}</label>
+                            {{ form.user_type }}
+                            {% if form.user_type.errors %}<div class="text-danger small mt-1">{{ form.user_type.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.source_system.id_for_label }}">{{ form.source_system.label }}</label>
+                            {{ form.source_system }}
+                            {% if form.source_system.errors %}<div class="text-danger small mt-1">{{ form.source_system.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.priority.id_for_label }}">{{ form.priority.label }}</label>
+                            {{ form.priority }}
+                            {% if form.priority.errors %}<div class="text-danger small mt-1">{{ form.priority.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.department.id_for_label }}">{{ form.department.label }}</label>
+                            {{ form.department }}
+                            {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.campaign.id_for_label }}">{{ form.campaign.label }}</label>
+                            {{ form.campaign }}
+                            {% if form.campaign.errors %}<div class="text-danger small mt-1">{{ form.campaign.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.requester_name.id_for_label }}">{{ form.requester_name.label }}</label>
+                            {{ form.requester_name }}
+                            {% if form.requester_name.errors %}<div class="text-danger small mt-1">{{ form.requester_name.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.requester_email.id_for_label }}">{{ form.requester_email.label }}</label>
+                            {{ form.requester_email }}
+                            {% if form.requester_email.errors %}<div class="text-danger small mt-1">{{ form.requester_email.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.requester_company.id_for_label }}">{{ form.requester_company.label }}</label>
+                            {{ form.requester_company }}
+                            {% if form.requester_company.errors %}<div class="text-danger small mt-1">{{ form.requester_company.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mt-4">
+                        <button class="btn btn-primary" type="submit">Create ticket</button>
+                        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Back to ticket list</a>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+(() => {
+    const categorySelect = document.getElementById("{{ form.ticket_category.id_for_label }}");
+    const typeSelect = document.getElementById("{{ form.ticket_type_definition.id_for_label }}");
+    const newTypeInput = document.getElementById("{{ form.new_ticket_type_name.id_for_label }}");
+    const allOptions = {{ ticket_types_payload|tojson }};
+    const initialTypeValue = typeSelect.value;
+
+    function renderTypeOptions() {
+        const selectedCategory = categorySelect.value;
+        const currentValue = typeSelect.value || initialTypeValue;
+        typeSelect.innerHTML = '<option value="">Select ticket type</option>';
+        allOptions
+            .filter((item) => !selectedCategory || String(item.category_id) === String(selectedCategory))
+            .forEach((item) => {
+                const option = document.createElement("option");
+                option.value = item.id;
+                option.textContent = item.name;
+                if (String(item.id) === String(currentValue)) {
+                    option.selected = true;
+                }
+                typeSelect.appendChild(option);
+            });
+    }
+
+    categorySelect.addEventListener("change", () => {
+        typeSelect.value = "";
+        renderTypeOptions();
+    });
+
+    newTypeInput.addEventListener("input", () => {
+        if (newTypeInput.value.trim()) {
+            typeSelect.value = "";
+            typeSelect.setAttribute("disabled", "disabled");
+        } else {
+            typeSelect.removeAttribute("disabled");
+        }
+    });
+
+    renderTypeOptions();
+    if (newTypeInput.value.trim()) {
+        typeSelect.setAttribute("disabled", "disabled");
+    }
+})();
+</script>
 {% endblock %}

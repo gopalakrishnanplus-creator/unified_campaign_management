@@ -11,7 +11,7 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
 from apps.support_center.models import SupportCategory, SupportItem, SupportSuperCategory
-from apps.ticketing.models import Ticket, TicketNote
+from apps.ticketing.models import Ticket, TicketCategory, TicketNote, TicketTypeDefinition
 
 
 @override_settings(REPORTING_API_USE_LIVE=False)
@@ -42,11 +42,16 @@ class SeededIntegrationTestCase(TestCase):
         response = self.client.get(reverse("accounts:dev_login"))
         self.assertRedirects(response, reverse("dashboards:home"))
 
-    def test_authenticated_pages_render(self):
+    @patch("apps.dashboards.services.requests.get")
+    def test_authenticated_pages_render(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
         self.client.force_login(self.pm_user)
         urls = [
             reverse("dashboards:home"),
+            reverse("dashboards:performance"),
             reverse("ticketing:list"),
+            reverse("ticketing:distribution"),
+            reverse("ticketing:create"),
             reverse("campaigns:list"),
             reverse("campaigns:detail", kwargs={"slug": self.campaign.slug}),
             reverse("ticketing:detail", kwargs={"pk": self.ticket.pk}),
@@ -56,6 +61,241 @@ class SeededIntegrationTestCase(TestCase):
             with self.subTest(url=url):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
+
+    def test_ticket_creation_supports_dynamic_ticket_types(self):
+        self.client.force_login(self.pm_user)
+        category = TicketCategory.objects.order_by("display_order", "name").first()
+        response = self.client.post(
+            reverse("ticketing:create"),
+            data={
+                "title": "Daily dashboard sync failed",
+                "description": "A new manually reported issue for validation.",
+                "ticket_category": category.pk,
+                "ticket_type_definition": "",
+                "new_ticket_type_name": "Dashboard sync anomaly",
+                "user_type": Ticket.UserType.INTERNAL,
+                "source_system": Ticket.SourceSystem.PROJECT_MANAGER,
+                "priority": Ticket.Priority.CRITICAL,
+                "department": self.ticket.department.pk,
+                "campaign": self.campaign.pk,
+                "requester_name": "Campaign PM",
+                "requester_email": "campaignpm+dynamic@example.com",
+                "requester_company": "Inditech",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        created_ticket = Ticket.objects.get(requester_email="campaignpm+dynamic@example.com")
+        self.assertEqual(created_ticket.ticket_category, category)
+        self.assertEqual(created_ticket.ticket_type, "Dashboard sync anomaly")
+        self.assertEqual(created_ticket.ticket_type_definition.name, "Dashboard sync anomaly")
+        self.assertEqual(created_ticket.priority, Ticket.Priority.CRITICAL)
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="shared-secret",
+        EXTERNAL_TICKETING_SOURCE_SYSTEM="campaign_management",
+        EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK="+919999999999",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    @patch("apps.ticketing.external_ticketing.requests.get")
+    def test_project_manager_ticket_creation_syncs_external_ticket(self, mock_get, mock_request):
+        mock_get.return_value = Mock(status_code=404)
+
+        def response_for(method, url, headers=None, params=None, json=None, timeout=None):
+            response = Mock(status_code=200)
+            if url.endswith("/client-tickets/api/lookups/departments/"):
+                response.json.return_value = {
+                    "success": True,
+                    "departments": [
+                        {
+                            "id": self.ticket.department.pk,
+                            "name": self.ticket.department.name,
+                            "code": self.ticket.department.code,
+                            "is_active": True,
+                        }
+                    ],
+                }
+            elif url.endswith("/client-tickets/api/lookups/ticket-types/"):
+                response.json.return_value = {
+                    "success": True,
+                    "ticket_types": [
+                        {
+                            "id": 12,
+                            "name": "System Down",
+                            "department_id": self.ticket.department.pk,
+                            "department_name": self.ticket.department.name,
+                            "is_active": True,
+                        }
+                    ],
+                }
+            elif url.endswith("/client-tickets/api/tickets/"):
+                self.assertTrue(str(json["external_reference"]).startswith("TKT-"))
+                self.assertEqual(json["requester_number"], "+919999999999")
+                response.json.return_value = {
+                    "success": True,
+                    "message": "Client ticket created successfully.",
+                    "ticket": {
+                        "ticket_number": "CLT-8F3A1B2C",
+                        "external_reference": json["external_reference"],
+                        "status_code": "open",
+                        "priority_code": "urgent",
+                        "source_system_code": "campaign_management",
+                        "ticket_url": "https://support.inditech.co.in/client-tickets/tickets/CLT-8F3A1B2C/",
+                    },
+                }
+            else:
+                raise AssertionError(f"Unexpected request: {method} {url}")
+            return response
+
+        mock_request.side_effect = response_for
+        self.client.force_login(self.pm_user)
+        incident_category = TicketCategory.objects.get(name="Incident")
+        system_down_type = TicketTypeDefinition.objects.get(category=incident_category, name="System Down")
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("ticketing:create"),
+                data={
+                    "title": "Reports Site Down",
+                    "description": "Reporting site is returning 503.",
+                    "ticket_category": incident_category.pk,
+                    "ticket_type_definition": system_down_type.pk,
+                    "new_ticket_type_name": "",
+                    "user_type": Ticket.UserType.INTERNAL,
+                    "source_system": Ticket.SourceSystem.PROJECT_MANAGER,
+                    "priority": Ticket.Priority.CRITICAL,
+                    "department": self.ticket.department.pk,
+                    "campaign": self.campaign.pk,
+                    "requester_name": "Campaign PM",
+                    "requester_email": "campaignpm+external@example.com",
+                    "requester_company": "Inditech",
+                },
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        created_ticket = Ticket.objects.get(title="Reports Site Down")
+        self.assertEqual(created_ticket.external_ticket_number, "CLT-8F3A1B2C")
+        self.assertEqual(created_ticket.external_ticket_status, "open")
+        self.assertTrue(created_ticket.external_ticket_url.endswith("/CLT-8F3A1B2C/"))
+        self.assertEqual(created_ticket.external_ticket_error, "")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="shared-secret",
+        EXTERNAL_TICKETING_SOURCE_SYSTEM="campaign_management",
+        EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK="+919999999999",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    @patch("apps.ticketing.external_ticketing.requests.get")
+    def test_project_manager_ticket_creation_keeps_local_ticket_on_external_sync_failure(self, mock_get, mock_request):
+        mock_get.return_value = Mock(status_code=404)
+
+        def response_for(method, url, headers=None, params=None, json=None, timeout=None):
+            response = Mock()
+            if url.endswith("/client-tickets/api/lookups/departments/"):
+                response.status_code = 200
+                response.json.return_value = {
+                    "success": True,
+                    "departments": [
+                        {
+                            "id": self.ticket.department.pk,
+                            "name": self.ticket.department.name,
+                            "code": self.ticket.department.code,
+                            "is_active": True,
+                        }
+                    ],
+                }
+            elif url.endswith("/client-tickets/api/lookups/ticket-types/"):
+                response.status_code = 200
+                response.json.return_value = {"success": True, "ticket_types": []}
+            elif url.endswith("/client-tickets/api/tickets/"):
+                response.status_code = 400
+                response.json.return_value = {"success": False, "error": "Assigned to user not found."}
+            else:
+                raise AssertionError(f"Unexpected request: {method} {url}")
+            return response
+
+        mock_request.side_effect = response_for
+        self.client.force_login(self.pm_user)
+        incident_category = TicketCategory.objects.get(name="Incident")
+        high_impact_type = TicketTypeDefinition.objects.get(category=incident_category, name="High Impact")
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("ticketing:create"),
+                data={
+                    "title": "Sync failure should not block local ticket",
+                    "description": "External ticketing call should fail but local ticket must remain.",
+                    "ticket_category": incident_category.pk,
+                    "ticket_type_definition": high_impact_type.pk,
+                    "new_ticket_type_name": "",
+                    "user_type": Ticket.UserType.INTERNAL,
+                    "source_system": Ticket.SourceSystem.PROJECT_MANAGER,
+                    "priority": Ticket.Priority.HIGH,
+                    "department": self.ticket.department.pk,
+                    "campaign": self.campaign.pk,
+                    "requester_name": "Campaign PM",
+                    "requester_email": "campaignpm+failed-sync@example.com",
+                    "requester_company": "Inditech",
+                },
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        created_ticket = Ticket.objects.get(title="Sync failure should not block local ticket")
+        self.assertEqual(created_ticket.external_ticket_number, "")
+        self.assertIn("Assigned to user not found", created_ticket.external_ticket_error)
+        self.assertContains(response, "external ticket sync needs attention")
+
+    def test_default_ticket_taxonomy_is_seeded(self):
+        expected = {
+            "Bug": {"Functional", "UI", "Performance", "Error"},
+            "Feature Request": {"New Feature", "Enhancement"},
+            "Data Issue": {"Missing", "Incorrect", "Delay"},
+            "Access": {"Login", "Permission"},
+            "Integration": {"Failure", "Sync"},
+            "Billing": {"Invoice", "Payment", "Subscription"},
+            "Support": {"How-to", "Query"},
+            "Content": {"Incorrect", "Update"},
+            "Incident": {"System Down", "High Impact"},
+        }
+        for category_name, type_names in expected.items():
+            with self.subTest(category=category_name):
+                category = TicketCategory.objects.get(name=category_name)
+                actual_types = set(
+                    TicketTypeDefinition.objects.filter(category=category).values_list("name", flat=True)
+                )
+                self.assertTrue(type_names.issubset(actual_types))
+
+    def test_seeded_tickets_follow_standardized_taxonomy(self):
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.ticket_category.name, "Content")
+        self.assertEqual(self.ticket.ticket_type, "Update")
+
+    @patch("apps.dashboards.services.requests.get")
+    def test_project_manager_dashboard_shows_status_codes(self, mock_get):
+        def response_for(url, timeout=None, allow_redirects=False):
+            response = Mock()
+            if "red_flag_alert" in url:
+                response.status_code = 503
+            elif "patient_education" in url:
+                response.status_code = 404
+            else:
+                response.status_code = 200
+            return response
+
+        mock_get.side_effect = response_for
+        self.client.force_login(self.pm_user)
+        response = self.client.get(reverse("dashboards:home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "System-wise and URL-wise status availability")
+        self.assertContains(response, "503")
+        self.assertContains(response, "404")
+        self.assertContains(response, "Campaign performance")
 
     def test_reporting_api_endpoints_return_data(self):
         self.client.force_login(self.pm_user)

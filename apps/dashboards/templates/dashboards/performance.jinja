@@ -1,0 +1,237 @@
+{% extends "base.jinja" %}
+{% block title %}Campaign Performance{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+        <p class="eyebrow mb-1">Campaign Performance Dashboard</p>
+        <h1 class="mb-1">Campaign performance metrics</h1>
+        <p class="text-secondary mb-0">Screening, patient education, adoption, in-clinic sharing, and external growth now live on a dedicated page.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <form class="d-flex gap-2" method="get">
+            <select class="form-select" name="campaign">
+                <option value="">All campaigns / default active campaign</option>
+                {% for campaign in campaigns %}
+                    <option value="{{ campaign.slug }}" {% if selected_campaign and selected_campaign.pk == campaign.pk %}selected{% endif %}>{{ campaign.name }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-primary" type="submit">Apply</button>
+        </form>
+        <a class="btn btn-outline-secondary" href="{{ url('dashboards:home') }}{% if selected_campaign %}?campaign={{ selected_campaign.slug }}{% endif %}">Back to PM dashboard</a>
+    </div>
+</div>
+
+{% if selected_campaign %}
+    <div class="alert alert-info rounded-4">Showing campaign context for <strong>{{ selected_campaign.name }}</strong> ({{ selected_campaign.brand_name }}).</div>
+{% endif %}
+
+{% if performance_data.reporting_notices %}
+    <div class="alert alert-warning rounded-4">
+        {% for notice in performance_data.reporting_notices %}
+            <div>{{ notice }}</div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+{% if performance_data.reporting_sources %}
+    <div class="row g-3 mb-4">
+        {% for source in performance_data.reporting_sources %}
+            <div class="col-md-4">
+                <div class="metric-card">
+                    <div class="metric-label">{{ source.subsystem|replace('_', ' ')|title }}</div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <strong>{{ source.source|replace('_', ' ')|title }}</strong>
+                        <span class="small text-secondary">{{ source.count }} rows</span>
+                    </div>
+                    <div class="small text-secondary mt-2">
+                        {% if source.filter_applied %}
+                            Campaign filter applied
+                        {% else %}
+                            Showing available feed
+                        {% endif %}
+                    </div>
+                    {% if source.details %}
+                        <div class="small text-secondary mt-1">{{ source.details }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="row g-4">
+    <div class="col-xl-6">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Screening or Monitoring</h2>
+                <div class="row g-3 mb-3">
+                    {% for label, key in [
+                        ('Form fills', 'form_fills'),
+                        ('Red flags', 'red_flags_total'),
+                        ('Patient video views', 'patient_video_views'),
+                        ('Reports emailed', 'reports_emailed_to_doctors'),
+                        ('Form shares', 'form_shares'),
+                        ('Patient scans', 'patient_scans'),
+                        ('Follow-ups', 'follow_ups_scheduled'),
+                        ('Reminders sent', 'reminders_sent')
+                    ] %}
+                        <div class="col-md-6">
+                            <div class="metric-row">
+                                <span>{{ label }}</span>
+                                <strong>{{ performance_data.red_flag_totals[key] or 0 }}</strong>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="table-responsive table-scroll">
+                    <table class="table align-middle">
+                        <thead><tr><th>Clinic</th><th>Group</th><th>Form fills</th><th>Red flags</th></tr></thead>
+                        <tbody>
+                        {% for row in performance_data.red_flag_by_clinic %}
+                            <tr>
+                                <td>{{ row.clinic__name }}</td>
+                                <td>{{ row.clinic_group__name }}</td>
+                                <td>{{ row.form_fills_total }}</td>
+                                <td>{{ row.red_flags_total_value }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" class="text-secondary">No screening data yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-6">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Patient Education</h2>
+                <div class="row g-3 mb-3">
+                    {% for label, key in [
+                        ('Video views', 'video_views'),
+                        ('Video completions', 'video_completions'),
+                        ('Cluster shares', 'cluster_shares'),
+                        ('Patient scans', 'patient_scans'),
+                        ('Banner clicks', 'banner_clicks')
+                    ] %}
+                        <div class="col-md-6">
+                            <div class="metric-row">
+                                <span>{{ label }}</span>
+                                <strong>{{ performance_data.patient_education_totals[key] or 0 }}</strong>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="table-responsive table-scroll">
+                    <table class="table align-middle">
+                        <thead><tr><th>Clinic</th><th>Group</th><th>Views</th><th>Shares</th></tr></thead>
+                        <tbody>
+                        {% for row in performance_data.patient_education_by_clinic %}
+                            <tr>
+                                <td>{{ row.clinic__name }}</td>
+                                <td>{{ row.clinic_group__name }}</td>
+                                <td>{{ row.video_views_total }}</td>
+                                <td>{{ row.cluster_shares_total }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" class="text-secondary">No patient education data yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Adoption by Clinics</h2>
+                <div class="small text-secondary mb-3">RFA and patient education doctor counts are approximated from unique clinic activity because those live feeds do not currently expose doctor-level identifiers.</div>
+                <div class="table-responsive table-scroll">
+                    <table class="table align-middle">
+                        <thead><tr><th>System</th><th>Clinics added</th><th>Doctors / active records</th><th>Clinics with activity</th></tr></thead>
+                        <tbody>
+                        {% for row in performance_data.adoption_rows %}
+                            <tr>
+                                <td>{{ row.system_type|replace('_', ' ')|title }}</td>
+                                <td>{{ row.clinics_added_total }}</td>
+                                <td>{{ row.doctors_added_total }}</td>
+                                <td>{{ row.clinics_with_shares_total }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" class="text-secondary">No adoption data yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">In-Clinic Sharing</h2>
+                <div class="row g-2 mb-3">
+                    {% for label, key in [
+                        ('Shares', 'shares'),
+                        ('Link opens', 'link_opens'),
+                        ('PDF reads', 'pdf_reads_completed'),
+                        ('Video views', 'video_views'),
+                        ('Video completions', 'video_completions'),
+                        ('PDF downloads', 'pdf_downloads')
+                    ] %}
+                        <div class="col-6">
+                            <div class="metric-row">
+                                <span>{{ label }}</span>
+                                <strong>{{ performance_data.in_clinic_totals[key] or 0 }}</strong>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="table-responsive table-scroll">
+                    <table class="table align-middle">
+                        <thead><tr><th>Field rep</th><th>Campaign</th><th>Shares</th></tr></thead>
+                        <tbody>
+                        {% for row in performance_data.in_clinic_by_field_rep %}
+                            <tr>
+                                <td>{{ row.field_rep__full_name or 'Unassigned' }}</td>
+                                <td>{{ row.campaign__name }}</td>
+                                <td>{{ row.shares_total }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="3" class="text-secondary">No in-clinic sharing data yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">External Data (Growth Clinic)</h2>
+                <div class="small text-secondary mb-3">Webinar and course metrics come from the WordPress/LearnDash helper source. The onboarded split is matched against the current RFA live feed where possible.</div>
+                <div class="insight-list card-scroll">
+                    {% for label, key in [
+                        ('Doctors attended SAPA webinar', 'webinar_attendees'),
+                        ('Doctors completed certificate course', 'certificate_completed'),
+                        ('Onboarded doctors completed course', 'onboarded_certificate_completed'),
+                        ('Non-onboarded doctors completed course', 'non_onboarded_certificate_completed')
+                    ] %}
+                        <div class="insight-item">
+                            <div class="insight-item-title">{{ label }}</div>
+                            <strong>{{ performance_data.external_growth_totals[key] or 0 }}</strong>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

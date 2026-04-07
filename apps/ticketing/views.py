@@ -1,16 +1,68 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, When
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
-from django.views.generic import CreateView, DetailView, ListView
+from django.views.generic import CreateView, DetailView, ListView, TemplateView
 
-from .forms import TicketCreateForm, TicketDelegationForm, TicketFilterForm, TicketNoteForm, TicketStatusForm
-from .models import Ticket
-from .services import change_ticket_status, create_ticket, delegate_ticket, return_ticket_to_sender
+from .forms import (
+    TicketCreateForm,
+    TicketDelegationForm,
+    TicketDistributionFilterForm,
+    TicketFilterForm,
+    TicketNoteForm,
+    TicketStatusForm,
+)
+from .models import Ticket, TicketTypeDefinition
+from .services import (
+    build_ticket_distribution_data,
+    build_ticket_priority_summary,
+    change_ticket_status,
+    create_ticket,
+    delegate_ticket,
+    return_ticket_to_sender,
+)
+
+
+PRIORITY_RANK = Case(
+    When(priority=Ticket.Priority.CRITICAL, then=4),
+    When(priority=Ticket.Priority.HIGH, then=3),
+    When(priority=Ticket.Priority.MEDIUM, then=2),
+    When(priority=Ticket.Priority.LOW, then=1),
+    default=0,
+    output_field=IntegerField(),
+)
+STATUS_RANK = Case(
+    When(status=Ticket.Status.NOT_STARTED, then=1),
+    When(status=Ticket.Status.IN_PROCESS, then=2),
+    When(status=Ticket.Status.ON_HOLD, then=3),
+    When(status=Ticket.Status.CANNOT_COMPLETE, then=4),
+    When(status=Ticket.Status.COMPLETED, then=5),
+    default=99,
+    output_field=IntegerField(),
+)
+
+
+def _scoped_ticket_queryset(request):
+    queryset = Ticket.objects.select_related(
+        "campaign",
+        "department",
+        "direct_recipient",
+        "current_assignee",
+        "ticket_category",
+        "ticket_type_definition",
+    ).annotate(
+        priority_rank=PRIORITY_RANK,
+        status_rank=STATUS_RANK,
+    )
+    user = request.user
+    if not (user.is_superuser or user.is_project_manager):
+        queryset = queryset.filter(Q(direct_recipient=user) | Q(current_assignee=user) | Q(created_by=user))
+    return queryset
 
 
 class TicketListView(LoginRequiredMixin, ListView):
@@ -21,25 +73,69 @@ class TicketListView(LoginRequiredMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-        queryset = Ticket.objects.select_related("campaign", "department", "direct_recipient", "current_assignee")
-        user = self.request.user
-        if not (user.is_superuser or user.is_project_manager):
-            queryset = queryset.filter(Q(direct_recipient=user) | Q(current_assignee=user) | Q(created_by=user))
-
+        queryset = _scoped_ticket_queryset(self.request)
+        scope = self.request.GET.get("scope")
+        query = self.request.GET.get("query")
         status = self.request.GET.get("status")
+        priority = self.request.GET.get("priority")
+        ticket_category = self.request.GET.get("ticket_category")
+        ticket_type_definition = self.request.GET.get("ticket_type_definition")
         campaign = self.request.GET.get("campaign")
         period_days = self.request.GET.get("period_days")
+        sort_by = self.request.GET.get("sort_by") or "newest"
+
+        if scope == "open":
+            queryset = queryset.exclude(status=Ticket.Status.COMPLETED)
+        elif scope == "in_progress":
+            queryset = queryset.filter(status=Ticket.Status.IN_PROCESS)
+        elif scope == "closed":
+            queryset = queryset.filter(status=Ticket.Status.COMPLETED)
+        elif scope == "critical":
+            queryset = queryset.filter(priority=Ticket.Priority.CRITICAL)
+        elif scope == "stalled":
+            queryset = queryset.filter(
+                status__in=[Ticket.Status.NOT_STARTED, Ticket.Status.ON_HOLD, Ticket.Status.CANNOT_COMPLETE]
+            )
+
+        if query:
+            queryset = queryset.filter(
+                Q(ticket_number__icontains=query)
+                | Q(title__icontains=query)
+                | Q(description__icontains=query)
+                | Q(requester_name__icontains=query)
+                | Q(requester_email__icontains=query)
+            )
         if status:
             queryset = queryset.filter(status=status)
+        if priority:
+            queryset = queryset.filter(priority=priority)
+        if ticket_category:
+            queryset = queryset.filter(ticket_category_id=ticket_category)
+        if ticket_type_definition:
+            queryset = queryset.filter(ticket_type_definition_id=ticket_type_definition)
         if campaign:
             queryset = queryset.filter(campaign_id=campaign)
         if period_days:
             queryset = queryset.filter(created_at__gte=timezone.now() - timedelta(days=int(period_days)))
-        return queryset
+        if sort_by == "oldest":
+            return queryset.order_by("created_at")
+        if sort_by == "priority_desc":
+            return queryset.order_by("-priority_rank", "status_rank", "-created_at")
+        if sort_by == "status":
+            return queryset.order_by("status_rank", "-priority_rank", "-created_at")
+        if sort_by == "updated":
+            return queryset.order_by("-updated_at", "-created_at")
+        return queryset.order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["filter_form"] = TicketFilterForm(self.request.GET or None)
+        context["priority_summary"] = build_ticket_priority_summary(self.object_list)
+        context["active_scope"] = self.request.GET.get("scope", "")
+        query_params = self.request.GET.copy()
+        query_params.pop("page", None)
+        encoded = query_params.urlencode()
+        context["page_query_prefix"] = f"{encoded}&" if encoded else ""
         return context
 
 
@@ -54,15 +150,52 @@ class TicketCreateView(LoginRequiredMixin, CreateView):
         if not department.default_recipient:
             messages.error(self.request, "This department does not have a default recipient configured yet.")
             return self.form_invalid(form)
+
+        ticket_type_definition = form.cleaned_data.get("ticket_type_definition")
+        if ticket_type_definition and ticket_type_definition.default_department_id and ticket_type_definition.default_department_id != department.id:
+            messages.warning(
+                self.request,
+                "Selected ticket type is normally routed to a different department. Proceeding with the chosen department.",
+            )
+        payload = {
+            key: value
+            for key, value in form.cleaned_data.items()
+            if key not in {"ticket_category", "ticket_type_definition", "new_ticket_type_name"}
+        }
         ticket = create_ticket(
             created_by=self.request.user,
             submitted_by=self.request.user,
             direct_recipient=department.default_recipient,
             current_assignee=department.default_recipient,
-            **form.cleaned_data,
+            ticket_category=form.cleaned_data["ticket_category"],
+            ticket_type_definition=ticket_type_definition,
+            new_ticket_type_name=form.cleaned_data.get("new_ticket_type_name"),
+            **payload,
         )
+        ticket.refresh_from_db()
         messages.success(self.request, f"Ticket {ticket.ticket_number} created.")
+        if self.request.user.is_project_manager:
+            if ticket.external_ticket_number:
+                messages.success(
+                    self.request,
+                    f"External ticket {ticket.external_ticket_number} was created in the internal ticketing system.",
+                )
+            elif settings.EXTERNAL_TICKETING_SYNC_ENABLED:
+                messages.warning(
+                    self.request,
+                    "The local ticket was created, but external ticket sync needs attention."
+                    + (f" {ticket.external_ticket_error}" if ticket.external_ticket_error else ""),
+                )
         return redirect("ticketing:detail", pk=ticket.pk)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        ticket_types = TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by("category__name", "name")
+        context["ticket_types_payload"] = [
+            {"id": ticket_type.id, "category_id": ticket_type.category_id, "name": ticket_type.name}
+            for ticket_type in ticket_types
+        ]
+        return context
 
 
 class TicketDetailView(LoginRequiredMixin, DetailView):
@@ -73,7 +206,15 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
 
     def get_object(self, queryset=None):
         ticket = get_object_or_404(
-            Ticket.objects.select_related("campaign", "department", "direct_recipient", "current_assignee", "created_by"),
+            Ticket.objects.select_related(
+                "campaign",
+                "department",
+                "direct_recipient",
+                "current_assignee",
+                "created_by",
+                "ticket_category",
+                "ticket_type_definition",
+            ),
             pk=self.kwargs["pk"],
         )
         if not ticket.can_view(self.request.user):
@@ -147,4 +288,42 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
         context["status_form"] = TicketStatusForm(instance=self.object)
         context["delegation_form"] = TicketDelegationForm(user=self.request.user)
         context["note_form"] = TicketNoteForm()
+        return context
+
+
+class TicketDistributionView(LoginRequiredMixin, TemplateView):
+    template_name = "ticketing/distribution.jinja"
+    template_engine = "jinja2"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        form = TicketDistributionFilterForm(self.request.GET or None)
+        queryset = _scoped_ticket_queryset(self.request)
+        if form.is_valid():
+            category = form.cleaned_data.get("ticket_category")
+            ticket_type_definition = form.cleaned_data.get("ticket_type_definition")
+            source_system = form.cleaned_data.get("source_system")
+            period_days = int(form.cleaned_data.get("period_days") or 30)
+            if category:
+                queryset = queryset.filter(ticket_category=category)
+            if ticket_type_definition:
+                queryset = queryset.filter(ticket_type_definition=ticket_type_definition)
+            if source_system:
+                queryset = queryset.filter(source_system=source_system)
+        else:
+            period_days = 30
+
+        distribution = build_ticket_distribution_data(queryset, period_days=period_days)
+        context.update(
+            {
+                "filter_form": form,
+                "distribution_data": distribution,
+                "distribution_chart_data": {
+                    "labels": distribution["labels"],
+                    "totals": distribution["totals"],
+                    "by_category": distribution["by_category"],
+                },
+                "period_days": period_days,
+            }
+        )
         return context

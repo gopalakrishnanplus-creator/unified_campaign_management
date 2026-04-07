@@ -1,0 +1,155 @@
+{% extends "base.jinja" %}
+{% block title %}Ticket Distribution{% endblock %}
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
+    <div>
+        <p class="eyebrow mb-1">Ticket Analytics</p>
+        <h1 class="mb-1">Ticket distribution over time</h1>
+        <p class="text-secondary mb-0">Drill into category trends across the last {{ period_days }} days and compare daily ticket volumes.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Back to ticketing</a>
+        <a class="btn btn-primary" href="{{ url('ticketing:create') }}">Create ticket</a>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 rounded-4 mb-4">
+    <div class="card-body">
+        <form class="row g-3" method="get">
+            <div class="col-md-3">
+                <label class="form-label">Ticket Category</label>
+                {{ filter_form.ticket_category }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Ticket Type</label>
+                {{ filter_form.ticket_type_definition }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Source System</label>
+                {{ filter_form.source_system }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Period</label>
+                {{ filter_form.period_days }}
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary" type="submit">Apply filters</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if distribution_data.labels %}
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Daily ticket volume</h2>
+                    <div class="chart-panel">
+                        <canvas id="ticket-volume-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Category contribution</h2>
+                    <div class="chart-panel">
+                        <canvas id="ticket-category-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body border-bottom">
+            <h2 class="h5 mb-1">Drill-down table</h2>
+            <p class="text-secondary mb-0">Use this table to inspect daily totals and category-level contributions side by side.</p>
+        </div>
+        <div class="table-responsive table-scroll">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Total</th>
+                        {% for category in distribution_data.category_options %}
+                            <th>{{ category }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in distribution_data.table_rows %}
+                        <tr>
+                            <td>{{ row.label }}</td>
+                            <td>{{ row.total }}</td>
+                            {% for category in distribution_data.category_options %}
+                                <td>{{ row.get(category, 0) }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+    (() => {
+        const chartData = {{ distribution_chart_data|tojson }};
+        const labels = chartData.labels || [];
+
+        new Chart(document.getElementById("ticket-volume-chart"), {
+            type: "line",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Total tickets",
+                    data: chartData.totals || [],
+                    borderColor: "#1d4ed8",
+                    backgroundColor: "rgba(29, 78, 216, 0.15)",
+                    fill: true,
+                    tension: 0.25,
+                }],
+            },
+            options: {
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            },
+        });
+
+        const palette = ["#0f766e", "#1d4ed8", "#f59e0b", "#7c3aed", "#dc2626", "#0891b2"];
+        new Chart(document.getElementById("ticket-category-chart"), {
+            type: "bar",
+            data: {
+                labels,
+                datasets: (chartData.by_category || []).map((entry, index) => ({
+                    label: entry.label,
+                    data: entry.data,
+                    backgroundColor: palette[index % palette.length],
+                    borderRadius: 8,
+                })),
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+                },
+            },
+        });
+    })();
+    </script>
+{% else %}
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-2">No ticket trend data available</h2>
+            <p class="text-secondary mb-0">Adjust the filters or create more tickets to populate the drill-down charts.</p>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
