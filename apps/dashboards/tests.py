@@ -10,6 +10,7 @@ from django.urls import reverse
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
+from apps.support_center.services import get_faq_combination
 from apps.support_center.models import SupportCategory, SupportItem, SupportSuperCategory
 from apps.ticketing.models import Ticket, TicketCategory, TicketNote, TicketTypeDefinition
 
@@ -502,3 +503,13 @@ class LiveReportingServiceTests(TestCase):
         self.assertEqual(sections["external_growth_totals"]["certificate_completed"], 2)
         self.assertEqual(sections["external_growth_totals"]["onboarded_certificate_completed"], 1)
         self.assertEqual(sections["external_growth_totals"]["non_onboarded_certificate_completed"], 1)
+
+
+class SupportBaselineCommandTests(TestCase):
+    def test_seed_support_baseline_restores_static_widget_catalog_entries(self):
+        call_command("seed_support_baseline")
+
+        self.assertTrue(get_faq_combination("doctor", "reporting-analytics", "reports-insights"))
+        self.assertTrue(get_faq_combination("clinic_staff", "campaign-operations", "sharing-activation"))
+        self.assertTrue(get_faq_combination("brand_manager", "access-login", "authentication"))
+        self.assertTrue(get_faq_combination("field_rep", "access-login", "authentication"))

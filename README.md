@@ -48,7 +48,11 @@ The project was initialized in this workspace with Python `3.9.6` and is configu
      "/Users/inditech-tech/Desktop/PE-FAQs - Google Sheets.pdf" \
      "/Users/inditech-tech/Desktop/RFA-FAQs - Google Sheets.pdf"
    ```
-8. Start the application locally:
+8. Seed the baseline non-PDF support widgets when you need the full static widget catalog from `docs/support-widget-links.csv`:
+   ```bash
+   python manage.py seed_support_baseline
+   ```
+9. Start the application locally:
    ```bash
    python manage.py runserver 127.0.0.1:8000
    ```
