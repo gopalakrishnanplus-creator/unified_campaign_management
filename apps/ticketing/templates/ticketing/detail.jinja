@@ -38,33 +38,6 @@
 
         <div class="card shadow-sm border-0 rounded-4 mb-4">
             <div class="card-body">
-                <h2 class="h5 mb-3">External ticketing</h2>
-                <div class="metric-row">
-                    <span>External ticket</span>
-                    <strong>
-                        {% if ticket.external_ticket_number %}
-                            {% if ticket.external_ticket_url %}
-                                <a href="{{ ticket.external_ticket_url }}" target="_blank" rel="noreferrer">{{ ticket.external_ticket_number }}</a>
-                            {% else %}
-                                {{ ticket.external_ticket_number }}
-                            {% endif %}
-                        {% else %}
-                            Not linked
-                        {% endif %}
-                    </strong>
-                </div>
-                <div class="metric-row"><span>External status</span><strong>{{ ticket.external_ticket_status or "Not available" }}</strong></div>
-                <div class="metric-row"><span>Last synced</span><strong>{{ ticket.external_ticket_synced_at.strftime('%d %b %Y %H:%M') if ticket.external_ticket_synced_at else "Not synced" }}</strong></div>
-                {% if ticket.external_ticket_error %}
-                    <div class="alert alert-warning rounded-4 mt-3 mb-0">
-                        <strong>Sync warning:</strong> {{ ticket.external_ticket_error }}
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
-            <div class="card-body">
                 <h2 class="h5 mb-3">Status update</h2>
                 <form method="post" class="vstack gap-3">
                     {{ csrf_input }}

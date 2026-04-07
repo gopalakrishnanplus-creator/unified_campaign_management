@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
@@ -172,20 +171,7 @@ class TicketCreateView(LoginRequiredMixin, CreateView):
             new_ticket_type_name=form.cleaned_data.get("new_ticket_type_name"),
             **payload,
         )
-        ticket.refresh_from_db()
         messages.success(self.request, f"Ticket {ticket.ticket_number} created.")
-        if self.request.user.is_project_manager:
-            if ticket.external_ticket_number:
-                messages.success(
-                    self.request,
-                    f"External ticket {ticket.external_ticket_number} was created in the internal ticketing system.",
-                )
-            elif settings.EXTERNAL_TICKETING_SYNC_ENABLED:
-                messages.warning(
-                    self.request,
-                    "The local ticket was created, but external ticket sync needs attention."
-                    + (f" {ticket.external_ticket_error}" if ticket.external_ticket_error else ""),
-                )
         return redirect("ticketing:detail", pk=ticket.pk)
 
     def get_context_data(self, **kwargs):
