@@ -4,21 +4,45 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/var/www/unified_campaign_management}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 SHARED_VENV_DIR="${SHARED_VENV_DIR:-/var/www/venv}"
-SERVICE_NAME="${SERVICE_NAME:-campaign_management.service}"
-FALLBACK_SERVICE_NAME="${FALLBACK_SERVICE_NAME:-campaign-management}"
+
+ensure_shared_venv() {
+  if [ -x "$SHARED_VENV_DIR/bin/python" ]; then
+    return 0
+  fi
+
+  echo "Bootstrapping shared virtualenv at $SHARED_VENV_DIR"
+
+  local parent_dir
+  parent_dir="$(dirname "$SHARED_VENV_DIR")"
+
+  if [ ! -d "$parent_dir" ]; then
+    sudo mkdir -p "$parent_dir"
+  fi
+
+  if [ -e "$SHARED_VENV_DIR" ]; then
+    sudo rm -rf "$SHARED_VENV_DIR"
+  fi
+
+  sudo mkdir -p "$SHARED_VENV_DIR"
+  sudo chown -R "$(id -un)":"$(id -gn)" "$SHARED_VENV_DIR"
+
+  "$PYTHON_BIN" -m venv "$SHARED_VENV_DIR"
+}
 
 cd "$APP_DIR"
 
-if [ -d "$SHARED_VENV_DIR" ] && [ -x "$SHARED_VENV_DIR/bin/activate" ]; then
-  # shellcheck disable=SC1090
-  source "$SHARED_VENV_DIR/bin/activate"
-else
-  echo "Shared virtualenv not found at $SHARED_VENV_DIR" >&2
-  exit 1
-fi
-pip install --upgrade pip
-pip install -r requirements.txt
+mkdir -p "$APP_DIR/media" "$APP_DIR/staticfiles"
+
+ensure_shared_venv
+
+# shellcheck disable=SC1090
+source "$SHARED_VENV_DIR/bin/activate"
+
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+
 python manage.py migrate
+python manage.py check
 python manage.py seed_support_baseline
 
 for pdf_path in \
@@ -69,7 +93,3 @@ if missing:
 PY
 
 python manage.py collectstatic --noinput
-
-if command -v systemctl >/dev/null 2>&1; then
-  sudo systemctl restart "$SERVICE_NAME" || sudo systemctl restart "$FALLBACK_SERVICE_NAME"
-fi
