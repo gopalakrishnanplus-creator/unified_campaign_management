@@ -38,6 +38,26 @@
 
         <div class="card shadow-sm border-0 rounded-4 mb-4">
             <div class="card-body">
+                <h2 class="h5 mb-3">Internal ticketing sync</h2>
+                {% if ticket.external_ticket_number %}
+                    <div class="metric-row"><span>External ticket</span><strong>{{ ticket.external_ticket_number }}</strong></div>
+                    <div class="metric-row"><span>External status</span><strong>{{ ticket.external_ticket_status or 'Synced' }}</strong></div>
+                    <div class="metric-row"><span>Last synced</span><strong>{{ ticket.external_ticket_synced_at.strftime('%d %b %Y %H:%M') if ticket.external_ticket_synced_at else 'Just now' }}</strong></div>
+                    {% if ticket.external_ticket_url %}
+                        <a class="btn btn-outline-primary btn-sm mt-3" href="{{ ticket.external_ticket_url }}" target="_blank" rel="noreferrer">Open internal ticket</a>
+                    {% endif %}
+                {% elif ticket.external_ticket_error %}
+                    <div class="alert alert-warning mb-0">
+                        <strong>Sync pending.</strong> {{ ticket.external_ticket_error }}
+                    </div>
+                {% else %}
+                    <p class="text-secondary mb-0">This ticket has not been mirrored to the internal ticketing system yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 rounded-4 mb-4">
+            <div class="card-body">
                 <h2 class="h5 mb-3">Status update</h2>
                 <form method="post" class="vstack gap-3">
                     {{ csrf_input }}

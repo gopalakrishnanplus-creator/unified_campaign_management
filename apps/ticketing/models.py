@@ -113,6 +113,11 @@ class Ticket(models.Model):
     requester_name = models.CharField(max_length=255)
     requester_email = models.EmailField()
     requester_company = models.CharField(max_length=255, blank=True)
+    external_ticket_number = models.CharField(max_length=20, blank=True)
+    external_ticket_url = models.URLField(blank=True)
+    external_ticket_status = models.CharField(max_length=32, blank=True)
+    external_ticket_synced_at = models.DateTimeField(null=True, blank=True)
+    external_ticket_error = models.TextField(blank=True)
     support_request = models.OneToOneField(
         "support_center.SupportRequest",
         null=True,

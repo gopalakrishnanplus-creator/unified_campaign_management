@@ -52,7 +52,11 @@ The project was initialized in this workspace with Python `3.9.6` and is configu
    ```bash
    python manage.py seed_support_baseline
    ```
-9. Start the application locally:
+9. Seed the baseline ticketing dropdown data when `Ticket Category`, `Ticket Type`, or `Campaign` options are empty:
+   ```bash
+   python manage.py seed_ticketing_dropdowns
+   ```
+10. Start the application locally:
    ```bash
    python manage.py runserver 127.0.0.1:8000
    ```
@@ -84,6 +88,21 @@ By default the dashboard and `/reporting/api/<subsystem>/` use these live endpoi
 Set `REPORTING_API_USE_LIVE=false` in `.env` if you want to force the app back to local snapshot data while developing offline.
 If the Growth Clinic webinar or course IDs need to be narrowed, update `WORDPRESS_GROWTH_WEBINAR_FILTERS` and `WORDPRESS_CERTIFICATE_COURSE_IDS` in `.env`.
 To add more monitored system URLs in the next cycle, set `STATUS_MONITOR_EXTRA_TARGETS_JSON` in `.env` to a JSON list of objects with `system`, `label`, and `url`.
+
+## Internal ticketing sync
+
+When enabled, every locally created ticket is mirrored into the internal ticketing system and assigned to the matched external department manager from `GET /client-tickets/api/lookups/system-directory/`.
+
+Required environment variables:
+
+- `EXTERNAL_TICKETING_SYNC_ENABLED=true`
+- `EXTERNAL_TICKETING_BASE_URL=https://support.inditech.co.in`
+- `EXTERNAL_TICKETING_API_TOKEN=<shared token>`
+
+Optional but commonly needed:
+
+- `EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK=<default requester phone>`
+- `EXTERNAL_TICKETING_DEPARTMENT_MAP_JSON={"TECH":"IT_SUPPORT"}` when local and external department names/codes differ
 
 ## Database
 

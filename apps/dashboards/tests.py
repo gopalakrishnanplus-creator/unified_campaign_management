@@ -12,7 +12,8 @@ from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
 from apps.support_center.services import get_faq_combination
 from apps.support_center.models import SupportCategory, SupportItem, SupportSuperCategory
-from apps.ticketing.models import Ticket, TicketCategory, TicketNote, TicketTypeDefinition
+from apps.ticketing.models import Department, Ticket, TicketCategory, TicketNote, TicketTypeDefinition
+from apps.ticketing.services import create_ticket
 
 
 @override_settings(REPORTING_API_USE_LIVE=False)
@@ -513,3 +514,144 @@ class SupportBaselineCommandTests(TestCase):
         self.assertTrue(get_faq_combination("clinic_staff", "campaign-operations", "sharing-activation"))
         self.assertTrue(get_faq_combination("brand_manager", "access-login", "authentication"))
         self.assertTrue(get_faq_combination("field_rep", "access-login", "authentication"))
+
+
+class TicketingDropdownSeedCommandTests(TestCase):
+    def test_seed_ticketing_dropdowns_creates_ticket_form_dependencies(self):
+        call_command("seed_ticketing_dropdowns")
+
+        self.assertGreaterEqual(Department.objects.count(), 3)
+        self.assertGreaterEqual(TicketCategory.objects.count(), 9)
+        self.assertGreaterEqual(TicketTypeDefinition.objects.count(), 22)
+        self.assertGreaterEqual(Campaign.objects.count(), 3)
+
+
+@override_settings(
+    EXTERNAL_TICKETING_SYNC_ENABLED=True,
+    EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+    EXTERNAL_TICKETING_API_TOKEN="test-token",
+    EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK="+919876543210",
+)
+class ExternalTicketSyncTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo_data")
+        cls.pm_user = User.objects.get(email=settings.PROJECT_MANAGER_EMAIL)
+        cls.pm_user.phone_number = "+919876543210"
+        cls.pm_user.save(update_fields=["phone_number"])
+        cls.department = Department.objects.get(code="TECH")
+        cls.campaign = Campaign.objects.get(slug="cardioplus-unified-care")
+
+    def _json_response(self, payload, *, status_code=200):
+        response = Mock()
+        response.status_code = status_code
+        response.json.return_value = payload
+        return response
+
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    @patch("apps.ticketing.external_ticketing.requests.get")
+    def test_ticket_creation_syncs_to_external_department_manager(self, mock_get, mock_request):
+        mock_get.return_value = self._json_response({}, status_code=404)
+
+        def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "Technical Support",
+                                "code": "TECH",
+                                "manager_id": None,
+                                "manager_name": "",
+                                "manager_email": "",
+                                "is_active": True,
+                            }
+                        ],
+                        "department_managers": [
+                            {
+                                "department_id": 3,
+                                "department_name": "Technical Support",
+                                "department_code": "TECH",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                            }
+                        ],
+                        "users": [
+                            {
+                                "id": 19,
+                                "full_name": "Tech Manager",
+                                "email": "tech.manager@inditech.co.in",
+                                "department_id": 3,
+                                "department_name": "Technical Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/ticket-types/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "ticket_types": [
+                            {
+                                "id": 12,
+                                "name": "System Down",
+                                "department_id": 3,
+                                "department_name": "Technical Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "POST" and url.endswith("/client-tickets/api/tickets/"):
+                self.assertEqual(json["assigned_to_email"], "tech.manager@inditech.co.in")
+                self.assertEqual(json["project_manager_email"], settings.PROJECT_MANAGER_EMAIL)
+                self.assertEqual(json["department_id"], 3)
+                self.assertEqual(json["ticket_type_id"], 12)
+                self.assertEqual(json["source_system"], "campaign_management")
+                self.assertEqual(json["priority"], "urgent")
+                return self._json_response(
+                    {
+                        "success": True,
+                        "ticket": {
+                            "ticket_number": "CLT-8F3A1B2C",
+                            "ticket_url": "https://support.inditech.co.in/client-tickets/tickets/CLT-8F3A1B2C/",
+                            "status_code": "open",
+                        },
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+
+        with self.captureOnCommitCallbacks(execute=True):
+            ticket = create_ticket(
+                title="Reports Site Down",
+                description="Reporting site is returning 503.",
+                ticket_type="System Down",
+                user_type=Ticket.UserType.INTERNAL,
+                source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+                priority=Ticket.Priority.CRITICAL,
+                department=self.department,
+                campaign=self.campaign,
+                created_by=self.pm_user,
+                submitted_by=self.pm_user,
+                direct_recipient=self.department.default_recipient,
+                current_assignee=self.department.default_recipient,
+                requester_name="Campaign PM",
+                requester_email=self.pm_user.email,
+                requester_company="Inditech",
+            )
+
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.external_ticket_number, "CLT-8F3A1B2C")
+        self.assertEqual(ticket.external_ticket_status, "open")
+        self.assertEqual(
+            ticket.external_ticket_url,
+            "https://support.inditech.co.in/client-tickets/tickets/CLT-8F3A1B2C/",
+        )
+        self.assertIsNotNone(ticket.external_ticket_synced_at)
+        self.assertEqual(ticket.external_ticket_error, "")

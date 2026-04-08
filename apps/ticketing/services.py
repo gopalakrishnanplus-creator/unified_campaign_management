@@ -450,6 +450,10 @@ def create_ticket(**kwargs):
     kwargs["ticket_type"] = classification["ticket_type_name"]
     kwargs["priority"] = classification["priority"]
     ticket = Ticket.objects.create(**kwargs)
+    from .external_ticketing import should_sync_external_ticket, sync_external_ticket
+
+    if should_sync_external_ticket(ticket):
+        transaction.on_commit(lambda ticket_id=ticket.pk: sync_external_ticket(ticket_id))
     return ticket
 
 
