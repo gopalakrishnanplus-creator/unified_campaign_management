@@ -12,12 +12,16 @@ if [ ! -d .venv ]; then
 fi
 
 source .venv/bin/activate
+
 pip install --upgrade pip
 pip install -r requirements.txt
 
 python manage.py migrate
 
-# Import support PDFs (from repo root)
+# Seed baseline support links used by customer-support and campaign-performance widgets.
+python manage.py seed_support_baseline
+
+# Import PDF-based support catalog used by in-clinic, patient education, and red flag alert widgets.
 python manage.py import_support_pdfs --replace \
   "$APP_DIR/Inclinic-FAQs - Google Sheets.pdf" \
   "$APP_DIR/PE-FAQs - Google Sheets.pdf" \
