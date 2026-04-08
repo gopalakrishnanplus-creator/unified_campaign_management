@@ -106,6 +106,19 @@ def _requested_support_context(request):
     }
 
 
+def _infer_support_context_from_referrer(referrer):
+    referrer_value = (referrer or "").lower()
+    if not referrer_value:
+        return {"system_name": "", "flow_name": ""}
+    if any(token in referrer_value for token in ("in-clinic", "inclinic")):
+        return {"system_name": "In-clinic", "flow_name": ""}
+    if any(token in referrer_value for token in ("patient-education", "patienteducation", "patient_education")):
+        return {"system_name": "Patient Education", "flow_name": ""}
+    if any(token in referrer_value for token in ("red-flag", "red_flag", "redflag", "/rfa", "sapa")):
+        return {"system_name": "Red Flag Alert", "flow_name": ""}
+    return {"system_name": "", "flow_name": ""}
+
+
 def _build_combination_payload(request, user_type, super_slug, category_slug):
     combination = get_faq_combination(user_type, super_slug, category_slug)
     if not combination:
@@ -113,7 +126,12 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
     urls = _build_combination_urls(request, user_type, super_slug, category_slug)
     requested_context = _requested_support_context(request)
     resolved_system = requested_context["system_name"] or combination["source_system"]
-    resolved_flow = requested_context["flow_name"] or combination["source_flow"] or GENERAL_SUPPORT_FLOW
+    if requested_context["flow_name"]:
+        resolved_flow = requested_context["flow_name"]
+    elif requested_context["system_name"] and requested_context["system_name"] != combination["source_system"]:
+        resolved_flow = combination["super_category"].name
+    else:
+        resolved_flow = combination["source_flow"] or GENERAL_SUPPORT_FLOW
     return {
         "user_type": user_type,
         "role_title": ROLE_CONFIG[user_type]["title"],
@@ -762,10 +780,22 @@ def support_faq_other_issue(request, user_type, super_slug, category_slug):
     selected_faq_id = request.POST.get("selected_faq_id")
     if selected_faq_id:
         selected_faq = next((item for item in combination["faq_items"] if str(item.pk) == str(selected_faq_id)), None)
+    referrer_context = _infer_support_context_from_referrer(request.POST.get("context_referrer"))
+    requested_context = _requested_support_context(request)
     request_context = resolve_support_request_context(
         selected_faq=selected_faq,
-        selected_system=request.POST.get("source_system") or _requested_support_context(request)["system_name"] or combination["source_system"],
-        selected_flow=request.POST.get("source_flow") or _requested_support_context(request)["flow_name"] or combination["source_flow"],
+        selected_system=(
+            request.POST.get("source_system")
+            or requested_context["system_name"]
+            or referrer_context["system_name"]
+            or combination["source_system"]
+        ),
+        selected_flow=(
+            request.POST.get("source_flow")
+            or requested_context["flow_name"]
+            or referrer_context["flow_name"]
+            or combination["source_flow"]
+        ),
     )
     support_request = create_other_support_request(
         user_type=user_type,
