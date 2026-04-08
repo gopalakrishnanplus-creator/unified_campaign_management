@@ -17,6 +17,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Prepare deploy directory on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT }}
+          script: |
+            set -euo pipefail
+            DEPLOY_DIR=/tmp/unified_campaign_management_deploy
+            rm -rf "$DEPLOY_DIR"
+            mkdir -p "$DEPLOY_DIR"
+
       - name: Copy project to EC2
         uses: appleboy/scp-action@v1
         with:
@@ -35,12 +48,14 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_PORT }}
           script: |
-            set -e
+            set -euo pipefail
 
             APP_DIR=/var/www/unified_campaign_management
             DEPLOY_DIR=/tmp/unified_campaign_management_deploy
+            SHARED_VENV_DIR=/var/www/venv
+            VENV_PYTHON="$SHARED_VENV_DIR/bin/python"
 
-            mkdir -p $APP_DIR
+            mkdir -p "$APP_DIR"
 
             rsync -av --delete \
               --exclude '.git' \
@@ -50,9 +65,9 @@ jobs:
               --exclude '.venv' \
               --exclude '__pycache__' \
               --exclude '*.pyc' \
-              $DEPLOY_DIR/ $APP_DIR/
-
-            cd $APP_DIR
+              --exclude '.pytest_cache' \
+              --exclude '.mypy_cache' \
+              "$DEPLOY_DIR"/ "$APP_DIR"/
 
             export SHARED_VENV_DIR=/var/www/venv
             bash scripts/deploy_ec2.sh
@@ -64,7 +79,7 @@ jobs:
               exit 1
             fi
 
-            python manage.py shell <<'PY'
+            "$VENV_PYTHON" manage.py shell <<'PY'
             from datetime import date, timedelta
 
             from django.conf import settings
@@ -201,4 +216,4 @@ jobs:
             sudo systemctl restart campaign_management.service
             sudo systemctl restart nginx
 
-            rm -rf $DEPLOY_DIR
+            rm -rf "$DEPLOY_DIR"
