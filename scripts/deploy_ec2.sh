@@ -13,16 +13,12 @@ if [ -d "$SHARED_VENV_DIR" ] && [ -x "$SHARED_VENV_DIR/bin/activate" ]; then
   # shellcheck disable=SC1090
   source "$SHARED_VENV_DIR/bin/activate"
 else
-  if [ ! -d .venv ]; then
-    "$PYTHON_BIN" -m venv .venv
-  fi
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
+  echo "Shared virtualenv not found at $SHARED_VENV_DIR" >&2
+  exit 1
 fi
 
 pip install --upgrade pip
 pip install -r requirements.txt
-
 python manage.py migrate
 python manage.py seed_support_baseline
 
