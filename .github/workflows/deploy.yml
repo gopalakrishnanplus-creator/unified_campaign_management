@@ -59,6 +59,138 @@ jobs:
 
             python manage.py migrate
 
+            python manage.py shell <<'PY'
+            from datetime import date, timedelta
+
+            from django.conf import settings
+
+            from apps.accounts.models import User
+            from apps.campaigns.models import Campaign
+            from apps.ticketing.models import Department
+            from apps.ticketing.services import seed_default_ticket_taxonomy
+
+            pm_user, _ = User.objects.update_or_create(
+                email=settings.PROJECT_MANAGER_EMAIL,
+                defaults={
+                    "full_name": "Campaign Project Manager",
+                    "role": User.Role.PROJECT_MANAGER,
+                    "is_staff": True,
+                    "company": "Inditech",
+                    "title": "Project Manager",
+                },
+            )
+
+            department_seed = [
+                {
+                    "user_email": "ops@inditech.co.in",
+                    "user_name": "Clinical Operations Lead",
+                    "user_role": User.Role.DEPARTMENT_OWNER,
+                    "department_code": "CAMP-OPS",
+                    "department_name": "Campaign Operations",
+                    "department_description": "Handles clinic onboarding, campaign activation, and field rep support.",
+                    "support_email": "campaign-ops@inditech.co.in",
+                },
+                {
+                    "user_email": "analytics@inditech.co.in",
+                    "user_name": "Analytics Lead",
+                    "user_role": User.Role.DEPARTMENT_OWNER,
+                    "department_code": "ANALYTICS",
+                    "department_name": "Campaign Analytics",
+                    "department_description": "Handles reporting, KPI analysis, and performance questions.",
+                    "support_email": "analytics-support@inditech.co.in",
+                },
+                {
+                    "user_email": "support.tech@inditech.co.in",
+                    "user_name": "Technical Support Lead",
+                    "user_role": User.Role.DEPARTMENT_OWNER,
+                    "department_code": "TECH",
+                    "department_name": "Technical Support",
+                    "department_description": "Handles access, login, and troubleshooting issues.",
+                    "support_email": "tech-support@inditech.co.in",
+                },
+            ]
+
+            for config in department_seed:
+                user, _ = User.objects.update_or_create(
+                    email=config["user_email"],
+                    defaults={
+                        "full_name": config["user_name"],
+                        "role": config["user_role"],
+                        "is_staff": True,
+                        "company": "Inditech",
+                    },
+                )
+                department, _ = Department.objects.update_or_create(
+                    code=config["department_code"],
+                    defaults={
+                        "name": config["department_name"],
+                        "description": config["department_description"],
+                        "support_email": config["support_email"],
+                        "default_recipient": user,
+                        "is_active": True,
+                    },
+                )
+                if user.department_id != department.id:
+                    user.department = department
+                    user.save(update_fields=["department"])
+
+            seed_default_ticket_taxonomy()
+
+            today = date.today()
+            campaign_seed = [
+                {
+                    "name": "General Support Campaign",
+                    "brand_name": "Inditech",
+                    "description": "Fallback campaign for ticket logging when a specific campaign has not been configured yet.",
+                    "status": Campaign.Status.ACTIVE,
+                    "geography": "India",
+                    "start_date": today - timedelta(days=30),
+                    "end_date": today + timedelta(days=365),
+                },
+                {
+                    "name": "CardioPlus Unified Care",
+                    "brand_name": "CardioPlus",
+                    "description": "Integrated campaign spanning in-clinic sharing, red flag alerts, and patient education.",
+                    "status": Campaign.Status.ACTIVE,
+                    "geography": "South India",
+                    "start_date": today - timedelta(days=45),
+                    "end_date": today + timedelta(days=90),
+                },
+                {
+                    "name": "GlucoCare Education Drive",
+                    "brand_name": "GlucoCare",
+                    "description": "Patient education and clinic adoption campaign for diabetes care.",
+                    "status": Campaign.Status.ACTIVE,
+                    "geography": "West India",
+                    "start_date": today - timedelta(days=20),
+                    "end_date": today + timedelta(days=120),
+                },
+            ]
+
+            for config in campaign_seed:
+                Campaign.objects.update_or_create(
+                    name=config["name"],
+                    defaults={
+                        "brand_name": config["brand_name"],
+                        "description": config["description"],
+                        "status": config["status"],
+                        "geography": config["geography"],
+                        "start_date": config["start_date"],
+                        "end_date": config["end_date"],
+                        "has_in_clinic": True,
+                        "has_red_flag_alerts": True,
+                        "has_patient_education": True,
+                        "support_contact_email": settings.PROJECT_MANAGER_EMAIL,
+                    },
+                )
+
+            from apps.ticketing.models import TicketCategory, TicketTypeDefinition
+            print("departments:", Department.objects.count())
+            print("ticket_categories:", TicketCategory.objects.count())
+            print("ticket_types:", TicketTypeDefinition.objects.count())
+            print("campaigns:", Campaign.objects.count())
+            PY
+
             python manage.py collectstatic --noinput || true
 
             sudo systemctl restart campaign_management.service

@@ -655,3 +655,6 @@ class ExternalTicketSyncTests(TestCase):
         )
         self.assertIsNotNone(ticket.external_ticket_synced_at)
         self.assertEqual(ticket.external_ticket_error, "")
+        self.assertIn("Starting external ticket sync.", ticket.external_ticket_log)
+        self.assertIn("Creating external ticket.", ticket.external_ticket_log)
+        self.assertIn("External ticket created successfully.", ticket.external_ticket_log)

@@ -118,6 +118,7 @@ class Ticket(models.Model):
     external_ticket_status = models.CharField(max_length=32, blank=True)
     external_ticket_synced_at = models.DateTimeField(null=True, blank=True)
     external_ticket_error = models.TextField(blank=True)
+    external_ticket_log = models.TextField(blank=True)
     support_request = models.OneToOneField(
         "support_center.SupportRequest",
         null=True,

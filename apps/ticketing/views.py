@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
+from django.conf import settings
 from django.db.models import Case, IntegerField, Q, When
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
@@ -171,7 +172,19 @@ class TicketCreateView(LoginRequiredMixin, CreateView):
             new_ticket_type_name=form.cleaned_data.get("new_ticket_type_name"),
             **payload,
         )
-        messages.success(self.request, f"Ticket {ticket.ticket_number} created.")
+        ticket.refresh_from_db()
+        if ticket.external_ticket_number:
+            messages.success(
+                self.request,
+                f"Ticket {ticket.ticket_number} created and mirrored to internal ticket {ticket.external_ticket_number}.",
+            )
+        elif settings.EXTERNAL_TICKETING_SYNC_ENABLED and ticket.external_ticket_error:
+            messages.warning(
+                self.request,
+                f"Ticket {ticket.ticket_number} created, but internal sync failed: {ticket.external_ticket_error}",
+            )
+        else:
+            messages.success(self.request, f"Ticket {ticket.ticket_number} created.")
         return redirect("ticketing:detail", pk=ticket.pk)
 
     def get_context_data(self, **kwargs):

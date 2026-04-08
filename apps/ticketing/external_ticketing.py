@@ -66,27 +66,63 @@ def sync_external_ticket(ticket_id):
     if not ticket or not should_sync_external_ticket(ticket):
         return None
 
+    sync_log = [log_line("Starting external ticket sync.")]
     try:
+        sync_log.append(
+            log_line(
+                "Checking for an existing external ticket.",
+                external_reference=ticket.ticket_number,
+                source_system=settings.EXTERNAL_TICKETING_SOURCE_SYSTEM,
+            )
+        )
         existing_ticket = find_external_ticket_by_reference(ticket)
         if existing_ticket:
-            return persist_external_ticket_mapping(ticket, existing_ticket)
+            sync_log.append(
+                log_line(
+                    "Existing external ticket found.",
+                    external_ticket_number=existing_ticket.get("ticket_number"),
+                    status=existing_ticket.get("status_code") or existing_ticket.get("status"),
+                )
+            )
+            return persist_external_ticket_mapping(ticket, existing_ticket, sync_log)
 
         payload = build_external_ticket_payload(ticket)
+        sync_log.append(
+            log_line(
+                "Creating external ticket.",
+                department=payload.get("department") or payload.get("department_id"),
+                assigned_to_email=payload.get("assigned_to_email"),
+                project_manager_email=payload.get("project_manager_email"),
+                ticket_type_id=payload.get("ticket_type_id"),
+                ticket_type_other=payload.get("ticket_type_other"),
+                priority=payload.get("priority"),
+            )
+        )
         response_payload = api_request("POST", "/client-tickets/api/tickets/", json=payload)
         external_ticket = response_payload.get("ticket") or {}
         if not response_payload.get("success") or not external_ticket.get("ticket_number"):
             raise ExternalTicketingSyncError(
                 response_payload.get("error") or "External ticketing API did not return a ticket number."
             )
-        return persist_external_ticket_mapping(ticket, external_ticket)
+        sync_log.append(
+            log_line(
+                "External ticket created successfully.",
+                external_ticket_number=external_ticket.get("ticket_number"),
+                status=external_ticket.get("status_code") or external_ticket.get("status"),
+                external_ticket_url=external_ticket.get("ticket_url"),
+            )
+        )
+        return persist_external_ticket_mapping(ticket, external_ticket, sync_log)
     except Exception as exc:
         ticket.external_ticket_error = str(exc)
-        ticket.save(update_fields=["external_ticket_error"])
-        logger.warning("External ticket sync failed for %s: %s", ticket.ticket_number, exc)
+        sync_log.append(log_line("External ticket sync failed.", error=str(exc)))
+        ticket.external_ticket_log = "\n".join(sync_log)
+        ticket.save(update_fields=["external_ticket_error", "external_ticket_log"])
+        logger.warning("External ticket sync failed for %s\n%s", ticket.ticket_number, ticket.external_ticket_log)
         return None
 
 
-def persist_external_ticket_mapping(ticket, external_ticket):
+def persist_external_ticket_mapping(ticket, external_ticket, sync_log=None):
     ticket.external_ticket_number = external_ticket.get("ticket_number", "") or ticket.external_ticket_number
     ticket.external_ticket_url = external_ticket.get("ticket_url", "") or ticket.external_ticket_url
     ticket.external_ticket_status = (
@@ -94,6 +130,8 @@ def persist_external_ticket_mapping(ticket, external_ticket):
     )
     ticket.external_ticket_synced_at = timezone.now()
     ticket.external_ticket_error = ""
+    if sync_log:
+        ticket.external_ticket_log = "\n".join(sync_log)
     ticket.save(
         update_fields=[
             "external_ticket_number",
@@ -101,8 +139,11 @@ def persist_external_ticket_mapping(ticket, external_ticket):
             "external_ticket_status",
             "external_ticket_synced_at",
             "external_ticket_error",
+            "external_ticket_log",
         ]
     )
+    if ticket.external_ticket_log:
+        logger.info("External ticket sync succeeded for %s\n%s", ticket.ticket_number, ticket.external_ticket_log)
     return ticket
 
 
@@ -355,3 +396,11 @@ def parse_json_response(response, method, url):
 
 def normalize_value(value):
     return str(value or "").strip().lower()
+
+
+def log_line(message, **context):
+    safe_context = {key: value for key, value in context.items() if value not in (None, "", [], {}, ())}
+    if not safe_context:
+        return f"[{timezone.now().strftime('%d %b %Y %H:%M:%S')}] {message}"
+    context_blob = ", ".join(f"{key}={value}" for key, value in safe_context.items())
+    return f"[{timezone.now().strftime('%d %b %Y %H:%M:%S')}] {message} {context_blob}"

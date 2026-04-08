@@ -241,3 +241,20 @@ MESSAGE_TAGS = {
     30: "warning",
     40: "danger",
 }
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        }
+    },
+    "loggers": {
+        "apps.ticketing.external_ticketing": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        }
+    },
+}
