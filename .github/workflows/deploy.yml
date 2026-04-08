@@ -45,19 +45,24 @@ jobs:
             rsync -av --delete \
               --exclude '.git' \
               --exclude '.github' \
+              --exclude '.env' \
               --exclude 'venv' \
+              --exclude '.venv' \
               --exclude '__pycache__' \
               --exclude '*.pyc' \
               $DEPLOY_DIR/ $APP_DIR/
 
             cd $APP_DIR
 
-            source /var/www/venv/bin/activate
+            export SHARED_VENV_DIR=/var/www/venv
+            bash scripts/deploy_ec2.sh
 
-            pip install --upgrade pip
-            pip install -r requirements.txt
-
-            python manage.py migrate
+            if [ -d /var/www/venv ] && [ -x /var/www/venv/bin/activate ]; then
+              source /var/www/venv/bin/activate
+            else
+              echo "/var/www/venv is missing or not executable." >&2
+              exit 1
+            fi
 
             python manage.py shell <<'PY'
             from datetime import date, timedelta
@@ -191,7 +196,7 @@ jobs:
             print("campaigns:", Campaign.objects.count())
             PY
 
-            python manage.py collectstatic --noinput || true
+            python manage.py sync_internal_ticket_directory || true
 
             sudo systemctl restart campaign_management.service
             sudo systemctl restart nginx
