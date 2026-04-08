@@ -52,12 +52,13 @@ jobs:
 
             cd $APP_DIR
 
-            source /var/www/venv/bin/activate
+            bash scripts/deploy_ec2.sh
 
-            pip install --upgrade pip
-            pip install -r requirements.txt
-
-            python manage.py migrate
+            if [ -d /var/www/venv ] && [ -x /var/www/venv/bin/activate ]; then
+              source /var/www/venv/bin/activate
+            else
+              source .venv/bin/activate
+            fi
 
             python manage.py shell <<'PY'
             from datetime import date, timedelta
