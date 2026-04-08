@@ -57,25 +57,45 @@ jobs:
 
             mkdir -p "$APP_DIR"
 
+            MANAGE_FILE="$(find "$DEPLOY_DIR" -maxdepth 4 -type f -name manage.py | head -n 1)"
+            if [ -z "${MANAGE_FILE:-}" ]; then
+              echo "Could not locate manage.py inside $DEPLOY_DIR" >&2
+              find "$DEPLOY_DIR" -maxdepth 4 -print
+              exit 1
+            fi
+
+            SOURCE_DIR="$(dirname "$MANAGE_FILE")"
+            echo "Using deploy source directory: $SOURCE_DIR"
+
             rsync -av --delete \
               --exclude '.git' \
               --exclude '.github' \
               --exclude '.env' \
               --exclude 'venv' \
               --exclude '.venv' \
+              --exclude 'media' \
+              --exclude 'staticfiles' \
+              --exclude 'db.sqlite3' \
               --exclude '__pycache__' \
               --exclude '*.pyc' \
               --exclude '.pytest_cache' \
               --exclude '.mypy_cache' \
-              "$DEPLOY_DIR"/ "$APP_DIR"/
+              "$SOURCE_DIR"/ "$APP_DIR"/
 
-            export SHARED_VENV_DIR=/var/www/venv
-            bash scripts/deploy_ec2.sh
+            if [ ! -f "$APP_DIR/scripts/deploy_ec2.sh" ]; then
+              echo "Deploy script missing at $APP_DIR/scripts/deploy_ec2.sh" >&2
+              find "$APP_DIR" -maxdepth 3 -type f | sort | sed -n '1,200p'
+              exit 1
+            fi
 
-            if [ -d /var/www/venv ] && [ -x /var/www/venv/bin/activate ]; then
-              source /var/www/venv/bin/activate
-            else
-              echo "/var/www/venv is missing or not executable." >&2
+            cd "$APP_DIR"
+
+            export APP_DIR
+            export SHARED_VENV_DIR
+            bash "$APP_DIR/scripts/deploy_ec2.sh"
+
+            if [ ! -x "$VENV_PYTHON" ]; then
+              echo "Shared virtualenv python not found at $VENV_PYTHON" >&2
               exit 1
             fi
 
@@ -89,7 +109,7 @@ jobs:
             from apps.ticketing.models import Department
             from apps.ticketing.services import seed_default_ticket_taxonomy
 
-            pm_user, _ = User.objects.update_or_create(
+            User.objects.update_or_create(
                 email=settings.PROJECT_MANAGER_EMAIL,
                 defaults={
                     "full_name": "Campaign Project Manager",
@@ -211,7 +231,7 @@ jobs:
             print("campaigns:", Campaign.objects.count())
             PY
 
-            python manage.py sync_internal_ticket_directory || true
+            "$VENV_PYTHON" manage.py sync_internal_ticket_directory || true
 
             sudo systemctl restart campaign_management.service
             sudo systemctl restart nginx
