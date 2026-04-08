@@ -14,7 +14,15 @@ fi
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
+
 python manage.py migrate
+
+# Import support PDFs (from repo root)
+python manage.py import_support_pdfs --replace \
+  "$APP_DIR/Inclinic-FAQs - Google Sheets.pdf" \
+  "$APP_DIR/PE-FAQs - Google Sheets.pdf" \
+  "$APP_DIR/RFA-FAQs - Google Sheets.pdf"
+
 python manage.py collectstatic --noinput
 
 if command -v systemctl >/dev/null 2>&1; then
