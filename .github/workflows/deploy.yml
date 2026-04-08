@@ -45,19 +45,23 @@ jobs:
             rsync -av --delete \
               --exclude '.git' \
               --exclude '.github' \
+              --exclude '.env' \
               --exclude 'venv' \
+              --exclude '.venv' \
               --exclude '__pycache__' \
               --exclude '*.pyc' \
               $DEPLOY_DIR/ $APP_DIR/
 
             cd $APP_DIR
 
+            export SHARED_VENV_DIR=/var/www/venv
             bash scripts/deploy_ec2.sh
 
             if [ -d /var/www/venv ] && [ -x /var/www/venv/bin/activate ]; then
               source /var/www/venv/bin/activate
             else
-              source .venv/bin/activate
+              echo "/var/www/venv is missing or not executable." >&2
+              exit 1
             fi
 
             python manage.py shell <<'PY'
@@ -192,7 +196,7 @@ jobs:
             print("campaigns:", Campaign.objects.count())
             PY
 
-            python manage.py collectstatic --noinput || true
+            python manage.py sync_internal_ticket_directory || true
 
             sudo systemctl restart campaign_management.service
             sudo systemctl restart nginx
