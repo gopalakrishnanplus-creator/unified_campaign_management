@@ -45,6 +45,10 @@ ROLE_CONFIG = {
 CONTEXT_QUERY_KEYS = ("system", "source_system", "context_system", "flow", "source_flow", "context_flow")
 
 
+def _current_context_params(request):
+    return {key: value for key in CONTEXT_QUERY_KEYS if (value := (request.GET.get(key) or "").strip())}
+
+
 def _cors_json(payload, status=200):
     response = JsonResponse(payload, status=status)
     response["Access-Control-Allow-Origin"] = "*"
@@ -61,8 +65,9 @@ def _options_response():
     return response
 
 
-def _build_combination_urls(request, user_type, super_slug, category_slug):
-    context_params = {key: value for key in CONTEXT_QUERY_KEYS if (value := (request.GET.get(key) or "").strip())}
+def _build_combination_urls(request, user_type, super_slug, category_slug, *, context_params=None):
+    if context_params is None:
+        context_params = _current_context_params(request)
 
     def with_query(path, extra_params=None):
         params = dict(context_params)
@@ -124,6 +129,7 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
     if not combination:
         raise Http404("FAQ combination not found.")
     urls = _build_combination_urls(request, user_type, super_slug, category_slug)
+    context_params = _current_context_params(request)
     requested_context = _requested_support_context(request)
     resolved_system = requested_context["system_name"] or combination["source_system"]
     if requested_context["flow_name"]:
@@ -149,9 +155,12 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
         "source_flow": resolved_flow,
         "default_context_available": bool(resolved_system),
         "other_issue_url": request.build_absolute_uri(
-            reverse(
-                "support_center:faq_other_issue",
-                kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
+            "{}{}".format(
+                reverse(
+                    "support_center:faq_other_issue",
+                    kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
+                ),
+                f"?{urlencode(context_params)}" if context_params else "",
             )
         ),
         **urls,

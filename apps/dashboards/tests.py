@@ -309,6 +309,7 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(widget_response.status_code, 200)
         self.assertNotIn("X-Frame-Options", widget_response.headers)
         self.assertContains(widget_response, "Support Bot")
+        self.assertContains(widget_response, 'id="restart-button"', html=False)
         self.assertNotContains(widget_response, "Show Answer")
 
     def test_widget_other_issue_submission_records_pm_review_item(self):
@@ -440,6 +441,54 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.source_system, "In-clinic")
         self.assertEqual(support_request.source_flow, "Campaign Operations")
         self.assertTrue(support_request.uploaded_file.name.endswith(".jpg"))
+
+    def test_widget_other_issue_preserves_query_context_for_shared_faq_groups(self):
+        faq_super = SupportSuperCategory.objects.create(name="Shared Context Tests", slug="shared-context-tests")
+        faq_category = SupportCategory.objects.create(super_category=faq_super, name="Sharing & Activation", slug="sharing-activation")
+        generic_faq = SupportItem.objects.create(
+            category=faq_category,
+            name="Doctor or clinic has not been added to the campaign",
+            slug="doctor-or-clinic-has-not-been-added-to-the-campaign",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="Capture the onboarding context and escalate to campaign operations.",
+            source_system="Customer support",
+            source_flow="General support",
+            is_visible_to_brand_managers=True,
+            is_visible_to_doctors=False,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_field_reps=False,
+        )
+
+        api_response = self.client.get(
+            reverse(
+                "support_center:faq_combination_api",
+                kwargs={"user_type": "brand_manager", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+            ),
+            data={"system": "In-clinic", "flow": "Campaign Operations"},
+        )
+        self.assertEqual(api_response.status_code, 200)
+        api_payload = api_response.json()
+        self.assertEqual(api_payload["source_system"], "In-clinic")
+        self.assertEqual(api_payload["source_flow"], "Campaign Operations")
+        self.assertIn("system=In-clinic", api_payload["other_issue_url"])
+        self.assertIn("flow=Campaign+Operations", api_payload["other_issue_url"])
+
+        response = self.client.post(
+            f"{reverse('support_center:faq_other_issue', kwargs={'user_type': 'brand_manager', 'super_slug': faq_super.slug, 'category_slug': faq_category.slug})}?system=In-clinic&flow=Campaign+Operations",
+            data={
+                "free_text": "Testing the shared FAQ widget from the In-clinic system.",
+                "uploaded_file": SimpleUploadedFile("ku.png", b"image-bytes", content_type="image/png"),
+                "selected_faq_id": generic_faq.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+
+        support_request = SupportRequest.objects.get(pk=payload["request_id"])
+        self.assertEqual(support_request.source_system, "In-clinic")
+        self.assertEqual(support_request.source_flow, "Campaign Operations")
+        self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
 
     def test_pm_can_raise_ticket_from_other_issue_submission(self):
         support_request = SupportRequest.objects.create(

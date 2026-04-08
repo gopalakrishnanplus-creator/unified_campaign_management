@@ -124,14 +124,14 @@
         <div class="widget-body">
             <div class="card shadow-sm border-0 rounded-4">
                 <div class="card-body">
-                    <div id="selection-panel">
-                        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-                            <div>
-                                <h1 class="h5 mb-1">Support Bot</h1>
-                                <p class="text-secondary mb-0">Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.</p>
-                            </div>
-                            <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h1 class="h5 mb-1">Support Bot</h1>
+                            <p class="text-secondary mb-0">Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.</p>
                         </div>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
+                    </div>
+                    <div id="question-menu-panel">
                         <div class="question-list" id="question-list"></div>
                     </div>
 
@@ -184,7 +184,7 @@
         (() => {
             const apiUrl = {{ faq_payload.api_url|tojson }};
             const otherIssueUrl = {{ faq_payload.other_issue_url|tojson }};
-            const selectionPanel = document.getElementById("selection-panel");
+            const questionMenuPanel = document.getElementById("question-menu-panel");
             const questionListElement = document.getElementById("question-list");
             const restartButton = document.getElementById("restart-button");
             const conversationPanel = document.getElementById("conversation-panel");
@@ -201,6 +201,7 @@
                 selectedFaq: null,
                 lastSelectedFaq: null,
             };
+            const urlSearchParams = new URLSearchParams(window.location.search);
 
             function getCookie(name) {
                 const cookieValue = document.cookie
@@ -244,14 +245,14 @@
             }
 
             function showSelectionPanel() {
-                selectionPanel.classList.remove("d-none");
+                questionMenuPanel.classList.remove("d-none");
                 conversationPanel.classList.add("d-none");
                 resolutionPanel.classList.add("d-none");
                 otherForm.classList.add("d-none");
             }
 
             function hideSelectionPanel() {
-                selectionPanel.classList.add("d-none");
+                questionMenuPanel.classList.add("d-none");
             }
 
             function renderQuestions() {
@@ -369,16 +370,25 @@
                 }
                 formData.set("context_referrer", document.referrer || "");
                 const contextFaq = state.selectedFaq || state.lastSelectedFaq;
-                const inferredSystem = inferSystemFromReferrer(document.referrer);
-                if (inferredSystem) {
-                    formData.set("source_system", inferredSystem);
-                    if (state.payload && state.payload.super_category && state.payload.super_category.name) {
-                        formData.set("source_flow", state.payload.super_category.name);
-                    }
-                } else if (state.payload && state.payload.source_system) {
+                if (state.payload && state.payload.source_system) {
                     formData.set("source_system", state.payload.source_system);
                     if (state.payload.source_flow) {
                         formData.set("source_flow", state.payload.source_flow);
+                    }
+                } else if (urlSearchParams.get("system")) {
+                    formData.set("source_system", urlSearchParams.get("system"));
+                    if (urlSearchParams.get("flow")) {
+                        formData.set("source_flow", urlSearchParams.get("flow"));
+                    } else if (state.payload && state.payload.super_category && state.payload.super_category.name) {
+                        formData.set("source_flow", state.payload.super_category.name);
+                    }
+                } else {
+                    const inferredSystem = inferSystemFromReferrer(document.referrer);
+                    if (inferredSystem) {
+                        formData.set("source_system", inferredSystem);
+                        if (state.payload && state.payload.super_category && state.payload.super_category.name) {
+                            formData.set("source_flow", state.payload.super_category.name);
+                        }
                     }
                 }
                 if (contextFaq) {
