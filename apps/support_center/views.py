@@ -1,4 +1,5 @@
 import os
+from collections import OrderedDict
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -61,8 +62,9 @@ def _options_response():
     return response
 
 
-def _build_combination_urls(request, user_type, super_slug, category_slug):
-    context_params = {key: value for key in CONTEXT_QUERY_KEYS if (value := (request.GET.get(key) or "").strip())}
+def _build_combination_urls(request, user_type, super_slug, category_slug, *, context_params=None):
+    if context_params is None:
+        context_params = {key: value for key in CONTEXT_QUERY_KEYS if (value := (request.GET.get(key) or "").strip())}
 
     def with_query(path, extra_params=None):
         params = dict(context_params)
@@ -87,6 +89,20 @@ def _build_combination_urls(request, user_type, super_slug, category_slug):
         "embed_url": request.build_absolute_uri(with_query(widget_path, {"embed": "1"})),
         "api_url": request.build_absolute_uri(with_query(api_path)),
     }
+
+
+def _faq_context_groups(faq_items):
+    grouped = OrderedDict()
+    for item in faq_items:
+        key = (item.source_system or "", item.source_flow or "")
+        if key not in grouped:
+            grouped[key] = {
+                "source_system": item.source_system or "",
+                "source_flow": item.source_flow or "",
+                "faq_count": 0,
+            }
+        grouped[key]["faq_count"] += 1
+    return list(grouped.values())
 
 
 def _requested_support_context(request):
@@ -823,14 +839,28 @@ def support_faq_links_api(request, user_type):
     for block in get_faq_super_category_overview(user_type):
         for entry in block["categories"]:
             category = entry["category"]
-            results.append(
-                {
-                    "super_category": {"name": block["super_category"].name, "slug": block["super_category"].slug},
-                    "category": {"name": category.name, "slug": category.slug},
-                    "faq_count": len(entry["faq_items"]),
-                    **_build_combination_urls(request, user_type, block["super_category"].slug, category.slug),
-                }
-            )
+            for context_group in _faq_context_groups(entry["faq_items"]):
+                context_params = {}
+                if context_group["source_system"]:
+                    context_params["system"] = context_group["source_system"]
+                if context_group["source_flow"]:
+                    context_params["flow"] = context_group["source_flow"]
+                results.append(
+                    {
+                        "source_system": context_group["source_system"],
+                        "source_flow": context_group["source_flow"] or GENERAL_SUPPORT_FLOW,
+                        "super_category": {"name": block["super_category"].name, "slug": block["super_category"].slug},
+                        "category": {"name": category.name, "slug": category.slug},
+                        "faq_count": context_group["faq_count"],
+                        **_build_combination_urls(
+                            request,
+                            user_type,
+                            block["super_category"].slug,
+                            category.slug,
+                            context_params=context_params,
+                        ),
+                    }
+                )
     return _cors_json(
         {
             "user_type": user_type,
