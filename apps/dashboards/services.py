@@ -326,6 +326,12 @@ def get_support_dashboard_data(campaign=None):
     other_issue_rows = [
         {
             "request": support_request,
+            "uploaded_file_name": support_request.uploaded_file.name.split("/")[-1] if support_request.uploaded_file else "",
+            "uploaded_file_is_image": (
+                support_request.uploaded_file.name.lower().endswith((".jpg", ".jpeg", ".png", ".heic", ".svg", ".webp"))
+                if support_request.uploaded_file
+                else False
+            ),
             "raise_ticket_url": reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}),
         }
         for support_request in other_issue_requests

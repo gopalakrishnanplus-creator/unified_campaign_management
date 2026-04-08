@@ -100,13 +100,15 @@ def get_faq_combination(user_type, super_slug, category_slug):
         return None
     category = faq_items[0].category
     super_category = category.super_category
+    source_systems = [item.source_system for item in faq_items if item.source_system]
+    source_flows = [item.source_flow for item in faq_items if item.source_flow]
     return {
         "super_category": super_category,
         "category": category,
         "faq_items": faq_items,
         "faq_count": len(faq_items),
-        "source_system": faq_items[0].source_system,
-        "source_flow": faq_items[0].source_flow,
+        "source_system": source_systems[0] if len(set(source_systems)) == 1 else "",
+        "source_flow": source_flows[0] if len(set(source_flows)) == 1 else "",
     }
 
 
@@ -203,12 +205,24 @@ def create_other_support_request(*, user_type, category, system_name, flow_name,
     return support_request
 
 
+def resolve_support_request_context(*, selected_faq=None, selected_system="", selected_flow=""):
+    system_name = selected_system or ""
+    flow_name = selected_flow or ""
+    if selected_faq:
+        system_name = selected_faq.source_system or system_name
+        flow_name = selected_faq.source_flow or flow_name
+    return {
+        "system_name": system_name,
+        "flow_name": flow_name or GENERAL_SUPPORT_FLOW,
+    }
+
+
 def build_support_request_ticket_initial(support_request):
     description_lines = [
         support_request.free_text.strip(),
         "",
         "Support request context",
-        f"System: {support_request.source_system or 'Customer support'}",
+        f"System: {support_request.source_system or 'Not provided'}",
         f"Flow: {support_request.source_flow or GENERAL_SUPPORT_FLOW}",
         f"Screen / Section: {support_request.screen_label or 'Not specified'}",
         f"User type: {support_request.user_type.replace('_', ' ').title()}",
@@ -217,7 +231,7 @@ def build_support_request_ticket_initial(support_request):
         f"Requester company: {support_request.requester_company or 'Not provided'}",
     ]
     if support_request.uploaded_file:
-        description_lines.append(f"Uploaded file: {support_request.uploaded_file.name}")
+        description_lines.append(f"Uploaded file: {support_request.uploaded_file.name.split('/')[-1]}")
 
     classification = resolve_ticket_classification(
         title=support_request.subject,

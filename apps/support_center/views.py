@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
@@ -29,6 +30,7 @@ from .services import (
     get_faq_combination,
     get_faq_super_category,
     get_faq_super_category_overview,
+    resolve_support_request_context,
     submit_support_request,
 )
 
@@ -40,6 +42,7 @@ ROLE_CONFIG = {
     "field_rep": {"title": "Field Rep Support", "page_title": "Field representative support landing page"},
     "patient": {"title": "Patient Support", "page_title": "Patient support landing page"},
 }
+CONTEXT_QUERY_KEYS = ("system", "source_system", "context_system", "flow", "source_flow", "context_flow")
 
 
 def _cors_json(payload, status=200):
@@ -59,20 +62,47 @@ def _options_response():
 
 
 def _build_combination_urls(request, user_type, super_slug, category_slug):
+    context_params = {key: value for key in CONTEXT_QUERY_KEYS if (value := (request.GET.get(key) or "").strip())}
+
+    def with_query(path, extra_params=None):
+        params = dict(context_params)
+        if extra_params:
+            params.update(extra_params)
+        if not params:
+            return path
+        return f"{path}?{urlencode(params)}"
+
     page_url = reverse("support_center:faq_super_category", kwargs={"user_type": user_type, "super_slug": super_slug})
-    widget_url = reverse(
+    widget_path = reverse(
         "support_center:faq_widget",
         kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
     )
-    api_url = reverse(
+    api_path = reverse(
         "support_center:faq_combination_api",
         kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
     )
     return {
-        "page_url": request.build_absolute_uri(page_url),
-        "widget_url": request.build_absolute_uri(widget_url),
-        "embed_url": request.build_absolute_uri(f"{widget_url}?embed=1"),
-        "api_url": request.build_absolute_uri(api_url),
+        "page_url": request.build_absolute_uri(with_query(page_url)),
+        "widget_url": request.build_absolute_uri(with_query(widget_path)),
+        "embed_url": request.build_absolute_uri(with_query(widget_path, {"embed": "1"})),
+        "api_url": request.build_absolute_uri(with_query(api_path)),
+    }
+
+
+def _requested_support_context(request):
+    return {
+        "system_name": (
+            request.GET.get("context_system")
+            or request.GET.get("source_system")
+            or request.GET.get("system")
+            or ""
+        ).strip(),
+        "flow_name": (
+            request.GET.get("context_flow")
+            or request.GET.get("source_flow")
+            or request.GET.get("flow")
+            or ""
+        ).strip(),
     }
 
 
@@ -81,6 +111,9 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
     if not combination:
         raise Http404("FAQ combination not found.")
     urls = _build_combination_urls(request, user_type, super_slug, category_slug)
+    requested_context = _requested_support_context(request)
+    resolved_system = requested_context["system_name"] or combination["source_system"]
+    resolved_flow = requested_context["flow_name"] or combination["source_flow"] or GENERAL_SUPPORT_FLOW
     return {
         "user_type": user_type,
         "role_title": ROLE_CONFIG[user_type]["title"],
@@ -94,8 +127,9 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
         },
         "faq_count": combination["faq_count"],
         "completion_label": "Issue Resolved",
-        "source_system": combination["source_system"],
-        "source_flow": combination["source_flow"] or GENERAL_SUPPORT_FLOW,
+        "source_system": resolved_system,
+        "source_flow": resolved_flow,
+        "default_context_available": bool(resolved_system),
         "other_issue_url": request.build_absolute_uri(
             reverse(
                 "support_center:faq_other_issue",
@@ -111,6 +145,8 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
                 "summary": item.summary,
                 "pdf_url": item.associated_pdf_url,
                 "video_url": item.associated_video_url,
+                "source_system": item.source_system,
+                "source_flow": item.source_flow or GENERAL_SUPPORT_FLOW,
             }
             for item in combination["faq_items"]
         ],
@@ -274,6 +310,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             state.pop("selected_faq_id", None)
         elif state.get("category_id"):
             state.pop("category_id", None)
+            state.pop("last_selected_faq_id", None)
         elif state.get("flow"):
             state.pop("flow", None)
         elif state.get("system"):
@@ -295,6 +332,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             else []
         )
         selected_faq = next((item for item in faqs if item.pk == state.get("selected_faq_id")), None)
+        last_selected_faq = next((item for item in faqs if item.pk == state.get("last_selected_faq_id")), None)
         resolved_item = next((item for item in faqs if item.pk == state.get("resolved_item_id")), None)
         return {
             "state": state,
@@ -306,6 +344,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             "selected_category": selected_category,
             "faqs": faqs,
             "selected_faq": selected_faq,
+            "last_selected_faq": last_selected_faq,
             "resolved_item": resolved_item,
             "other_selected": bool(state.get("other_selected")),
         }
@@ -329,25 +368,18 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
         transcript = [
             {
                 "speaker": "bot",
-                "title": "Support Assistant",
-                "body": "I’ll walk through the available FAQs first, then move into ticket cases only if the issue is still unresolved.",
+                "title": "Support Bot",
+                "body": "Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.",
             }
         ]
-        if context["selected_system"]:
-            transcript.append({"speaker": "user", "title": "System", "body": context["selected_system"]})
-        if context["selected_flow"]:
-            transcript.append({"speaker": "user", "title": "Flow", "body": context["selected_flow"]})
-        if context["selected_category"]:
-            transcript.append({"speaker": "user", "title": "Screen / Section", "body": context["selected_category"].name})
 
         if stage == "faq_answer" and context["selected_faq"]:
             selected_faq = context["selected_faq"]
-            transcript.append({"speaker": "user", "title": "Selected question", "body": selected_faq.name})
+            transcript.append({"speaker": "user", "title": "You", "body": selected_faq.name})
             transcript.append(
                 {
                     "speaker": "bot",
-                    "title": "Answer",
-                    "heading": selected_faq.name,
+                    "title": "Support Bot",
                     "body": (
                         selected_faq.solution_body
                         or selected_faq.summary
@@ -360,22 +392,22 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             transcript.append(
                 {
                     "speaker": "user",
-                    "title": "Selected option",
+                    "title": "You",
                     "body": "Other",
                 }
             )
             transcript.append(
                 {
                     "speaker": "bot",
-                    "title": "PM review",
-                    "body": "Describe the unlisted issue and attach a screenshot or image if available. This will be sent to the PM dashboard for review.",
+                    "title": "Support Bot",
+                    "body": "Describe the unlisted issue and attach a screenshot or image if available. This will be sent for PM review.",
                 }
             )
         elif stage == "resolved" and context["resolved_item"]:
             transcript.append(
                 {
                     "speaker": "bot",
-                    "title": "Resolved",
+                    "title": "Support Bot",
                     "body": f"Great. I’ll treat “{context['resolved_item'].name}” as the working solution for now.",
                 }
             )
@@ -457,6 +489,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                         "system": context["selected_system"],
                         "flow": context["selected_flow"],
                         "category_id": context["selected_category"].pk,
+                        "last_selected_faq_id": context["selected_faq"].pk if context["selected_faq"] else context["state"].get("last_selected_faq_id"),
                         "other_selected": True,
                     }
                 )
@@ -472,6 +505,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                     "flow": context["selected_flow"],
                     "category_id": context["selected_category"].pk,
                     "selected_faq_id": selected_faq.pk,
+                    "last_selected_faq_id": selected_faq.pk,
                 }
             )
             return redirect("support_center:assistant", user_type=self.user_type)
@@ -488,6 +522,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                         "flow": context["selected_flow"],
                         "category_id": context["selected_category"].pk,
                         "resolved_item_id": context["selected_faq"].pk,
+                        "last_selected_faq_id": context["selected_faq"].pk,
                     }
                 )
             else:
@@ -496,6 +531,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                         "system": context["selected_system"],
                         "flow": context["selected_flow"],
                         "category_id": context["selected_category"].pk,
+                        "last_selected_faq_id": context["selected_faq"].pk,
                     }
                 )
             return redirect("support_center:assistant", user_type=self.user_type)
@@ -507,11 +543,16 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 template_context = self.get_context_data(other_issue_form=form)
                 return self.render_to_response(template_context)
 
+            request_context = resolve_support_request_context(
+                selected_faq=context["last_selected_faq"],
+                selected_system=context["selected_system"],
+                selected_flow=context["selected_flow"],
+            )
             support_request = create_other_support_request(
                 user_type=self.user_type,
                 category=context["selected_category"],
-                system_name=context["selected_system"],
-                flow_name=context["selected_flow"],
+                system_name=request_context["system_name"],
+                flow_name=request_context["flow_name"],
                 form=form,
                 request_user=request.user,
             )
@@ -640,9 +681,13 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         form = kwargs.get("form") or self._get_form()
         ticket_types = TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by("category__name", "name")
+        uploaded_file_name = self.support_request.uploaded_file.name.split("/")[-1] if self.support_request.uploaded_file else ""
+        uploaded_file_is_image = uploaded_file_name.lower().endswith((".jpg", ".jpeg", ".png", ".heic", ".svg", ".webp"))
         context.update(
             {
                 "support_request": self.support_request,
+                "uploaded_file_name": uploaded_file_name,
+                "uploaded_file_is_image": uploaded_file_is_image,
                 "form": form,
                 "ticket_types_payload": [
                     {"id": ticket_type.id, "category_id": ticket_type.category_id, "name": ticket_type.name}
@@ -713,11 +758,20 @@ def support_faq_other_issue(request, user_type, super_slug, category_slug):
     if not form.is_valid():
         return JsonResponse({"success": False, "errors": form.errors.get_json_data()}, status=400)
 
+    selected_faq = None
+    selected_faq_id = request.POST.get("selected_faq_id")
+    if selected_faq_id:
+        selected_faq = next((item for item in combination["faq_items"] if str(item.pk) == str(selected_faq_id)), None)
+    request_context = resolve_support_request_context(
+        selected_faq=selected_faq,
+        selected_system=request.POST.get("source_system") or _requested_support_context(request)["system_name"] or combination["source_system"],
+        selected_flow=request.POST.get("source_flow") or _requested_support_context(request)["flow_name"] or combination["source_flow"],
+    )
     support_request = create_other_support_request(
         user_type=user_type,
         category=combination["category"],
-        system_name=combination["source_system"],
-        flow_name=combination["source_flow"] or GENERAL_SUPPORT_FLOW,
+        system_name=request_context["system_name"],
+        flow_name=request_context["flow_name"],
         form=form,
         request_user=request.user,
     )

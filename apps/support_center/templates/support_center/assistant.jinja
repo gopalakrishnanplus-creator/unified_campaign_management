@@ -97,7 +97,7 @@
                     </div>
                 {% elif stage in ['faq_menu', 'faq_answer'] %}
                     <p class="text-secondary">Select the question that best matches the issue. If none match, choose <strong>Other</strong>.</p>
-                    <form method="post" class="vstack gap-3">
+                    <form method="post" class="vstack gap-3" id="assistant-faq-form">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="select_faq">
                         <div class="list-group">
@@ -112,7 +112,6 @@
                                 <span>Other</span>
                             </label>
                         </div>
-                        <button class="btn btn-primary" type="submit">Show answer</button>
                     </form>
 
                     {% if selected_faq %}
@@ -131,18 +130,11 @@
                                 </div>
                             </div>
                         </div>
-                        <form method="post" class="vstack gap-3 mt-4">
+                        <form method="post" class="d-flex gap-2 flex-wrap mt-4">
                             {{ csrf_input }}
                             <input type="hidden" name="action" value="faq_resolution">
-                            <label class="list-group-item d-flex gap-3 align-items-start">
-                                <input class="form-check-input mt-1" type="radio" name="resolution" value="resolved" checked>
-                                <span>Resolved</span>
-                            </label>
-                            <label class="list-group-item d-flex gap-3 align-items-start">
-                                <input class="form-check-input mt-1" type="radio" name="resolution" value="unresolved">
-                                <span>Not Resolved</span>
-                            </label>
-                            <button class="btn btn-outline-primary" type="submit">Continue</button>
+                            <button class="btn btn-success" type="submit" name="resolution" value="resolved">Resolved</button>
+                            <button class="btn btn-outline-primary" type="submit" name="resolution" value="unresolved">Not Resolved</button>
                         </form>
                     {% elif not faqs %}
                         <div class="alert alert-warning rounded-4 mt-4 mb-0">No FAQ questions are configured for this combination yet. Select Other to send the issue to the PM dashboard.</div>
@@ -160,7 +152,7 @@
                                 {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
                             </div>
                         {% endfor %}
-                        <button class="btn btn-primary" type="submit">Send to PM dashboard</button>
+                        <button class="btn btn-primary" type="submit">Raise Query</button>
                     </form>
                 {% elif stage == 'resolved' %}
                     <div class="alert alert-success rounded-4">
@@ -175,4 +167,13 @@
         </div>
     </div>
 </div>
+<script>
+(() => {
+    const form = document.getElementById("assistant-faq-form");
+    if (!form) return;
+    form.querySelectorAll("input[name='selection']").forEach((input) => {
+        input.addEventListener("change", () => form.submit());
+    });
+})();
+</script>
 {% endblock %}

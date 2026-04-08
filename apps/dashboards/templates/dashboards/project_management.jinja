@@ -253,7 +253,7 @@
                         <tr>
                             <td>{{ row.request.created_at.strftime('%d %b %Y %H:%M') }}</td>
                             <td>
-                                {{ row.request.source_system or 'Customer support' }}
+                                {{ row.request.source_system or 'Not provided' }}
                                 <div class="text-secondary small">{{ row.request.user_type.replace('_', ' ').title() }}</div>
                             </td>
                             <td>
@@ -263,7 +263,18 @@
                             <td>{{ row.request.free_text }}</td>
                             <td>
                                 {% if row.request.uploaded_file %}
-                                    <a class="btn btn-sm btn-outline-secondary" href="{{ row.request.uploaded_file.url }}" target="_blank" rel="noreferrer">Open file</a>
+                                    <div class="d-flex flex-column gap-2 align-items-start">
+                                        <a class="btn btn-sm btn-outline-secondary" href="{{ row.request.uploaded_file.url }}" target="_blank" rel="noreferrer">Open file</a>
+                                        <span class="small text-secondary">{{ row.uploaded_file_name }}</span>
+                                        {% if row.uploaded_file_is_image %}
+                                            <img
+                                                src="{{ row.request.uploaded_file.url }}"
+                                                alt="Support evidence preview"
+                                                class="rounded-3 border"
+                                                style="width: 84px; height: 84px; object-fit: cover;"
+                                            >
+                                        {% endif %}
+                                    </div>
                                 {% else %}
                                     <span class="text-secondary">No file</span>
                                 {% endif %}

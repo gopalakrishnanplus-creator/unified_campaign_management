@@ -63,23 +63,19 @@ jobs:
               --exclude '.env' \
               --exclude 'venv' \
               --exclude '.venv' \
-              --exclude 'media' \
-              --exclude 'staticfiles' \
-              --exclude 'db.sqlite3' \
               --exclude '__pycache__' \
               --exclude '*.pyc' \
               --exclude '.pytest_cache' \
               --exclude '.mypy_cache' \
               "$DEPLOY_DIR"/ "$APP_DIR"/
 
-            cd "$APP_DIR"
-
-            export APP_DIR
-            export SHARED_VENV_DIR
+            export SHARED_VENV_DIR=/var/www/venv
             bash scripts/deploy_ec2.sh
 
-            if [ ! -x "$VENV_PYTHON" ]; then
-              echo "Shared virtualenv python not found at $VENV_PYTHON" >&2
+            if [ -d /var/www/venv ] && [ -x /var/www/venv/bin/activate ]; then
+              source /var/www/venv/bin/activate
+            else
+              echo "/var/www/venv is missing or not executable." >&2
               exit 1
             fi
 
@@ -215,7 +211,7 @@ jobs:
             print("campaigns:", Campaign.objects.count())
             PY
 
-            "$VENV_PYTHON" manage.py sync_internal_ticket_directory || true
+            python manage.py sync_internal_ticket_directory || true
 
             sudo systemctl restart campaign_management.service
             sudo systemctl restart nginx
