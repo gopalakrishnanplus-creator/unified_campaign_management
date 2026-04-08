@@ -1,13 +1,15 @@
 import logging
+import re
 from urllib.parse import urljoin
 
 import requests
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import User
 
-from .models import Ticket
+from .models import Department, Ticket
 
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,15 @@ USER_TYPE_MAP = {
     Ticket.UserType.PATIENT: "client",
 }
 
+TOKEN_SYNONYMS = {
+    "it": "tech",
+    "technical": "tech",
+    "technology": "tech",
+    "technologies": "tech",
+    "ops": "operations",
+    "operation": "operations",
+}
+
 
 def external_ticketing_enabled():
     return bool(settings.EXTERNAL_TICKETING_SYNC_ENABLED and settings.EXTERNAL_TICKETING_BASE_URL)
@@ -48,6 +59,24 @@ def external_ticketing_enabled():
 
 def should_sync_external_ticket(ticket):
     return bool(external_ticketing_enabled() and not ticket.external_ticket_number)
+
+
+def sync_external_directory():
+    if not external_ticketing_enabled():
+        return []
+
+    directory = fetch_system_directory()
+    synced_departments = []
+    with transaction.atomic():
+        for raw_department in directory.get("departments") or []:
+            external_department = enrich_department_with_manager(
+                raw_department,
+                directory.get("department_managers") or [],
+                directory.get("users") or [],
+            )
+            department = upsert_local_department(external_department)
+            synced_departments.append(department)
+    return synced_departments
 
 
 def sync_external_ticket(ticket_id):
@@ -176,6 +205,8 @@ def build_external_ticket_payload(ticket):
 
 
 def resolve_requester_number(ticket):
+    if ticket.requester_number:
+        return ticket.requester_number
     if ticket.requester_email:
         requester_user = User.objects.filter(email__iexact=ticket.requester_email).exclude(phone_number="").first()
         if requester_user and requester_user.phone_number:
@@ -210,18 +241,29 @@ def resolve_department_manager_email(ticket, external_department):
 
 
 def resolve_external_department(ticket):
-    directory = api_request("GET", "/client-tickets/api/lookups/system-directory/")
+    if ticket.department_id and (not ticket.department.external_directory_id or not ticket.department.default_recipient_id):
+        try:
+            sync_external_directory()
+            ticket.refresh_from_db()
+        except ExternalTicketingSyncError:
+            pass
+
+    directory = fetch_system_directory()
     departments = directory.get("departments") or []
     managers = directory.get("department_managers") or []
     users = directory.get("users") or []
 
     target_names = {normalize_value(ticket.department.name)}
     target_codes = {normalize_value(ticket.department.code)}
-    for mapped_value in configured_department_aliases(ticket.department):
-        normalized = normalize_value(mapped_value)
-        if normalized:
-            target_names.add(normalized)
-            target_codes.add(normalized)
+    if ticket.department.external_directory_name:
+        target_names.add(normalize_value(ticket.department.external_directory_name))
+    if ticket.department.external_directory_code:
+        target_codes.add(normalize_value(ticket.department.external_directory_code))
+
+    if ticket.department.external_directory_id:
+        for department in departments:
+            if department.get("id") == ticket.department.external_directory_id:
+                return enrich_department_with_manager(department, managers, users)
 
     for department in departments:
         if normalize_value(department.get("name")) in target_names:
@@ -251,9 +293,129 @@ def resolve_external_department(ticket):
                 users,
             )
 
+    fuzzy_match = find_best_department_match(target_names, target_codes, departments, managers, users)
+    if fuzzy_match:
+        return fuzzy_match
+
     raise ExternalTicketingSyncError(
         f"Could not match local department {ticket.department.name} ({ticket.department.code}) in the external system directory."
     )
+
+
+def fetch_system_directory():
+    return api_request("GET", "/client-tickets/api/lookups/system-directory/")
+
+
+def upsert_local_department(external_department):
+    department = find_local_department_for_external(external_department)
+    manager_user = upsert_external_manager_user(external_department)
+    support_email = determine_support_email(external_department, department=department, manager_user=manager_user)
+
+    defaults = {
+        "name": department.name if department else external_department.get("name") or "External Department",
+        "code": department.code if department else trim_department_code(external_department.get("code"), external_department.get("id")),
+        "description": department.description if department else "",
+        "support_email": support_email,
+        "default_recipient": manager_user,
+        "external_directory_name": external_department.get("name") or "",
+        "external_directory_code": external_department.get("code") or "",
+        "external_manager_email": external_department.get("manager_email") or "",
+        "is_active": bool(external_department.get("is_active", True)),
+    }
+
+    if department:
+        for field, value in defaults.items():
+            setattr(department, field, value)
+    else:
+        department = Department(**defaults)
+
+    department.external_directory_id = external_department.get("id")
+    department.save()
+    return department
+
+
+def find_local_department_for_external(external_department):
+    external_id = external_department.get("id")
+    external_code = normalize_value(external_department.get("code"))
+    external_name = normalize_value(external_department.get("name"))
+
+    if external_id:
+        department = Department.objects.filter(external_directory_id=external_id).first()
+        if department:
+            return department
+    if external_code:
+        department = Department.objects.filter(external_directory_code__iexact=external_department.get("code")).first()
+        if department:
+            return department
+        department = Department.objects.filter(code__iexact=external_department.get("code")).first()
+        if department:
+            return department
+    if external_name:
+        department = Department.objects.filter(external_directory_name__iexact=external_department.get("name")).first()
+        if department:
+            return department
+        department = Department.objects.filter(name__iexact=external_department.get("name")).first()
+        if department:
+            return department
+
+    target_tokens = tokenize_department_value(external_department.get("name")) | tokenize_department_value(
+        external_department.get("code")
+    )
+    best_score = 0
+    best_department = None
+    for department in Department.objects.all():
+        candidate_tokens = (
+            tokenize_department_value(department.name)
+            | tokenize_department_value(department.code)
+            | tokenize_department_value(department.external_directory_name)
+            | tokenize_department_value(department.external_directory_code)
+        )
+        score = len(target_tokens & candidate_tokens)
+        if score > best_score:
+            best_score = score
+            best_department = department
+    if best_score >= 2:
+        return best_department
+    return None
+
+
+def upsert_external_manager_user(external_department):
+    manager_email = (external_department.get("manager_email") or "").strip().lower()
+    if not manager_email:
+        return None
+    manager_name = (external_department.get("manager_name") or manager_email).strip()
+    user, _ = User.objects.update_or_create(
+        email=manager_email,
+        defaults={
+            "full_name": manager_name,
+            "role": User.Role.DEPARTMENT_OWNER,
+            "is_staff": True,
+            "company": "Inditech",
+        },
+    )
+    return user
+
+
+def determine_support_email(external_department, *, department=None, manager_user=None):
+    manager_email = (external_department.get("manager_email") or "").strip().lower()
+    if department and department.support_email:
+        if not manager_email or manager_email == department.support_email.lower():
+            return department.support_email
+    if manager_email and not Department.objects.exclude(pk=getattr(department, "pk", None)).filter(support_email__iexact=manager_email).exists():
+        return manager_email
+    code = external_department.get("code") or external_department.get("name") or f"department-{external_department.get('id')}"
+    slug = re.sub(r"[^a-z0-9]+", "-", normalize_value(code)).strip("-") or f"department-{external_department.get('id')}"
+    fallback = f"{slug}@inditech.local"
+    if Department.objects.exclude(pk=getattr(department, "pk", None)).filter(support_email__iexact=fallback).exists():
+        fallback = f"{slug}-{external_department.get('id')}@inditech.local"
+    return fallback
+
+
+def trim_department_code(code, external_id):
+    code = re.sub(r"[^A-Z0-9_-]+", "", str(code or "").upper())[:24]
+    if code:
+        return code
+    return f"EXT-{external_id}"[:24]
 
 
 def enrich_department_with_manager(department, managers, users):
@@ -300,18 +462,26 @@ def find_department_manager_record(department, managers):
     return None
 
 
-def configured_department_aliases(department):
-    mapping = settings.EXTERNAL_TICKETING_DEPARTMENT_MAP or {}
-    aliases = []
-    for key in (department.code, department.name):
-        value = mapping.get(key)
-        if isinstance(value, str):
-            aliases.append(value)
-        elif isinstance(value, (list, tuple)):
-            aliases.extend(value)
-        elif isinstance(value, dict):
-            aliases.extend([value.get("name"), value.get("code")])
-    return [alias for alias in aliases if alias]
+def find_best_department_match(target_names, target_codes, departments, managers, users):
+    target_tokens = set()
+    for value in [*target_names, *target_codes]:
+        target_tokens.update(tokenize_department_value(value))
+    if not target_tokens:
+        return None
+
+    best_score = 0
+    best_match = None
+    for department in departments:
+        candidate_tokens = tokenize_department_value(department.get("name")) | tokenize_department_value(department.get("code"))
+        score = len(target_tokens & candidate_tokens)
+        if score > best_score:
+            best_score = score
+            best_match = enrich_department_with_manager(department, managers, users)
+
+    if best_score >= 2:
+        return best_match
+
+    return None
 
 
 def resolve_external_ticket_type_id(ticket, *, department_id=None):
@@ -404,3 +574,15 @@ def log_line(message, **context):
         return f"[{timezone.now().strftime('%d %b %Y %H:%M:%S')}] {message}"
     context_blob = ", ".join(f"{key}={value}" for key, value in safe_context.items())
     return f"[{timezone.now().strftime('%d %b %Y %H:%M:%S')}] {message} {context_blob}"
+
+
+def tokenize_department_value(value):
+    normalized = normalize_value(value)
+    if not normalized:
+        return set()
+    tokens = {
+        TOKEN_SYNONYMS.get(token, token)
+        for token in re.split(r"[^a-z0-9]+", normalized)
+        if token
+    }
+    return tokens

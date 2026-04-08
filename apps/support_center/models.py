@@ -1,5 +1,11 @@
 from django.db import models
 from django.utils.text import slugify
+from django.core.validators import FileExtensionValidator
+
+
+def support_request_upload_to(instance, filename):
+    request_id = instance.pk or "pending"
+    return f"support-requests/{request_id}/{filename}"
 
 
 class SupportSuperCategory(models.Model):
@@ -106,6 +112,7 @@ class SupportItem(models.Model):
 
 class SupportRequest(models.Model):
     class Status(models.TextChoices):
+        PENDING_PM_REVIEW = "pending_pm_review", "Pending PM review"
         SOLUTION_PROVIDED = "solution_provided", "Solution provided"
         TICKET_CREATED = "ticket_created", "Ticket created"
 
@@ -115,8 +122,22 @@ class SupportRequest(models.Model):
     requester_company = models.CharField(max_length=255, blank=True)
     campaign = models.ForeignKey("campaigns.Campaign", null=True, blank=True, on_delete=models.SET_NULL, related_name="support_requests")
     item = models.ForeignKey(SupportItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="requests")
+    support_category = models.ForeignKey(
+        SupportCategory,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="requests",
+    )
+    source_system = models.CharField(max_length=120, blank=True)
+    source_flow = models.CharField(max_length=120, blank=True)
     subject = models.CharField(max_length=255)
     free_text = models.TextField(blank=True)
+    uploaded_file = models.FileField(
+        upload_to=support_request_upload_to,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "heic", "svg", "webp"])],
+    )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.TICKET_CREATED)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -125,3 +146,11 @@ class SupportRequest(models.Model):
 
     def __str__(self):
         return f"{self.requester_name} / {self.subject}"
+
+    @property
+    def super_category(self):
+        return self.support_category.super_category if self.support_category_id else None
+
+    @property
+    def screen_label(self):
+        return self.support_category.name if self.support_category_id else ""

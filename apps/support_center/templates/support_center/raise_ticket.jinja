@@ -1,33 +1,42 @@
 {% extends "base.jinja" %}
-{% block title %}Create Ticket{% endblock %}
+{% block title %}Raise Ticket From Support Issue{% endblock %}
 {% block content %}
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 rounded-4 h-100">
             <div class="card-body p-4">
-                <p class="eyebrow mb-1">Ticketing System</p>
-                <h1 class="h3 mb-3">Create a manual ticket</h1>
-                <p class="text-secondary mb-4">
-                    Tickets are now classified with a required category and ticket type. If the required type does not exist,
-                    create it directly while submitting the form. Departments are pulled from the internal ticketing directory,
-                    and each department auto-routes to its configured manager.
-                </p>
+                <p class="eyebrow mb-1">PM Review</p>
+                <h1 class="h3 mb-3">Raise ticket from support issue</h1>
+                <p class="text-secondary mb-4">Review the issue captured from the support widget, add any missing internal ticket fields, and then create the synced ticket.</p>
+
                 <div class="metric-row">
-                    <span>Classification flow</span>
-                    <strong>Category -> Type</strong>
+                    <span>System</span>
+                    <strong>{{ support_request.source_system or 'Customer support' }}</strong>
                 </div>
                 <div class="metric-row">
-                    <span>Dynamic ticket types</span>
-                    <strong>Enabled</strong>
+                    <span>Flow</span>
+                    <strong>{{ support_request.source_flow or 'General support' }}</strong>
                 </div>
                 <div class="metric-row">
-                    <span>Priority highlighting</span>
-                    <strong>Color coded</strong>
+                    <span>Screen</span>
+                    <strong>{{ support_request.screen_label or 'Not specified' }}</strong>
                 </div>
                 <div class="metric-row">
-                    <span>Internal routing</span>
-                    <strong>Department manager auto-assigned</strong>
+                    <span>Submitted</span>
+                    <strong>{{ support_request.created_at.strftime('%d %b %Y %H:%M') }}</strong>
                 </div>
+
+                <div class="mt-4">
+                    <h2 class="h6 mb-2">Issue description</h2>
+                    <p class="text-secondary mb-0">{{ support_request.free_text }}</p>
+                </div>
+
+                {% if support_request.uploaded_file %}
+                    <div class="mt-4">
+                        <h2 class="h6 mb-2">Uploaded file</h2>
+                        <a class="btn btn-outline-secondary btn-sm" href="{{ support_request.uploaded_file.url }}" target="_blank" rel="noreferrer">Open uploaded file</a>
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -38,7 +47,7 @@
                 {% if form.non_field_errors() %}
                     <div class="alert alert-danger rounded-4">{{ form.non_field_errors()|join(', ') }}</div>
                 {% endif %}
-                <form method="post" id="ticket-create-form">
+                <form method="post" id="raise-ticket-form">
                     {{ csrf_input }}
                     <div class="row g-3">
                         <div class="col-12">
@@ -51,26 +60,21 @@
                             {{ form.description }}
                             {% if form.description.errors %}<div class="text-danger small mt-1">{{ form.description.errors|join(', ') }}</div>{% endif %}
                         </div>
-
                         <div class="col-md-6">
                             <label class="form-label" for="{{ form.ticket_category.id_for_label }}">Ticket Category</label>
                             {{ form.ticket_category }}
-                            <div class="form-hint mt-1">Classification rules use this category first, then the selected or newly created ticket type.</div>
                             {% if form.ticket_category.errors %}<div class="text-danger small mt-1">{{ form.ticket_category.errors|join(', ') }}</div>{% endif %}
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="{{ form.ticket_type_definition.id_for_label }}">Ticket Type</label>
                             {{ form.ticket_type_definition }}
-                            <div class="form-hint mt-1">The list is filtered by the chosen category.</div>
                             {% if form.ticket_type_definition.errors %}<div class="text-danger small mt-1">{{ form.ticket_type_definition.errors|join(', ') }}</div>{% endif %}
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="{{ form.new_ticket_type_name.id_for_label }}">Create New Ticket Type</label>
                             {{ form.new_ticket_type_name }}
-                            <div class="form-hint mt-1">{{ form.new_ticket_type_name.help_text }}</div>
                             {% if form.new_ticket_type_name.errors %}<div class="text-danger small mt-1">{{ form.new_ticket_type_name.errors|join(', ') }}</div>{% endif %}
                         </div>
-
                         <div class="col-md-6">
                             <label class="form-label" for="{{ form.user_type.id_for_label }}">{{ form.user_type.label }}</label>
                             {{ form.user_type }}
@@ -94,7 +98,6 @@
                         <div class="col-md-6">
                             <label class="form-label" for="{{ form.department.id_for_label }}">{{ form.department.label }}</label>
                             {{ form.department }}
-                            <div class="form-hint mt-1">Selecting a department uses the synced internal ticketing directory and auto-routes to its manager.</div>
                             {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors|join(', ') }}</div>{% endif %}
                         </div>
                         <div class="col-md-6">
@@ -124,8 +127,8 @@
                         </div>
                     </div>
                     <div class="d-flex gap-2 flex-wrap mt-4">
-                        <button class="btn btn-primary" type="submit">Create ticket</button>
-                        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Back to ticket list</a>
+                        <button class="btn btn-primary" type="submit">Create synced ticket</button>
+                        <a class="btn btn-outline-secondary" href="{{ url('dashboards:home') }}">Back to PM dashboard</a>
                     </div>
                 </form>
             </div>

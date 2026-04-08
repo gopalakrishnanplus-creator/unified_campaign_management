@@ -1,11 +1,13 @@
 from collections import OrderedDict
 
+from django.conf import settings
 from django.db.models import Q
+from django.utils.text import Truncator
 
 from apps.ticketing.models import Department, Ticket
-from apps.ticketing.services import create_ticket
+from apps.ticketing.services import create_ticket, resolve_ticket_classification
 
-from .models import SupportCategory, SupportItem, SupportSuperCategory
+from .models import SupportCategory, SupportItem, SupportRequest, SupportSuperCategory
 
 
 ROLE_VISIBILITY_FIELD = {
@@ -103,6 +105,8 @@ def get_faq_combination(user_type, super_slug, category_slug):
         "category": category,
         "faq_items": faq_items,
         "faq_count": len(faq_items),
+        "source_system": faq_items[0].source_system,
+        "source_flow": faq_items[0].source_flow,
     }
 
 
@@ -166,6 +170,78 @@ def _resolve_department(item):
     if item and item.ticket_department_id:
         return item.ticket_department
     return Department.objects.filter(default_recipient__isnull=False, is_active=True).first()
+
+
+def _fallback_requester_identity(user_type, request_user):
+    if request_user and request_user.is_authenticated:
+        return {
+            "name": request_user.full_name or settings.PROJECT_MANAGER_EMAIL,
+            "email": request_user.email,
+            "company": request_user.company or "",
+        }
+    return {
+        "name": f"{user_type.replace('_', ' ').title()} support user",
+        "email": f"{user_type}.widget@support-widget.local",
+        "company": "",
+    }
+
+
+def create_other_support_request(*, user_type, category, system_name, flow_name, form, request_user):
+    support_request = form.save(commit=False)
+    requester = _fallback_requester_identity(user_type, request_user)
+    support_request.user_type = user_type
+    support_request.item = None
+    support_request.support_category = category
+    support_request.source_system = system_name or ""
+    support_request.source_flow = "" if flow_name == GENERAL_SUPPORT_FLOW else (flow_name or "")
+    support_request.requester_name = requester["name"]
+    support_request.requester_email = requester["email"]
+    support_request.requester_company = requester["company"]
+    support_request.subject = f"Other issue - {category.name}"
+    support_request.status = SupportRequest.Status.PENDING_PM_REVIEW
+    support_request.save()
+    return support_request
+
+
+def build_support_request_ticket_initial(support_request):
+    description_lines = [
+        support_request.free_text.strip(),
+        "",
+        "Support request context",
+        f"System: {support_request.source_system or 'Customer support'}",
+        f"Flow: {support_request.source_flow or GENERAL_SUPPORT_FLOW}",
+        f"Screen / Section: {support_request.screen_label or 'Not specified'}",
+        f"User type: {support_request.user_type.replace('_', ' ').title()}",
+        f"Requester name: {support_request.requester_name or 'Not provided'}",
+        f"Requester email: {support_request.requester_email or 'Not provided'}",
+        f"Requester company: {support_request.requester_company or 'Not provided'}",
+    ]
+    if support_request.uploaded_file:
+        description_lines.append(f"Uploaded file: {support_request.uploaded_file.name}")
+
+    classification = resolve_ticket_classification(
+        title=support_request.subject,
+        source_system=SOURCE_SYSTEM_TO_TICKET_SOURCE.get(
+            support_request.source_system,
+            Ticket.SourceSystem.CUSTOMER_SUPPORT,
+        ),
+    )
+    return {
+        "title": Truncator(support_request.free_text or support_request.subject).chars(80),
+        "description": "\n".join(line for line in description_lines if line is not None),
+        "ticket_category": classification["ticket_category"],
+        "ticket_type_definition": classification["ticket_type_definition"],
+        "priority": classification["priority"],
+        "campaign": support_request.campaign,
+        "user_type": support_request.user_type,
+        "source_system": SOURCE_SYSTEM_TO_TICKET_SOURCE.get(
+            support_request.source_system,
+            Ticket.SourceSystem.CUSTOMER_SUPPORT,
+        ),
+        "requester_name": support_request.requester_name,
+        "requester_email": support_request.requester_email,
+        "requester_company": support_request.requester_company,
+    }
 
 
 def submit_support_request(*, item, user_type, form, request_user):

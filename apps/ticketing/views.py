@@ -17,7 +17,7 @@ from .forms import (
     TicketNoteForm,
     TicketStatusForm,
 )
-from .models import Ticket, TicketTypeDefinition
+from .models import Department, Ticket, TicketTypeDefinition
 from .services import (
     build_ticket_distribution_data,
     build_ticket_priority_summary,
@@ -26,6 +26,7 @@ from .services import (
     delegate_ticket,
     return_ticket_to_sender,
 )
+from .external_ticketing import ExternalTicketingSyncError, external_ticketing_enabled, sync_external_directory
 
 
 PRIORITY_RANK = Case(
@@ -145,6 +146,31 @@ class TicketCreateView(LoginRequiredMixin, CreateView):
     template_name = "ticketing/create.jinja"
     template_engine = "jinja2"
 
+    def dispatch(self, request, *args, **kwargs):
+        self.synced_departments = None
+        if external_ticketing_enabled():
+            try:
+                self.synced_departments = sync_external_directory()
+                if not self.synced_departments:
+                    messages.warning(
+                        request,
+                        "No departments were returned from the internal ticketing directory. Ticket routing may be unavailable until that API is populated.",
+                    )
+            except ExternalTicketingSyncError as exc:
+                messages.warning(
+                    request,
+                    f"Internal ticketing directory sync could not be refreshed right now: {exc}",
+                )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        if self.synced_departments is not None:
+            synced_ids = [department.pk for department in self.synced_departments]
+            kwargs["departments"] = Department.objects.filter(pk__in=synced_ids, is_active=True).select_related("default_recipient").order_by("name")
+        return kwargs
+
     def form_valid(self, form):
         department = form.cleaned_data["department"]
         if not department.default_recipient:
@@ -165,8 +191,6 @@ class TicketCreateView(LoginRequiredMixin, CreateView):
         ticket = create_ticket(
             created_by=self.request.user,
             submitted_by=self.request.user,
-            direct_recipient=department.default_recipient,
-            current_assignee=department.default_recipient,
             ticket_category=form.cleaned_data["ticket_category"],
             ticket_type_definition=ticket_type_definition,
             new_ticket_type_name=form.cleaned_data.get("new_ticket_type_name"),

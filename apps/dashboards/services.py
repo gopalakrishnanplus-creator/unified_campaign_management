@@ -9,6 +9,7 @@ from django.urls import reverse
 
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
+from apps.support_center.models import SupportRequest
 from apps.ticketing.models import Ticket
 from apps.ticketing.services import build_ticket_distribution_data
 
@@ -314,6 +315,21 @@ def get_support_dashboard_data(campaign=None):
     ]
 
     ticket_distribution = build_ticket_distribution_data(tickets, period_days=30)
+    other_issue_requests = (
+        SupportRequest.objects.filter(status=SupportRequest.Status.PENDING_PM_REVIEW)
+        .select_related("campaign", "support_category__super_category", "ticket_link")
+        .order_by("-created_at")
+    )
+    if campaign:
+        other_issue_requests = other_issue_requests.filter(campaign=campaign)
+
+    other_issue_rows = [
+        {
+            "request": support_request,
+            "raise_ticket_url": reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}),
+        }
+        for support_request in other_issue_requests
+    ]
 
     return {
         "overview_cards": overview_cards,
@@ -326,6 +342,7 @@ def get_support_dashboard_data(campaign=None):
         "priority_breakdown": priority_breakdown,
         "category_breakdown": category_breakdown,
         "ticket_distribution": ticket_distribution,
+        "other_issue_rows": other_issue_rows,
         "chart_data": {
             "category": {
                 "labels": [row["label"] for row in category_breakdown],
@@ -352,6 +369,7 @@ def get_support_dashboard_data(campaign=None):
             "in_progress_tickets": in_progress_count,
             "completed_tickets": closed_count,
             "critical_tickets": critical_count,
+            "other_issue_requests": len(other_issue_rows),
         },
     }
 

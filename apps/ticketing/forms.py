@@ -45,14 +45,18 @@ class TicketCreateForm(forms.ModelForm):
             "user_type",
             "source_system",
             "priority",
+            "status",
             "department",
             "campaign",
             "requester_name",
             "requester_email",
+            "requester_number",
             "requester_company",
         ]
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.pop("user", None)
+        departments = kwargs.pop("departments", None)
         super().__init__(*args, **kwargs)
         self.fields["ticket_category"].queryset = TicketCategory.objects.filter(is_active=True).order_by("display_order", "name")
         self.fields["ticket_type_definition"].queryset = TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by(
@@ -60,6 +64,21 @@ class TicketCreateForm(forms.ModelForm):
             "category__name",
             "name",
         )
+        if departments is not None:
+            self.fields["department"].queryset = departments
+        else:
+            self.fields["department"].queryset = Department.objects.filter(is_active=True).order_by("name")
+        self.fields["department"].label_from_instance = self._department_label
+        self.fields["status"].required = False
+        self.fields["source_system"].initial = Ticket.SourceSystem.PROJECT_MANAGER
+        self.fields["user_type"].initial = Ticket.UserType.INTERNAL
+        self.fields["priority"].initial = Ticket.Priority.MEDIUM
+        self.fields["status"].initial = Ticket.Status.NOT_STARTED
+        if user and not self.is_bound:
+            self.fields["requester_name"].initial = user.full_name
+            self.fields["requester_email"].initial = user.email
+            self.fields["requester_number"].initial = user.phone_number
+            self.fields["requester_company"].initial = user.company
 
     def clean(self):
         cleaned_data = super().clean()
@@ -76,8 +95,21 @@ class TicketCreateForm(forms.ModelForm):
         if ticket_type_definition and category and ticket_type_definition.category_id != category.id:
             self.add_error("ticket_type_definition", "Selected ticket type does not belong to the chosen category.")
 
+        if not (cleaned_data.get("requester_number") or "").strip():
+            self.add_error("requester_number", "Requester number is required for internal ticket sync.")
+
         cleaned_data["new_ticket_type_name"] = new_ticket_type_name
         return cleaned_data
+
+    @staticmethod
+    def _department_label(department):
+        manager = ""
+        if department.default_recipient_id:
+            manager = department.default_recipient.full_name or department.default_recipient.email
+        label = department.display_name
+        if manager:
+            label = f"{label} - Auto route to {manager}"
+        return label
 
 
 class TicketStatusForm(forms.ModelForm):

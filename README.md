@@ -92,6 +92,7 @@ To add more monitored system URLs in the next cycle, set `STATUS_MONITOR_EXTRA_T
 ## Internal ticketing sync
 
 When enabled, every locally created ticket is mirrored into the internal ticketing system and assigned to the matched external department manager from `GET /client-tickets/api/lookups/system-directory/`.
+The PM ticket form also uses the synced internal directory so local department routing stays aligned with the internal ticketing system.
 
 Required environment variables:
 
@@ -102,7 +103,12 @@ Required environment variables:
 Optional but commonly needed:
 
 - `EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK=<default requester phone>`
-- `EXTERNAL_TICKETING_DEPARTMENT_MAP_JSON={"TECH":"IT_SUPPORT"}` when local and external department names/codes differ
+
+Manual sync command:
+
+```bash
+python manage.py sync_internal_ticket_directory
+```
 
 ## Database
 

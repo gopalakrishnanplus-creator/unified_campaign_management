@@ -2,16 +2,20 @@
 {% block title %}Support Request Logged{% endblock %}
 {% block content %}
 <div class="col-lg-8 mx-auto">
-    <div class="card shadow-sm border-0 rounded-4">
-        <div class="card-body p-5 text-center">
-            <p class="eyebrow mb-1">Customer Support</p>
-            <h1 class="mb-3">Support request logged</h1>
-            <p class="text-secondary">The request from {{ support_request.requester_email }} has been recorded and escalated through the ticketing system when applicable.</p>
-            <div class="d-flex justify-content-center gap-2">
-                <a class="btn btn-primary" href="{{ url('home') }}">Return home</a>
-                <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">View tickets</a>
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-5 text-center">
+                <p class="eyebrow mb-1">Customer Support</p>
+                <h1 class="mb-3">Support request logged</h1>
+                {% if support_request.status == 'pending_pm_review' %}
+                    <p class="text-secondary">The unlisted issue has been recorded and sent to the PM dashboard for review. A ticket can be raised from there if escalation is needed.</p>
+                {% else %}
+                    <p class="text-secondary">The request from {{ support_request.requester_email }} has been recorded and escalated through the ticketing system when applicable.</p>
+                {% endif %}
+                <div class="d-flex justify-content-center gap-2">
+                    <a class="btn btn-primary" href="{{ url('home') }}">Return home</a>
+                    <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">View tickets</a>
+                </div>
             </div>
-        </div>
     </div>
 </div>
 {% endblock %}

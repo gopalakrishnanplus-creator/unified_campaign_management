@@ -16,6 +16,10 @@ class Department(models.Model):
     code = models.CharField(max_length=24, unique=True)
     description = models.TextField(blank=True)
     support_email = models.EmailField(unique=True)
+    external_directory_id = models.PositiveIntegerField(null=True, blank=True, unique=True)
+    external_directory_name = models.CharField(max_length=120, blank=True)
+    external_directory_code = models.CharField(max_length=64, blank=True)
+    external_manager_email = models.EmailField(blank=True)
     default_recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -30,6 +34,14 @@ class Department(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def display_name(self):
+        return self.external_directory_name or self.name
+
+    @property
+    def display_code(self):
+        return self.external_directory_code or self.code
 
 
 class Ticket(models.Model):
@@ -112,6 +124,7 @@ class Ticket(models.Model):
     )
     requester_name = models.CharField(max_length=255)
     requester_email = models.EmailField()
+    requester_number = models.CharField(max_length=32, blank=True)
     requester_company = models.CharField(max_length=255, blank=True)
     external_ticket_number = models.CharField(max_length=20, blank=True)
     external_ticket_url = models.URLField(blank=True)
@@ -150,6 +163,11 @@ class Ticket(models.Model):
             self.direct_recipient = self.department.default_recipient
         if not self.current_assignee_id and self.direct_recipient_id:
             self.current_assignee = self.direct_recipient
+        if not self.requester_number:
+            for user in (self.created_by, self.submitted_by):
+                if user and user.phone_number:
+                    self.requester_number = user.phone_number
+                    break
         if self.status == self.Status.COMPLETED and not self.resolved_at:
             self.resolved_at = timezone.now()
         if self.status != self.Status.COMPLETED:
@@ -318,7 +336,11 @@ class TicketAttachment(models.Model):
     note = models.ForeignKey(TicketNote, on_delete=models.CASCADE, related_name="attachments")
     file = models.FileField(
         upload_to=ticket_attachment_upload_to,
-        validators=[FileExtensionValidator(allowed_extensions=["pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx", "txt"])],
+        validators=[
+            FileExtensionValidator(
+                allowed_extensions=["pdf", "png", "jpg", "jpeg", "heic", "svg", "webp", "doc", "docx", "xls", "xlsx", "txt"]
+            )
+        ],
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
