@@ -298,6 +298,8 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(links_response.status_code, 200)
         self.assertEqual(links_response.headers["Access-Control-Allow-Origin"], "*")
         self.assertGreaterEqual(links_response.json()["count"], 1)
+        self.assertIn("source_system", links_response.json()["results"][0])
+        self.assertIn("embed=1", links_response.json()["results"][0]["embed_url"])
 
         api_response = self.client.get(faq_api_url)
         self.assertEqual(api_response.status_code, 200)
