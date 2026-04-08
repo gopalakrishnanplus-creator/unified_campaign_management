@@ -208,8 +208,11 @@ def create_other_support_request(*, user_type, category, system_name, flow_name,
 def resolve_support_request_context(*, selected_faq=None, selected_system="", selected_flow=""):
     system_name = selected_system or ""
     flow_name = selected_flow or ""
-    if selected_faq:
+    if not system_name and selected_faq:
         system_name = selected_faq.source_system or system_name
+    if not flow_name and selected_faq and (
+        not system_name or system_name == (selected_faq.source_system or "")
+    ):
         flow_name = selected_faq.source_flow or flow_name
     return {
         "system_name": system_name,

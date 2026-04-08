@@ -122,29 +122,36 @@
             <p>{{ faq_payload.faq_count }} FAQ questions for this page-specific support widget</p>
         </div>
         <div class="widget-body">
-            <div class="transcript" id="transcript"></div>
             <div class="card shadow-sm border-0 rounded-4">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-                        <div>
-                            <h1 class="h5 mb-1">Support Bot</h1>
-                            <p class="text-secondary mb-0">Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.</p>
+                    <div id="selection-panel">
+                        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                            <div>
+                                <h1 class="h5 mb-1">Support Bot</h1>
+                                <p class="text-secondary mb-0">Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.</p>
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
+                        <div class="question-list" id="question-list"></div>
                     </div>
 
-                    <div class="question-list" id="question-list"></div>
-
-                    <div class="card bg-light-subtle border-0 rounded-4 mt-4 d-none" id="answer-panel">
-                        <div class="card-body">
-                            <p class="eyebrow mb-2">Selected question</p>
-                            <h2 class="h6 mb-2" id="selected-question"></h2>
-                            <p class="mb-0" id="selected-answer"></p>
-                            <div class="support-link-list" id="answer-links"></div>
+                    <div class="vstack gap-3 d-none" id="conversation-panel">
+                        <div class="bubble-row bubble-row-user">
+                            <div class="bubble">
+                                <div class="bubble-label">You</div>
+                                <div id="selected-question"></div>
+                            </div>
+                        </div>
+                        <div class="bubble-row">
+                            <div class="bubble">
+                                <div class="bubble-label">Support Bot</div>
+                                <div id="selected-answer"></div>
+                                <div class="support-link-list" id="answer-links"></div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="d-flex gap-2 flex-wrap mt-4 d-none" id="resolution-form">
+                    <div class="d-flex gap-2 flex-wrap mt-4 d-none" id="resolution-panel">
                         <button class="btn btn-success" type="button" data-resolution="resolved">Resolved</button>
                         <button class="btn btn-outline-primary" type="button" data-resolution="unresolved">Not Resolved</button>
                     </div>
@@ -177,11 +184,11 @@
         (() => {
             const apiUrl = {{ faq_payload.api_url|tojson }};
             const otherIssueUrl = {{ faq_payload.other_issue_url|tojson }};
-            const transcriptElement = document.getElementById("transcript");
+            const selectionPanel = document.getElementById("selection-panel");
             const questionListElement = document.getElementById("question-list");
             const restartButton = document.getElementById("restart-button");
-            const answerPanel = document.getElementById("answer-panel");
-            const resolutionForm = document.getElementById("resolution-form");
+            const conversationPanel = document.getElementById("conversation-panel");
+            const resolutionPanel = document.getElementById("resolution-panel");
             const otherForm = document.getElementById("other-form");
             const selectedQuestionElement = document.getElementById("selected-question");
             const selectedAnswerElement = document.getElementById("selected-answer");
@@ -203,25 +210,15 @@
                 return cookieValue ? decodeURIComponent(cookieValue.split("=").slice(1).join("=")) : "";
             }
 
-            function appendMessage(role, title, body) {
-                const row = document.createElement("div");
-                row.className = `bubble-row ${role === "user" ? "bubble-row-user" : ""}`;
-
-                const bubble = document.createElement("div");
-                bubble.className = "bubble";
-
-                const label = document.createElement("div");
-                label.className = "bubble-label";
-                label.textContent = title;
-                bubble.appendChild(label);
-
-                const text = document.createElement("div");
-                text.textContent = body;
-                bubble.appendChild(text);
-
-                row.appendChild(bubble);
-                transcriptElement.appendChild(row);
-                transcriptElement.scrollTop = transcriptElement.scrollHeight;
+            function inferSystemFromReferrer(referrer) {
+                const value = (referrer || "").toLowerCase();
+                if (!value) return "";
+                if (value.includes("in-clinic") || value.includes("inclinic")) return "In-clinic";
+                if (value.includes("patient-education") || value.includes("patienteducation") || value.includes("patient_education")) return "Patient Education";
+                if (value.includes("red-flag") || value.includes("red_flag") || value.includes("redflag") || value.includes("/rfa") || value.includes("sapa")) {
+                    return "Red Flag Alert";
+                }
+                return "";
             }
 
             function setStatus(message, variant) {
@@ -244,6 +241,17 @@
                     links.push({ label: "Video", url: faq.video_url });
                 }
                 return links;
+            }
+
+            function showSelectionPanel() {
+                selectionPanel.classList.remove("d-none");
+                conversationPanel.classList.add("d-none");
+                resolutionPanel.classList.add("d-none");
+                otherForm.classList.add("d-none");
+            }
+
+            function hideSelectionPanel() {
+                selectionPanel.classList.add("d-none");
             }
 
             function renderQuestions() {
@@ -274,11 +282,9 @@
                     input.addEventListener("change", () => {
                         clearStatus();
                         if (input.value === "other") {
-                            answerPanel.classList.add("d-none");
-                            resolutionForm.classList.add("d-none");
+                            hideSelectionPanel();
+                            conversationPanel.classList.add("d-none");
                             otherForm.classList.remove("d-none");
-                            appendMessage("user", "You", "Other");
-                            appendMessage("bot", "Support Bot", "Describe the unlisted issue and attach a screenshot or image if available. This will be sent for PM review.");
                             return;
                         }
 
@@ -294,13 +300,12 @@
 
             function resetPanels() {
                 state.selectedFaq = null;
-                answerPanel.classList.add("d-none");
-                resolutionForm.classList.add("d-none");
-                otherForm.classList.add("d-none");
+                showSelectionPanel();
                 clearStatus();
                 questionListElement.querySelectorAll("input[name='selection']").forEach((input) => {
                     input.checked = false;
                 });
+                otherForm.reset();
             }
 
             function showSelectedAnswer(faq) {
@@ -318,24 +323,17 @@
                     anchor.textContent = link.label;
                     answerLinksElement.appendChild(anchor);
                 });
-                answerPanel.classList.remove("d-none");
-                resolutionForm.classList.remove("d-none");
+                hideSelectionPanel();
+                conversationPanel.classList.remove("d-none");
+                resolutionPanel.classList.remove("d-none");
                 otherForm.classList.add("d-none");
                 clearStatus();
-                appendMessage("user", "You", faq.question);
-                appendMessage("bot", "Support Bot", faq.answer || faq.summary || "No answer has been configured yet.");
             }
 
             function resetConversation() {
-                transcriptElement.innerHTML = "";
                 state.lastSelectedFaq = null;
                 resetPanels();
                 renderQuestions();
-                appendMessage(
-                    "bot",
-                    "Support Bot",
-                    "Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved."
-                );
             }
 
             async function loadFaqs() {
@@ -346,18 +344,16 @@
                 resetConversation();
             }
 
-            resolutionForm.querySelectorAll("button[data-resolution]").forEach((button) => {
+            resolutionPanel.querySelectorAll("button[data-resolution]").forEach((button) => {
                 button.addEventListener("click", () => {
                     if (button.dataset.resolution === "resolved") {
                         setStatus("Issue marked as resolved. You can restart the widget for another issue.", "success");
-                        appendMessage("bot", "Support Bot", "Great. I’ve marked this issue as resolved.");
-                        resolutionForm.classList.add("d-none");
+                        resolutionPanel.classList.add("d-none");
                         otherForm.classList.add("d-none");
                         return;
                     }
 
-                    appendMessage("user", "You", "Not Resolved");
-                    appendMessage("bot", "Support Bot", "Okay, please select another question from the list or choose Other.");
+                    setStatus("Please select another question or choose Other.", "secondary");
                     resetPanels();
                     renderQuestions();
                 });
@@ -371,21 +367,27 @@
                     setStatus("Please describe the issue before raising the query.", "warning");
                     return;
                 }
+                formData.set("context_referrer", document.referrer || "");
                 const contextFaq = state.selectedFaq || state.lastSelectedFaq;
-                if (contextFaq) {
-                    formData.set("selected_faq_id", String(contextFaq.id));
-                    if (contextFaq.source_system) {
-                        formData.set("source_system", contextFaq.source_system);
+                const inferredSystem = inferSystemFromReferrer(document.referrer);
+                if (inferredSystem) {
+                    formData.set("source_system", inferredSystem);
+                    if (state.payload && state.payload.super_category && state.payload.super_category.name) {
+                        formData.set("source_flow", state.payload.super_category.name);
                     }
-                    if (contextFaq.source_flow) {
-                        formData.set("source_flow", contextFaq.source_flow);
-                    }
-                } else if (state.payload) {
-                    if (state.payload.source_system) {
-                        formData.set("source_system", state.payload.source_system);
-                    }
+                } else if (state.payload && state.payload.source_system) {
+                    formData.set("source_system", state.payload.source_system);
                     if (state.payload.source_flow) {
                         formData.set("source_flow", state.payload.source_flow);
+                    }
+                }
+                if (contextFaq) {
+                    formData.set("selected_faq_id", String(contextFaq.id));
+                    if (!formData.get("source_system") && contextFaq.source_system) {
+                        formData.set("source_system", contextFaq.source_system);
+                    }
+                    if (!formData.get("source_flow") && contextFaq.source_flow) {
+                        formData.set("source_flow", contextFaq.source_flow);
                     }
                 }
                 try {
@@ -401,12 +403,9 @@
                         setStatus("The issue could not be submitted. Please review the details and try again.", "danger");
                         return;
                     }
-                    appendMessage("user", "You", formData.get("free_text"));
-                    appendMessage("bot", "Support Bot", payload.message || "Issue recorded for PM review.");
                     setStatus(payload.message || "Issue recorded for PM review.", "success");
-                    otherForm.reset();
-                    answerPanel.classList.add("d-none");
-                    resolutionForm.classList.add("d-none");
+                    conversationPanel.classList.add("d-none");
+                    resolutionPanel.classList.add("d-none");
                 } catch (error) {
                     setStatus("The issue could not be submitted right now. Please try again.", "danger");
                 }

@@ -402,6 +402,45 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.source_flow, "In-clinic Content")
         self.assertNotEqual(support_request.source_system, first_faq.source_system)
 
+    def test_widget_other_issue_prefers_explicit_system_context_over_faq_source_system(self):
+        faq_super = SupportSuperCategory.objects.create(name="Override Widget Tests", slug="override-widget-tests")
+        faq_category = SupportCategory.objects.create(super_category=faq_super, name="Sharing & Activation", slug="sharing-activation")
+        generic_faq = SupportItem.objects.create(
+            category=faq_category,
+            name="Doctor or clinic has not been added to the campaign",
+            slug="doctor-or-clinic-has-not-been-added-to-the-campaign",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="Capture the onboarding context and escalate to campaign operations.",
+            source_system="Customer support",
+            source_flow="General support",
+            is_visible_to_brand_managers=True,
+            is_visible_to_doctors=False,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_field_reps=False,
+        )
+
+        response = self.client.post(
+            reverse(
+                "support_center:faq_other_issue",
+                kwargs={"user_type": "brand_manager", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+            ),
+            data={
+                "free_text": "Testing the chat from the In-clinic system.",
+                "uploaded_file": SimpleUploadedFile("contact.jpg", b"image-bytes", content_type="image/jpeg"),
+                "selected_faq_id": generic_faq.pk,
+                "source_system": "In-clinic",
+                "source_flow": "Campaign Operations",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+
+        support_request = SupportRequest.objects.get(pk=payload["request_id"])
+        self.assertEqual(support_request.source_system, "In-clinic")
+        self.assertEqual(support_request.source_flow, "Campaign Operations")
+        self.assertTrue(support_request.uploaded_file.name.endswith(".jpg"))
+
     def test_pm_can_raise_ticket_from_other_issue_submission(self):
         support_request = SupportRequest.objects.create(
             user_type="doctor",
