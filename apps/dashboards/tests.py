@@ -308,7 +308,8 @@ class SeededIntegrationTestCase(TestCase):
         widget_response = self.client.get(f"{widget_url}?embed=1")
         self.assertEqual(widget_response.status_code, 200)
         self.assertNotIn("X-Frame-Options", widget_response.headers)
-        self.assertContains(widget_response, "Customer chat support")
+        self.assertContains(widget_response, "Support Bot")
+        self.assertNotContains(widget_response, "Show Answer")
 
     def test_widget_other_issue_submission_records_pm_review_item(self):
         faq_super = SupportSuperCategory.objects.create(name="Widget Flow Tests", slug="widget-flow-tests")
@@ -349,6 +350,58 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.support_category, faq_category)
         self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
 
+    def test_widget_other_issue_uses_selected_faq_context_when_category_has_mixed_systems(self):
+        faq_super = SupportSuperCategory.objects.create(name="Mixed Widget Tests", slug="mixed-widget-tests")
+        faq_category = SupportCategory.objects.create(super_category=faq_super, name="Shared Screen", slug="shared-screen")
+        first_faq = SupportItem.objects.create(
+            category=faq_category,
+            name="Generic support question",
+            slug="generic-support-question",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="Generic support answer.",
+            source_system="Customer support",
+            source_flow="General support",
+            is_visible_to_brand_managers=True,
+            is_visible_to_doctors=False,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_field_reps=False,
+        )
+        second_faq = SupportItem.objects.create(
+            category=faq_category,
+            name="In-clinic issue question",
+            slug="in-clinic-issue-question",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="In-clinic answer.",
+            source_system="In-clinic",
+            source_flow="In-clinic Content",
+            is_visible_to_brand_managers=True,
+            is_visible_to_doctors=False,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_field_reps=False,
+            display_order=2,
+        )
+
+        response = self.client.post(
+            reverse(
+                "support_center:faq_other_issue",
+                kwargs={"user_type": "brand_manager", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+            ),
+            data={
+                "free_text": "The in-clinic screen is blank and I need help.",
+                "uploaded_file": SimpleUploadedFile("evidence.png", b"image-bytes", content_type="image/png"),
+                "selected_faq_id": second_faq.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+
+        support_request = SupportRequest.objects.get(pk=payload["request_id"])
+        self.assertEqual(support_request.support_category, faq_category)
+        self.assertEqual(support_request.source_system, "In-clinic")
+        self.assertEqual(support_request.source_flow, "In-clinic Content")
+        self.assertNotEqual(support_request.source_system, first_faq.source_system)
+
     def test_pm_can_raise_ticket_from_other_issue_submission(self):
         support_request = SupportRequest.objects.create(
             user_type="doctor",
@@ -375,6 +428,8 @@ class SeededIntegrationTestCase(TestCase):
         raise_page = self.client.get(raise_url)
         self.assertEqual(raise_page.status_code, 200)
         self.assertContains(raise_page, "Raise ticket from support issue")
+        self.assertContains(raise_page, "This file will be attached to the created ticket automatically.")
+        self.assertContains(raise_page, "viewer.png")
 
         category = TicketCategory.objects.get(name="Support")
         ticket_type = TicketTypeDefinition.objects.get(category=category, name="Query")

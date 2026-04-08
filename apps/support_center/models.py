@@ -1,11 +1,12 @@
+import uuid
+
 from django.db import models
 from django.utils.text import slugify
 from django.core.validators import FileExtensionValidator
 
 
 def support_request_upload_to(instance, filename):
-    request_id = instance.pk or "pending"
-    return f"support-requests/{request_id}/{filename}"
+    return f"support-requests/{uuid.uuid4().hex}/{filename}"
 
 
 class SupportSuperCategory(models.Model):

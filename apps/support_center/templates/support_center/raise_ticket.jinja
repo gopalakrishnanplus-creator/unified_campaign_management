@@ -11,7 +11,7 @@
 
                 <div class="metric-row">
                     <span>System</span>
-                    <strong>{{ support_request.source_system or 'Customer support' }}</strong>
+                    <strong>{{ support_request.source_system or 'Not provided' }}</strong>
                 </div>
                 <div class="metric-row">
                     <span>Flow</span>
@@ -34,7 +34,19 @@
                 {% if support_request.uploaded_file %}
                     <div class="mt-4">
                         <h2 class="h6 mb-2">Uploaded file</h2>
-                        <a class="btn btn-outline-secondary btn-sm" href="{{ support_request.uploaded_file.url }}" target="_blank" rel="noreferrer">Open uploaded file</a>
+                        <p class="text-secondary mb-2">{{ uploaded_file_name }}</p>
+                        <div class="d-flex gap-2 flex-wrap mb-3">
+                            <a class="btn btn-outline-secondary btn-sm" href="{{ support_request.uploaded_file.url }}" target="_blank" rel="noreferrer">Open uploaded file</a>
+                            <span class="badge text-bg-light border">This file will be attached to the created ticket automatically.</span>
+                        </div>
+                        {% if uploaded_file_is_image %}
+                            <img
+                                src="{{ support_request.uploaded_file.url }}"
+                                alt="Uploaded support evidence"
+                                class="img-fluid rounded-4 border"
+                                style="max-height: 260px; object-fit: contain;"
+                            >
+                        {% endif %}
                     </div>
                 {% endif %}
             </div>

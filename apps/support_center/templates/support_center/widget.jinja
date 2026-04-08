@@ -127,16 +127,13 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
                         <div>
-                            <h1 class="h5 mb-1">Customer chat support</h1>
-                            <p class="text-secondary mb-0">Select the matching FAQ question. After the answer appears, mark it resolved or return to the list. Use Other when the issue is not listed.</p>
+                            <h1 class="h5 mb-1">Support Bot</h1>
+                            <p class="text-secondary mb-0">Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.</p>
                         </div>
                         <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
                     </div>
 
-                    <form id="faq-form" class="vstack gap-3">
-                        <div class="question-list" id="question-list"></div>
-                        <button class="btn btn-primary" type="submit">Show Answer</button>
-                    </form>
+                    <div class="question-list" id="question-list"></div>
 
                     <div class="card bg-light-subtle border-0 rounded-4 mt-4 d-none" id="answer-panel">
                         <div class="card-body">
@@ -147,19 +144,10 @@
                         </div>
                     </div>
 
-                    <form class="vstack gap-3 mt-4 d-none" id="resolution-form">
-                        <div class="resolution-list">
-                            <label class="resolution-option d-flex gap-3 align-items-start">
-                                <input class="form-check-input mt-1" type="radio" name="resolution" value="resolved" checked>
-                                <span>Resolved</span>
-                            </label>
-                            <label class="resolution-option d-flex gap-3 align-items-start">
-                                <input class="form-check-input mt-1" type="radio" name="resolution" value="unresolved">
-                                <span>Not Resolved</span>
-                            </label>
-                        </div>
-                        <button class="btn btn-outline-primary" type="submit">Continue</button>
-                    </form>
+                    <div class="d-flex gap-2 flex-wrap mt-4 d-none" id="resolution-form">
+                        <button class="btn btn-success" type="button" data-resolution="resolved">Resolved</button>
+                        <button class="btn btn-outline-primary" type="button" data-resolution="unresolved">Not Resolved</button>
+                    </div>
 
                     <form class="vstack gap-3 mt-4 d-none" id="other-form" enctype="multipart/form-data">
                         <div>
@@ -171,7 +159,7 @@
                             <input class="form-control" id="other-file" type="file" name="uploaded_file" accept=".jpg,.jpeg,.png,.heic,.svg,.webp">
                             <div class="form-text">Allowed formats: .jpg, .jpeg, .png, .heic, .svg, .webp</div>
                         </div>
-                        <button class="btn btn-primary" type="submit">Send to PM dashboard</button>
+                        <button class="btn btn-primary" type="submit">Raise Query</button>
                     </form>
 
                     <div class="alert rounded-4 mt-4 d-none" id="status-message"></div>
@@ -191,7 +179,6 @@
             const otherIssueUrl = {{ faq_payload.other_issue_url|tojson }};
             const transcriptElement = document.getElementById("transcript");
             const questionListElement = document.getElementById("question-list");
-            const faqForm = document.getElementById("faq-form");
             const restartButton = document.getElementById("restart-button");
             const answerPanel = document.getElementById("answer-panel");
             const resolutionForm = document.getElementById("resolution-form");
@@ -202,8 +189,10 @@
             const statusMessageElement = document.getElementById("status-message");
 
             const state = {
+                payload: null,
                 faqs: [],
                 selectedFaq: null,
+                lastSelectedFaq: null,
             };
 
             function getCookie(name) {
@@ -280,6 +269,27 @@
                     </div>
                 `;
                 questionListElement.appendChild(otherWrapper);
+
+                questionListElement.querySelectorAll("input[name='selection']").forEach((input) => {
+                    input.addEventListener("change", () => {
+                        clearStatus();
+                        if (input.value === "other") {
+                            answerPanel.classList.add("d-none");
+                            resolutionForm.classList.add("d-none");
+                            otherForm.classList.remove("d-none");
+                            appendMessage("user", "You", "Other");
+                            appendMessage("bot", "Support Bot", "Describe the unlisted issue and attach a screenshot or image if available. This will be sent for PM review.");
+                            return;
+                        }
+
+                        const faq = state.faqs.find((entry) => String(entry.id) === input.value);
+                        if (!faq) {
+                            setStatus("That question could not be loaded.", "warning");
+                            return;
+                        }
+                        showSelectedAnswer(faq);
+                    });
+                });
             }
 
             function resetPanels() {
@@ -288,11 +298,14 @@
                 resolutionForm.classList.add("d-none");
                 otherForm.classList.add("d-none");
                 clearStatus();
-                faqForm.reset();
+                questionListElement.querySelectorAll("input[name='selection']").forEach((input) => {
+                    input.checked = false;
+                });
             }
 
             function showSelectedAnswer(faq) {
                 state.selectedFaq = faq;
+                state.lastSelectedFaq = faq;
                 selectedQuestionElement.textContent = faq.question;
                 selectedAnswerElement.textContent = faq.answer || faq.summary || "No answer has been configured yet.";
                 answerLinksElement.innerHTML = "";
@@ -315,6 +328,7 @@
 
             function resetConversation() {
                 transcriptElement.innerHTML = "";
+                state.lastSelectedFaq = null;
                 resetPanels();
                 renderQuestions();
                 appendMessage(
@@ -327,56 +341,26 @@
             async function loadFaqs() {
                 const response = await fetch(apiUrl);
                 const payload = await response.json();
+                state.payload = payload;
                 state.faqs = payload.faqs || [];
                 resetConversation();
             }
 
-            faqForm.addEventListener("submit", (event) => {
-                event.preventDefault();
-                clearStatus();
-                const selected = faqForm.querySelector("input[name='selection']:checked");
-                if (!selected) {
-                    setStatus("Please select a question or choose Other.", "warning");
-                    return;
-                }
+            resolutionForm.querySelectorAll("button[data-resolution]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    if (button.dataset.resolution === "resolved") {
+                        setStatus("Issue marked as resolved. You can restart the widget for another issue.", "success");
+                        appendMessage("bot", "Support Bot", "Great. I’ve marked this issue as resolved.");
+                        resolutionForm.classList.add("d-none");
+                        otherForm.classList.add("d-none");
+                        return;
+                    }
 
-                if (selected.value === "other") {
-                    answerPanel.classList.add("d-none");
-                    resolutionForm.classList.add("d-none");
-                    otherForm.classList.remove("d-none");
-                    appendMessage("user", "You", "Other");
-                    appendMessage("bot", "Support Bot", "Please describe the issue and upload one image if that helps. This will go to the PM dashboard for review.");
-                    return;
-                }
-
-                const faq = state.faqs.find((entry) => String(entry.id) === selected.value);
-                if (!faq) {
-                    setStatus("That question could not be loaded.", "warning");
-                    return;
-                }
-                showSelectedAnswer(faq);
-            });
-
-            resolutionForm.addEventListener("submit", (event) => {
-                event.preventDefault();
-                const selectedResolution = resolutionForm.querySelector("input[name='resolution']:checked");
-                if (!selectedResolution) {
-                    setStatus("Please choose Resolved or Not Resolved.", "warning");
-                    return;
-                }
-
-                if (selectedResolution.value === "resolved") {
-                    setStatus("Issue marked as resolved. You can restart the widget for another issue.", "success");
-                    appendMessage("bot", "Support Bot", "Great. I’ve marked this issue as resolved.");
-                    resolutionForm.classList.add("d-none");
-                    otherForm.classList.add("d-none");
-                    return;
-                }
-
-                appendMessage("user", "You", "Not Resolved");
-                appendMessage("bot", "Support Bot", "Okay, please select another question from the list or choose Other.");
-                resetPanels();
-                renderQuestions();
+                    appendMessage("user", "You", "Not Resolved");
+                    appendMessage("bot", "Support Bot", "Okay, please select another question from the list or choose Other.");
+                    resetPanels();
+                    renderQuestions();
+                });
             });
 
             otherForm.addEventListener("submit", async (event) => {
@@ -384,8 +368,25 @@
                 clearStatus();
                 const formData = new FormData(otherForm);
                 if (!(formData.get("free_text") || "").trim()) {
-                    setStatus("Please describe the issue before sending it to the PM dashboard.", "warning");
+                    setStatus("Please describe the issue before raising the query.", "warning");
                     return;
+                }
+                const contextFaq = state.selectedFaq || state.lastSelectedFaq;
+                if (contextFaq) {
+                    formData.set("selected_faq_id", String(contextFaq.id));
+                    if (contextFaq.source_system) {
+                        formData.set("source_system", contextFaq.source_system);
+                    }
+                    if (contextFaq.source_flow) {
+                        formData.set("source_flow", contextFaq.source_flow);
+                    }
+                } else if (state.payload) {
+                    if (state.payload.source_system) {
+                        formData.set("source_system", state.payload.source_system);
+                    }
+                    if (state.payload.source_flow) {
+                        formData.set("source_flow", state.payload.source_flow);
+                    }
                 }
                 try {
                     const response = await fetch(otherIssueUrl, {
