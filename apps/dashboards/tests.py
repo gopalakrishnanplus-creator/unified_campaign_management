@@ -11,8 +11,9 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
 from apps.support_center.services import get_faq_combination
-from apps.support_center.models import SupportCategory, SupportItem, SupportSuperCategory
-from apps.ticketing.models import Department, Ticket, TicketCategory, TicketNote, TicketTypeDefinition
+from apps.support_center.models import SupportCategory, SupportItem, SupportRequest, SupportSuperCategory
+from apps.ticketing.models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketTypeDefinition
+from apps.ticketing.external_ticketing import sync_external_directory
 from apps.ticketing.services import create_ticket
 
 
@@ -78,10 +79,12 @@ class SeededIntegrationTestCase(TestCase):
                 "user_type": Ticket.UserType.INTERNAL,
                 "source_system": Ticket.SourceSystem.PROJECT_MANAGER,
                 "priority": Ticket.Priority.CRITICAL,
+                "status": Ticket.Status.NOT_STARTED,
                 "department": self.ticket.department.pk,
                 "campaign": self.campaign.pk,
                 "requester_name": "Campaign PM",
                 "requester_email": "campaignpm+dynamic@example.com",
+                "requester_number": "+919999999999",
                 "requester_company": "Inditech",
             },
             follow=True,
@@ -222,7 +225,7 @@ class SeededIntegrationTestCase(TestCase):
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.current_assignee, backup_user)
 
-    def test_support_assistant_escalates_ticket_case(self):
+    def test_support_assistant_records_other_issue_for_pm_review(self):
         assistant_super = SupportSuperCategory.objects.create(name="Assistant Flow Tests", slug="assistant-flow-tests")
         assistant_category = SupportCategory.objects.create(
             super_category=assistant_super,
@@ -247,53 +250,30 @@ class SeededIntegrationTestCase(TestCase):
             is_visible_to_brand_managers=False,
             is_visible_to_field_reps=False,
         )
-        ticket_case = SupportItem.objects.create(
-            category=assistant_category,
-            name="Ticket case for assistant",
-            slug="ticket-case-for-assistant",
-            summary="Escalate after FAQ failure.",
-            knowledge_type=SupportItem.KnowledgeType.TICKET_CASE,
-            response_mode=SupportItem.ResponseMode.DIRECT_TICKET,
-            solution_body="Escalate this to the technical support queue.",
-            ticket_department=self.ticket.department,
-            default_ticket_type="Assistant issue",
-            source_system="In-clinic",
-            source_flow="Assistant Flow",
-            ticket_required=True,
-            is_visible_to_doctors=True,
-            is_visible_to_clinic_staff=False,
-            is_visible_to_brand_managers=False,
-            is_visible_to_field_reps=False,
-        )
 
         assistant_url = reverse("support_center:assistant", kwargs={"user_type": "doctor"})
-        ticket_count = Ticket.objects.count()
-
         self.assertEqual(self.client.get(assistant_url).status_code, 200)
         self.client.post(assistant_url, data={"action": "choose_system", "system": "In-clinic"})
         self.client.post(assistant_url, data={"action": "choose_flow", "flow": "Assistant Flow"})
         self.client.post(assistant_url, data={"action": "choose_category", "category_id": assistant_category.pk})
-        self.client.post(assistant_url, data={"action": "faq_feedback", "resolution": "unresolved"})
-        self.client.post(assistant_url, data={"action": "select_ticket_case", "item_id": ticket_case.pk})
+        self.client.post(assistant_url, data={"action": "select_faq", "selection": "other"})
         response = self.client.post(
             assistant_url,
             data={
-                "action": "create_ticket",
-                "requester_name": "Support Assistant User",
-                "requester_email": "assistant.user@example.com",
-                "requester_company": "Inditech Clinic",
-                "campaign": self.campaign.pk,
-                "subject": ticket_case.name,
-                "free_text": "The FAQ did not solve the issue.",
+                "action": "submit_other_issue",
+                "free_text": "The FAQ list did not cover the patient verification issue.",
+                "uploaded_file": SimpleUploadedFile("evidence.webp", b"image-bytes", content_type="image/webp"),
             },
             follow=True,
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Ticket.objects.count(), ticket_count + 1)
-        created_ticket = Ticket.objects.get(requester_email="assistant.user@example.com")
-        self.assertEqual(created_ticket.title, ticket_case.name)
-        self.assertEqual(created_ticket.source_system, Ticket.SourceSystem.IN_CLINIC)
+        support_request = SupportRequest.objects.get(status=SupportRequest.Status.PENDING_PM_REVIEW)
+        self.assertEqual(support_request.support_category, assistant_category)
+        self.assertEqual(support_request.source_system, "In-clinic")
+        self.assertEqual(support_request.source_flow, "Assistant Flow")
+        self.assertTrue(support_request.uploaded_file.name.endswith(".webp"))
+        self.assertFalse(Ticket.objects.filter(support_request=support_request).exists())
 
     def test_faq_page_api_and_widget_render(self):
         faq_page_url = reverse(
@@ -329,6 +309,104 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(widget_response.status_code, 200)
         self.assertNotIn("X-Frame-Options", widget_response.headers)
         self.assertContains(widget_response, "Customer chat support")
+
+    def test_widget_other_issue_submission_records_pm_review_item(self):
+        faq_super = SupportSuperCategory.objects.create(name="Widget Flow Tests", slug="widget-flow-tests")
+        faq_category = SupportCategory.objects.create(super_category=faq_super, name="Landing Screen", slug="landing-screen")
+        SupportItem.objects.create(
+            category=faq_category,
+            name="Widget FAQ",
+            slug="widget-faq",
+            summary="Basic help text.",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="Use the standard widget answer.",
+            source_system="Patient Education",
+            source_flow="Widget Flow",
+            is_visible_to_patients=True,
+            is_visible_to_doctors=False,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_brand_managers=False,
+            is_visible_to_field_reps=False,
+        )
+        response = self.client.post(
+            reverse(
+                "support_center:faq_other_issue",
+                kwargs={"user_type": "patient", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+            ),
+            data={
+                "free_text": "Need help with a patient screen issue not listed here.",
+                "uploaded_file": SimpleUploadedFile("patient.png", b"image-bytes", content_type="image/png"),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+
+        support_request = SupportRequest.objects.get(pk=payload["request_id"])
+        self.assertEqual(support_request.status, SupportRequest.Status.PENDING_PM_REVIEW)
+        self.assertEqual(support_request.source_system, "Patient Education")
+        self.assertEqual(support_request.source_flow, "Widget Flow")
+        self.assertEqual(support_request.support_category, faq_category)
+        self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
+
+    def test_pm_can_raise_ticket_from_other_issue_submission(self):
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Doctor support user",
+            requester_email="doctor.widget@support-widget.local",
+            requester_company="",
+            campaign=self.campaign,
+            support_category=SupportCategory.objects.first(),
+            source_system="In-clinic",
+            source_flow="Content Viewing",
+            subject="Other issue - Collateral Viewer",
+            free_text="The viewer is opening a blank white screen after verification.",
+            uploaded_file=SimpleUploadedFile("viewer.png", b"image-bytes", content_type="image/png"),
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+
+        self.client.force_login(self.pm_user)
+        dashboard_response = self.client.get(reverse("dashboards:home"))
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertContains(dashboard_response, "Unlisted Support Issues")
+        self.assertContains(dashboard_response, "The viewer is opening a blank white screen after verification.")
+
+        raise_url = reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk})
+        raise_page = self.client.get(raise_url)
+        self.assertEqual(raise_page.status_code, 200)
+        self.assertContains(raise_page, "Raise ticket from support issue")
+
+        category = TicketCategory.objects.get(name="Support")
+        ticket_type = TicketTypeDefinition.objects.get(category=category, name="Query")
+        response = self.client.post(
+            raise_url,
+            data={
+                "title": "Viewer blank screen after verification",
+                "description": "The viewer is opening a blank white screen after verification.\n\nEscalated from the PM dashboard.",
+                "ticket_category": category.pk,
+                "ticket_type_definition": ticket_type.pk,
+                "new_ticket_type_name": "",
+                "user_type": Ticket.UserType.DOCTOR,
+                "source_system": Ticket.SourceSystem.IN_CLINIC,
+                "priority": Ticket.Priority.HIGH,
+                "status": Ticket.Status.NOT_STARTED,
+                "department": self.ticket.department.pk,
+                "campaign": self.campaign.pk,
+                "requester_name": "Doctor support user",
+                "requester_email": "doctor.widget@support-widget.local",
+                "requester_number": "+919999999999",
+                "requester_company": "Clinic A",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        support_request.refresh_from_db()
+        self.assertEqual(support_request.status, SupportRequest.Status.TICKET_CREATED)
+        created_ticket = Ticket.objects.get(support_request=support_request)
+        self.assertEqual(created_ticket.title, "Viewer blank screen after verification")
+        self.assertTrue(TicketNote.objects.filter(ticket=created_ticket, body__icontains="support widget").exists())
+        self.assertTrue(TicketAttachment.objects.filter(note__ticket=created_ticket).exists())
 
 
 @override_settings(REPORTING_API_USE_LIVE=True)
@@ -561,8 +639,8 @@ class ExternalTicketSyncTests(TestCase):
                         "departments": [
                             {
                                 "id": 3,
-                                "name": "Technical Support",
-                                "code": "TECH",
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
                                 "manager_id": None,
                                 "manager_name": "",
                                 "manager_email": "",
@@ -572,8 +650,8 @@ class ExternalTicketSyncTests(TestCase):
                         "department_managers": [
                             {
                                 "department_id": 3,
-                                "department_name": "Technical Support",
-                                "department_code": "TECH",
+                                "department_name": "IT Support",
+                                "department_code": "IT_SUPPORT",
                                 "manager_id": 19,
                                 "manager_name": "Tech Manager",
                                 "manager_email": "tech.manager@inditech.co.in",
@@ -585,7 +663,7 @@ class ExternalTicketSyncTests(TestCase):
                                 "full_name": "Tech Manager",
                                 "email": "tech.manager@inditech.co.in",
                                 "department_id": 3,
-                                "department_name": "Technical Support",
+                                "department_name": "IT Support",
                                 "is_active": True,
                             }
                         ],
@@ -643,10 +721,12 @@ class ExternalTicketSyncTests(TestCase):
                 current_assignee=self.department.default_recipient,
                 requester_name="Campaign PM",
                 requester_email=self.pm_user.email,
+                requester_number=self.pm_user.phone_number,
                 requester_company="Inditech",
             )
 
         ticket.refresh_from_db()
+        self.department.refresh_from_db()
         self.assertEqual(ticket.external_ticket_number, "CLT-8F3A1B2C")
         self.assertEqual(ticket.external_ticket_status, "open")
         self.assertEqual(
@@ -658,3 +738,92 @@ class ExternalTicketSyncTests(TestCase):
         self.assertIn("Starting external ticket sync.", ticket.external_ticket_log)
         self.assertIn("Creating external ticket.", ticket.external_ticket_log)
         self.assertIn("External ticket created successfully.", ticket.external_ticket_log)
+        self.assertEqual(self.department.default_recipient.email, "tech.manager@inditech.co.in")
+        self.assertEqual(self.department.external_directory_name, "IT Support")
+        self.assertEqual(self.department.external_directory_code, "IT_SUPPORT")
+
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_directory_sync_updates_local_department_manager_routing(self, mock_request):
+        def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                        "department_managers": [],
+                        "users": [
+                            {
+                                "id": 19,
+                                "full_name": "Tech Manager",
+                                "email": "tech.manager@inditech.co.in",
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+
+        synced_departments = sync_external_directory()
+        self.assertEqual(len(synced_departments), 1)
+        department = Department.objects.get(pk=self.department.pk)
+        self.assertEqual(department.external_directory_id, 3)
+        self.assertEqual(department.external_directory_name, "IT Support")
+        self.assertEqual(department.external_directory_code, "IT_SUPPORT")
+        self.assertEqual(department.external_manager_email, "tech.manager@inditech.co.in")
+        self.assertEqual(department.default_recipient.email, "tech.manager@inditech.co.in")
+
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_ticket_create_page_uses_synced_internal_directory_departments(self, mock_request):
+        def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                        "department_managers": [],
+                        "users": [
+                            {
+                                "id": 19,
+                                "full_name": "Tech Manager",
+                                "email": "tech.manager@inditech.co.in",
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+
+        self.client.force_login(self.pm_user)
+        response = self.client.get(reverse("ticketing:create"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "IT Support - Auto route to Tech Manager")
+        self.assertContains(response, self.pm_user.phone_number)

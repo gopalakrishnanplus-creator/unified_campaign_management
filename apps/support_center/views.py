@@ -1,22 +1,34 @@
+import os
+
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.core.files import File
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.http import require_http_methods
 from django.views.generic import DetailView, TemplateView
 
-from .forms import SupportRequestForm
+from apps.ticketing.forms import TicketCreateForm
+from apps.ticketing.external_ticketing import ExternalTicketingSyncError, external_ticketing_enabled, sync_external_directory
+from apps.ticketing.models import Department, TicketAttachment, TicketNote, TicketTypeDefinition
+from apps.ticketing.services import create_ticket
+
+from .forms import SupportOtherIssueForm, SupportRequestForm
 from .models import SupportItem, SupportRequest
 from .services import (
     GENERAL_SUPPORT_FLOW,
+    build_support_request_ticket_initial,
+    create_other_support_request,
     get_available_categories,
     get_available_flows,
     get_available_systems,
     get_faq_combination,
     get_faq_super_category,
     get_faq_super_category_overview,
-    get_issue_sequences,
     submit_support_request,
 )
 
@@ -82,6 +94,14 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
         },
         "faq_count": combination["faq_count"],
         "completion_label": "Issue Resolved",
+        "source_system": combination["source_system"],
+        "source_flow": combination["source_flow"] or GENERAL_SUPPORT_FLOW,
+        "other_issue_url": request.build_absolute_uri(
+            reverse(
+                "support_center:faq_other_issue",
+                kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
+            )
+        ),
         **urls,
         "faqs": [
             {
@@ -95,6 +115,11 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
             for item in combination["faq_items"]
         ],
     }
+
+
+class ProjectManagerAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
+    def test_func(self):
+        return self.request.user.is_superuser or self.request.user.is_project_manager
 
 
 class SupportAudienceMixin:
@@ -241,14 +266,14 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
 
     def _rewind_state(self):
         state = self._get_state()
-        if state.get("selected_ticket_case_id"):
-            state.pop("selected_ticket_case_id", None)
-        elif state.get("resolved_item_id"):
+        if state.get("resolved_item_id"):
             state.pop("resolved_item_id", None)
-            state["faq_index"] = max(0, state.get("faq_index", 0) - 1)
+        elif state.get("other_selected"):
+            state.pop("other_selected", None)
+        elif state.get("selected_faq_id"):
+            state.pop("selected_faq_id", None)
         elif state.get("category_id"):
             state.pop("category_id", None)
-            state.pop("faq_index", None)
         elif state.get("flow"):
             state.pop("flow", None)
         elif state.get("system"):
@@ -264,13 +289,12 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
         categories = get_available_categories(self.user_type, selected_system, selected_flow) if selected_system and selected_flow else []
         category_lookup = {category.pk: category for category in categories}
         selected_category = category_lookup.get(state.get("category_id"))
-        faqs, ticket_cases = (
-            get_issue_sequences(self.user_type, selected_system, selected_flow, selected_category.pk)
-            if selected_system and selected_flow and selected_category
-            else ([], [])
+        faqs = (
+            get_faq_combination(self.user_type, selected_category.super_category.slug, selected_category.slug)["faq_items"]
+            if selected_system and selected_flow and selected_category and get_faq_combination(self.user_type, selected_category.super_category.slug, selected_category.slug)
+            else []
         )
-        faq_index = state.get("faq_index", 0)
-        selected_ticket_case = next((item for item in ticket_cases if item.pk == state.get("selected_ticket_case_id")), None)
+        selected_faq = next((item for item in faqs if item.pk == state.get("selected_faq_id")), None)
         resolved_item = next((item for item in faqs if item.pk == state.get("resolved_item_id")), None)
         return {
             "state": state,
@@ -281,11 +305,9 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             "categories": categories,
             "selected_category": selected_category,
             "faqs": faqs,
-            "ticket_cases": ticket_cases,
-            "faq_index": faq_index,
-            "current_faq": faqs[faq_index] if faq_index < len(faqs) else None,
-            "selected_ticket_case": selected_ticket_case,
+            "selected_faq": selected_faq,
             "resolved_item": resolved_item,
+            "other_selected": bool(state.get("other_selected")),
         }
 
     def _assistant_stage(self, context):
@@ -297,15 +319,11 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             return "category"
         if context["resolved_item"]:
             return "resolved"
-        if context["selected_ticket_case"]:
-            if context["selected_ticket_case"].ticket_required is False:
-                return "ticket_case_info"
-            return "ticket_form"
-        if context["current_faq"]:
-            return "faq"
-        if context["ticket_cases"]:
-            return "ticket_case"
-        return "empty"
+        if context["other_selected"]:
+            return "other_issue"
+        if context["selected_faq"]:
+            return "faq_answer"
+        return "faq_menu"
 
     def _build_transcript(self, context, stage):
         transcript = [
@@ -322,45 +340,35 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
         if context["selected_category"]:
             transcript.append({"speaker": "user", "title": "Screen / Section", "body": context["selected_category"].name})
 
-        if stage == "faq" and context["current_faq"]:
-            current_faq = context["current_faq"]
+        if stage == "faq_answer" and context["selected_faq"]:
+            selected_faq = context["selected_faq"]
+            transcript.append({"speaker": "user", "title": "Selected question", "body": selected_faq.name})
             transcript.append(
                 {
                     "speaker": "bot",
-                    "title": f"FAQ {context['faq_index'] + 1} of {len(context['faqs'])}",
-                    "heading": current_faq.name,
-                    "body": current_faq.solution_body or current_faq.summary or "No standardized solution text is available yet.",
-                    "item": current_faq,
-                }
-            )
-        elif stage == "ticket_case" and context["ticket_cases"]:
-            transcript.append(
-                {
-                    "speaker": "bot",
-                    "title": "Escalation",
-                    "body": "The available FAQs did not fully resolve the issue. Please choose the ticket case that best matches what happened.",
-                }
-            )
-        elif stage == "ticket_form" and context["selected_ticket_case"]:
-            transcript.append({"speaker": "user", "title": "Ticket case", "body": context["selected_ticket_case"].name})
-            transcript.append(
-                {
-                    "speaker": "bot",
-                    "title": "Ticket routing",
+                    "title": "Answer",
+                    "heading": selected_faq.name,
                     "body": (
-                        context["selected_ticket_case"].solution_body
-                        or f"This case will be routed to {context['selected_ticket_case'].ticket_department.name if context['selected_ticket_case'].ticket_department else 'the configured department'}."
+                        selected_faq.solution_body
+                        or selected_faq.summary
+                        or "No standardized solution text is available yet."
                     ),
-                    "item": context["selected_ticket_case"],
+                    "item": selected_faq,
                 }
             )
-        elif stage == "ticket_case_info" and context["selected_ticket_case"]:
-            transcript.append({"speaker": "user", "title": "Ticket case", "body": context["selected_ticket_case"].name})
+        elif stage == "other_issue":
+            transcript.append(
+                {
+                    "speaker": "user",
+                    "title": "Selected option",
+                    "body": "Other",
+                }
+            )
             transcript.append(
                 {
                     "speaker": "bot",
-                    "title": "Imported guidance",
-                    "body": context["selected_ticket_case"].solution_body or "This case is marked as a non-ticket case in the imported sheet.",
+                    "title": "PM review",
+                    "body": "Describe the unlisted issue and attach a screenshot or image if available. This will be sent to the PM dashboard for review.",
                 }
             )
         elif stage == "resolved" and context["resolved_item"]:
@@ -394,7 +402,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 "page_title": f"{self.config['title']} assistant",
                 "general_support_flow": GENERAL_SUPPORT_FLOW,
                 "transcript": self._build_transcript(assistant_context, stage),
-                "ticket_form": kwargs.get("ticket_form") or SupportRequestForm(initial={"subject": assistant_context["selected_ticket_case"].name if assistant_context["selected_ticket_case"] else ""}),
+                "other_issue_form": kwargs.get("other_issue_form") or SupportOtherIssueForm(),
             }
         )
         return context
@@ -437,61 +445,78 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                         "system": context["selected_system"],
                         "flow": context["selected_flow"],
                         "category_id": category.pk,
-                        "faq_index": 0,
                     }
                 )
             return redirect("support_center:assistant", user_type=self.user_type)
 
-        if action == "faq_feedback" and context["selected_category"]:
-            current_faq = context["current_faq"]
-            if not current_faq:
-                messages.warning(request, "There is no FAQ loaded for this step.")
-                return redirect("support_center:assistant", user_type=self.user_type)
-            updated_state = {
-                "system": context["selected_system"],
-                "flow": context["selected_flow"],
-                "category_id": context["selected_category"].pk,
-                "faq_index": context["faq_index"],
-            }
-            if request.POST.get("resolution") == "resolved":
-                updated_state["resolved_item_id"] = current_faq.pk
-            else:
-                updated_state["faq_index"] = context["faq_index"] + 1
-            self._save_state(updated_state)
-            return redirect("support_center:assistant", user_type=self.user_type)
-
-        if action == "select_ticket_case" and context["selected_category"]:
-            selected_case = next((item for item in context["ticket_cases"] if str(item.pk) == request.POST.get("item_id")), None)
-            if selected_case:
+        if action == "select_faq" and context["selected_category"]:
+            selection = request.POST.get("selection")
+            if selection == "other":
                 self._save_state(
                     {
                         "system": context["selected_system"],
                         "flow": context["selected_flow"],
                         "category_id": context["selected_category"].pk,
-                        "faq_index": max(len(context["faqs"]), context["faq_index"]),
-                        "selected_ticket_case_id": selected_case.pk,
+                        "other_selected": True,
+                    }
+                )
+                return redirect("support_center:assistant", user_type=self.user_type)
+
+            selected_faq = next((item for item in context["faqs"] if str(item.pk) == selection), None)
+            if not selected_faq:
+                messages.warning(request, "Please choose a question or select Other.")
+                return redirect("support_center:assistant", user_type=self.user_type)
+            self._save_state(
+                {
+                    "system": context["selected_system"],
+                    "flow": context["selected_flow"],
+                    "category_id": context["selected_category"].pk,
+                    "selected_faq_id": selected_faq.pk,
+                }
+            )
+            return redirect("support_center:assistant", user_type=self.user_type)
+
+        if action == "faq_resolution" and context["selected_category"]:
+            if not context["selected_faq"]:
+                messages.warning(request, "Please choose a question first.")
+                return redirect("support_center:assistant", user_type=self.user_type)
+
+            if request.POST.get("resolution") == "resolved":
+                self._save_state(
+                    {
+                        "system": context["selected_system"],
+                        "flow": context["selected_flow"],
+                        "category_id": context["selected_category"].pk,
+                        "resolved_item_id": context["selected_faq"].pk,
+                    }
+                )
+            else:
+                self._save_state(
+                    {
+                        "system": context["selected_system"],
+                        "flow": context["selected_flow"],
+                        "category_id": context["selected_category"].pk,
                     }
                 )
             return redirect("support_center:assistant", user_type=self.user_type)
 
-        if action == "create_ticket" and context["selected_ticket_case"]:
-            form = SupportRequestForm(request.POST)
+        if action == "submit_other_issue" and context["selected_category"]:
+            form = SupportOtherIssueForm(request.POST, request.FILES)
             if not form.is_valid():
-                messages.error(request, "Please complete the ticket details.")
-                template_context = self.get_context_data(ticket_form=form)
+                messages.error(request, "Please describe the issue and correct any upload errors.")
+                template_context = self.get_context_data(other_issue_form=form)
                 return self.render_to_response(template_context)
 
-            support_request, ticket, error_message = submit_support_request(
-                item=context["selected_ticket_case"],
+            support_request = create_other_support_request(
                 user_type=self.user_type,
+                category=context["selected_category"],
+                system_name=context["selected_system"],
+                flow_name=context["selected_flow"],
                 form=form,
                 request_user=request.user,
             )
             self._clear_state()
-            if ticket:
-                messages.success(request, f"Ticket {ticket.ticket_number} created from the support assistant.")
-            else:
-                messages.info(request, error_message or "Support request recorded.")
+            messages.success(request, "Issue recorded. It is now available in the PM dashboard for review and ticket creation.")
             return redirect("support_center:success", user_type=self.user_type, request_id=support_request.pk)
 
         return redirect("support_center:assistant", user_type=self.user_type)
@@ -548,6 +573,161 @@ class SupportSuccessView(TemplateView):
         context = super().get_context_data(**kwargs)
         context["support_request"] = get_object_or_404(SupportRequest, pk=kwargs["request_id"])
         return context
+
+
+class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
+    template_name = "support_center/raise_ticket.jinja"
+    template_engine = "jinja2"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.support_request = get_object_or_404(
+            SupportRequest.objects.select_related("campaign", "support_category__super_category"),
+            pk=kwargs["request_id"],
+        )
+        try:
+            self.existing_ticket = self.support_request.ticket_link
+        except SupportRequest.ticket_link.RelatedObjectDoesNotExist:
+            self.existing_ticket = None
+        if self.existing_ticket:
+            messages.info(request, "This issue has already been converted into a ticket.")
+            return redirect("ticketing:detail", pk=self.existing_ticket.pk)
+
+        self.synced_departments = None
+        if external_ticketing_enabled():
+            try:
+                self.synced_departments = sync_external_directory()
+                if not self.synced_departments:
+                    messages.warning(
+                        request,
+                        "No departments were returned from the internal ticketing directory. Choose a department after the directory is available.",
+                    )
+            except ExternalTicketingSyncError as exc:
+                messages.warning(request, f"Internal ticketing directory sync could not be refreshed right now: {exc}")
+        return super().dispatch(request, *args, **kwargs)
+
+    def _build_initial(self):
+        initial = build_support_request_ticket_initial(self.support_request)
+        initial.setdefault("status", "not_started")
+        if not initial.get("requester_number") and self.request.user.phone_number:
+            initial["requester_number"] = self.request.user.phone_number
+        return initial
+
+    def _get_form(self, data=None):
+        kwargs = {"data": data, "user": self.request.user, "initial": self._build_initial()}
+        if self.synced_departments is not None:
+            synced_ids = [department.pk for department in self.synced_departments]
+            kwargs["departments"] = Department.objects.filter(pk__in=synced_ids, is_active=True).select_related("default_recipient").order_by("name")
+        return TicketCreateForm(**kwargs)
+
+    def _attach_uploaded_file(self, ticket):
+        if not self.support_request.uploaded_file:
+            return
+        note = TicketNote.objects.create(
+            ticket=ticket,
+            author=self.request.user,
+            body="Imported attachment from a support widget 'Other' submission.",
+        )
+        self.support_request.uploaded_file.open("rb")
+        attachment = TicketAttachment(note=note)
+        attachment.file.save(
+            os.path.basename(self.support_request.uploaded_file.name),
+            File(self.support_request.uploaded_file.file),
+            save=True,
+        )
+        self.support_request.uploaded_file.close()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        form = kwargs.get("form") or self._get_form()
+        ticket_types = TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by("category__name", "name")
+        context.update(
+            {
+                "support_request": self.support_request,
+                "form": form,
+                "ticket_types_payload": [
+                    {"id": ticket_type.id, "category_id": ticket_type.category_id, "name": ticket_type.name}
+                    for ticket_type in ticket_types
+                ],
+            }
+        )
+        return context
+
+    def get(self, request, *args, **kwargs):
+        return self.render_to_response(self.get_context_data())
+
+    def post(self, request, *args, **kwargs):
+        form = self._get_form(data=request.POST)
+        if not form.is_valid():
+            messages.error(request, "Please complete the ticket details before raising it.")
+            return self.render_to_response(self.get_context_data(form=form))
+
+        department = form.cleaned_data["department"]
+        if not department.default_recipient:
+            messages.error(request, "This department does not have a default recipient configured yet.")
+            return self.render_to_response(self.get_context_data(form=form))
+
+        payload = {
+            key: value
+            for key, value in form.cleaned_data.items()
+            if key not in {"ticket_category", "ticket_type_definition", "new_ticket_type_name"}
+        }
+        ticket = create_ticket(
+            created_by=request.user,
+            submitted_by=request.user,
+            ticket_category=form.cleaned_data["ticket_category"],
+            ticket_type_definition=form.cleaned_data.get("ticket_type_definition"),
+            new_ticket_type_name=form.cleaned_data.get("new_ticket_type_name"),
+            support_request=self.support_request,
+            **payload,
+        )
+        self._attach_uploaded_file(ticket)
+        self.support_request.status = SupportRequest.Status.TICKET_CREATED
+        self.support_request.save(update_fields=["status"])
+        ticket.refresh_from_db()
+
+        if ticket.external_ticket_number:
+            messages.success(
+                request,
+                f"Ticket {ticket.ticket_number} created and mirrored to internal ticket {ticket.external_ticket_number}.",
+            )
+        elif ticket.external_ticket_error:
+            messages.warning(
+                request,
+                f"Ticket {ticket.ticket_number} created, but internal sync failed: {ticket.external_ticket_error}",
+            )
+        else:
+            messages.success(request, f"Ticket {ticket.ticket_number} created.")
+        return redirect("ticketing:detail", pk=ticket.pk)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def support_faq_other_issue(request, user_type, super_slug, category_slug):
+    if user_type not in ROLE_CONFIG:
+        raise Http404("Unsupported support audience.")
+    combination = get_faq_combination(user_type, super_slug, category_slug)
+    if not combination:
+        raise Http404("FAQ combination not found.")
+
+    form = SupportOtherIssueForm(request.POST, request.FILES)
+    if not form.is_valid():
+        return JsonResponse({"success": False, "errors": form.errors.get_json_data()}, status=400)
+
+    support_request = create_other_support_request(
+        user_type=user_type,
+        category=combination["category"],
+        system_name=combination["source_system"],
+        flow_name=combination["source_flow"] or GENERAL_SUPPORT_FLOW,
+        form=form,
+        request_user=request.user,
+    )
+    return JsonResponse(
+        {
+            "success": True,
+            "request_id": support_request.pk,
+            "message": "Issue recorded. It is now available in the PM dashboard for review.",
+        }
+    )
 
 
 def support_faq_links_api(request, user_type):

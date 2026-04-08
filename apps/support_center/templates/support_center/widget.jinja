@@ -51,7 +51,7 @@
         .transcript {
             display: grid;
             gap: 0.75rem;
-            max-height: 46vh;
+            max-height: 38vh;
             overflow-y: auto;
             padding-right: 0.25rem;
         }
@@ -86,22 +86,18 @@
             margin-bottom: 0.3rem;
         }
 
-        .question-list {
+        .question-list,
+        .resolution-list {
             display: grid;
             gap: 0.75rem;
         }
 
-        .question-option {
+        .question-option,
+        .resolution-option {
             border: 1px solid rgba(15, 23, 42, 0.08);
             border-radius: 1rem;
             background: white;
             padding: 0.85rem 1rem;
-        }
-
-        .action-row {
-            display: flex;
-            gap: 0.75rem;
-            flex-wrap: wrap;
         }
 
         .support-link-list {
@@ -132,17 +128,53 @@
                     <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
                         <div>
                             <h1 class="h5 mb-1">Customer chat support</h1>
-                            <p class="text-secondary mb-0">Select a question, get the answer, then either ask another one or click `Issue Resolved`.</p>
+                            <p class="text-secondary mb-0">Select the matching FAQ question. After the answer appears, mark it resolved or return to the list. Use Other when the issue is not listed.</p>
                         </div>
                         <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
                     </div>
-                    <form id="faq-form">
+
+                    <form id="faq-form" class="vstack gap-3">
                         <div class="question-list" id="question-list"></div>
-                        <div class="action-row mt-3">
-                            <button class="btn btn-primary" type="submit" id="answer-button">Show Answer</button>
-                            <button class="btn btn-outline-success" type="button" id="resolve-button">{{ faq_payload.completion_label }}</button>
-                        </div>
+                        <button class="btn btn-primary" type="submit">Show Answer</button>
                     </form>
+
+                    <div class="card bg-light-subtle border-0 rounded-4 mt-4 d-none" id="answer-panel">
+                        <div class="card-body">
+                            <p class="eyebrow mb-2">Selected question</p>
+                            <h2 class="h6 mb-2" id="selected-question"></h2>
+                            <p class="mb-0" id="selected-answer"></p>
+                            <div class="support-link-list" id="answer-links"></div>
+                        </div>
+                    </div>
+
+                    <form class="vstack gap-3 mt-4 d-none" id="resolution-form">
+                        <div class="resolution-list">
+                            <label class="resolution-option d-flex gap-3 align-items-start">
+                                <input class="form-check-input mt-1" type="radio" name="resolution" value="resolved" checked>
+                                <span>Resolved</span>
+                            </label>
+                            <label class="resolution-option d-flex gap-3 align-items-start">
+                                <input class="form-check-input mt-1" type="radio" name="resolution" value="unresolved">
+                                <span>Not Resolved</span>
+                            </label>
+                        </div>
+                        <button class="btn btn-outline-primary" type="submit">Continue</button>
+                    </form>
+
+                    <form class="vstack gap-3 mt-4 d-none" id="other-form" enctype="multipart/form-data">
+                        <div>
+                            <label class="form-label" for="other-description">Describe the issue</label>
+                            <textarea class="form-control" id="other-description" name="free_text" rows="4" placeholder="Describe what happened and what the user was trying to do."></textarea>
+                        </div>
+                        <div>
+                            <label class="form-label" for="other-file">Upload screenshot or image</label>
+                            <input class="form-control" id="other-file" type="file" name="uploaded_file" accept=".jpg,.jpeg,.png,.heic,.svg,.webp">
+                            <div class="form-text">Allowed formats: .jpg, .jpeg, .png, .heic, .svg, .webp</div>
+                        </div>
+                        <button class="btn btn-primary" type="submit">Send to PM dashboard</button>
+                    </form>
+
+                    <div class="alert rounded-4 mt-4 d-none" id="status-message"></div>
                 </div>
             </div>
         </div>
@@ -156,18 +188,33 @@
     <script>
         (() => {
             const apiUrl = {{ faq_payload.api_url|tojson }};
+            const otherIssueUrl = {{ faq_payload.other_issue_url|tojson }};
             const transcriptElement = document.getElementById("transcript");
             const questionListElement = document.getElementById("question-list");
             const faqForm = document.getElementById("faq-form");
-            const resolveButton = document.getElementById("resolve-button");
             const restartButton = document.getElementById("restart-button");
+            const answerPanel = document.getElementById("answer-panel");
+            const resolutionForm = document.getElementById("resolution-form");
+            const otherForm = document.getElementById("other-form");
+            const selectedQuestionElement = document.getElementById("selected-question");
+            const selectedAnswerElement = document.getElementById("selected-answer");
+            const answerLinksElement = document.getElementById("answer-links");
+            const statusMessageElement = document.getElementById("status-message");
 
             const state = {
                 faqs: [],
-                resolved: false,
+                selectedFaq: null,
             };
 
-            function appendMessage(role, title, body, links = []) {
+            function getCookie(name) {
+                const cookieValue = document.cookie
+                    .split(";")
+                    .map((item) => item.trim())
+                    .find((item) => item.startsWith(`${name}=`));
+                return cookieValue ? decodeURIComponent(cookieValue.split("=").slice(1).join("=")) : "";
+            }
+
+            function appendMessage(role, title, body) {
                 const row = document.createElement("div");
                 row.className = `bubble-row ${role === "user" ? "bubble-row-user" : ""}`;
 
@@ -183,102 +230,190 @@
                 text.textContent = body;
                 bubble.appendChild(text);
 
-                if (links.length) {
-                    const linkList = document.createElement("div");
-                    linkList.className = "support-link-list";
-                    links.forEach((link) => {
-                        const anchor = document.createElement("a");
-                        anchor.className = "btn btn-sm btn-outline-secondary";
-                        anchor.href = link.url;
-                        anchor.target = "_blank";
-                        anchor.rel = "noopener noreferrer";
-                        anchor.textContent = link.label;
-                        linkList.appendChild(anchor);
-                    });
-                    bubble.appendChild(linkList);
-                }
-
                 row.appendChild(bubble);
                 transcriptElement.appendChild(row);
                 transcriptElement.scrollTop = transcriptElement.scrollHeight;
             }
 
+            function setStatus(message, variant) {
+                statusMessageElement.className = `alert alert-${variant} rounded-4 mt-4`;
+                statusMessageElement.textContent = message;
+                statusMessageElement.classList.remove("d-none");
+            }
+
+            function clearStatus() {
+                statusMessageElement.className = "alert rounded-4 mt-4 d-none";
+                statusMessageElement.textContent = "";
+            }
+
+            function buildLinks(faq) {
+                const links = [];
+                if (faq.pdf_url) {
+                    links.push({ label: "PDF", url: faq.pdf_url });
+                }
+                if (faq.video_url) {
+                    links.push({ label: "Video", url: faq.video_url });
+                }
+                return links;
+            }
+
             function renderQuestions() {
                 questionListElement.innerHTML = "";
-                if (!state.faqs.length) {
-                    const empty = document.createElement("div");
-                    empty.className = "alert alert-warning rounded-4 mb-0";
-                    empty.textContent = "No FAQ questions are configured for this page.";
-                    questionListElement.appendChild(empty);
-                    return;
-                }
                 state.faqs.forEach((faq) => {
                     const wrapper = document.createElement("label");
                     wrapper.className = "question-option";
                     wrapper.innerHTML = `
                         <div class="form-check">
-                            <input class="form-check-input" type="radio" name="faq_id" value="${faq.id}" id="faq-${faq.id}">
-                            <span class="form-check-label" for="faq-${faq.id}">${faq.question}</span>
+                            <input class="form-check-input" type="radio" name="selection" value="${faq.id}" id="faq-${faq.id}" ${state.selectedFaq && state.selectedFaq.id === faq.id ? "checked" : ""}>
+                            <span class="form-check-label">${faq.question}</span>
                         </div>
                     `;
                     questionListElement.appendChild(wrapper);
                 });
+
+                const otherWrapper = document.createElement("label");
+                otherWrapper.className = "question-option";
+                otherWrapper.innerHTML = `
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="selection" value="other" id="faq-other">
+                        <span class="form-check-label">Other</span>
+                    </div>
+                `;
+                questionListElement.appendChild(otherWrapper);
             }
 
-            function resetState() {
-                state.resolved = false;
+            function resetPanels() {
+                state.selectedFaq = null;
+                answerPanel.classList.add("d-none");
+                resolutionForm.classList.add("d-none");
+                otherForm.classList.add("d-none");
+                clearStatus();
+                faqForm.reset();
+            }
+
+            function showSelectedAnswer(faq) {
+                state.selectedFaq = faq;
+                selectedQuestionElement.textContent = faq.question;
+                selectedAnswerElement.textContent = faq.answer || faq.summary || "No answer has been configured yet.";
+                answerLinksElement.innerHTML = "";
+                buildLinks(faq).forEach((link) => {
+                    const anchor = document.createElement("a");
+                    anchor.className = "btn btn-sm btn-outline-secondary";
+                    anchor.href = link.url;
+                    anchor.target = "_blank";
+                    anchor.rel = "noopener noreferrer";
+                    anchor.textContent = link.label;
+                    answerLinksElement.appendChild(anchor);
+                });
+                answerPanel.classList.remove("d-none");
+                resolutionForm.classList.remove("d-none");
+                otherForm.classList.add("d-none");
+                clearStatus();
+                appendMessage("user", "You", faq.question);
+                appendMessage("bot", "Support Bot", faq.answer || faq.summary || "No answer has been configured yet.");
+            }
+
+            function resetConversation() {
                 transcriptElement.innerHTML = "";
+                resetPanels();
+                renderQuestions();
                 appendMessage(
                     "bot",
                     "Support Bot",
-                    "Select the FAQ question that best matches your issue. I’ll answer it, and you can continue asking until the issue is resolved."
+                    "Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved."
                 );
-                renderQuestions();
             }
 
             async function loadFaqs() {
                 const response = await fetch(apiUrl);
                 const payload = await response.json();
                 state.faqs = payload.faqs || [];
-                resetState();
+                resetConversation();
             }
 
             faqForm.addEventListener("submit", (event) => {
                 event.preventDefault();
-                if (state.resolved) {
-                    return;
-                }
-                const selected = faqForm.querySelector("input[name='faq_id']:checked");
+                clearStatus();
+                const selected = faqForm.querySelector("input[name='selection']:checked");
                 if (!selected) {
-                    appendMessage("bot", "Support Bot", "Please select a question first.");
+                    setStatus("Please select a question or choose Other.", "warning");
                     return;
                 }
+
+                if (selected.value === "other") {
+                    answerPanel.classList.add("d-none");
+                    resolutionForm.classList.add("d-none");
+                    otherForm.classList.remove("d-none");
+                    appendMessage("user", "You", "Other");
+                    appendMessage("bot", "Support Bot", "Please describe the issue and upload one image if that helps. This will go to the PM dashboard for review.");
+                    return;
+                }
+
                 const faq = state.faqs.find((entry) => String(entry.id) === selected.value);
                 if (!faq) {
+                    setStatus("That question could not be loaded.", "warning");
                     return;
                 }
-                appendMessage("user", "You", faq.question);
-                const links = [];
-                if (faq.pdf_url) {
-                    links.push({label: "Open PDF", url: faq.pdf_url});
-                }
-                if (faq.video_url) {
-                    links.push({label: "Open Video", url: faq.video_url});
-                }
-                appendMessage("bot", "Answer", faq.answer, links);
-                selected.checked = false;
+                showSelectedAnswer(faq);
             });
 
-            resolveButton.addEventListener("click", () => {
-                if (state.resolved) {
+            resolutionForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+                const selectedResolution = resolutionForm.querySelector("input[name='resolution']:checked");
+                if (!selectedResolution) {
+                    setStatus("Please choose Resolved or Not Resolved.", "warning");
                     return;
                 }
-                state.resolved = true;
-                appendMessage("user", "You", "{{ faq_payload.completion_label }}");
-                appendMessage("bot", "Support Bot", "Glad that helped. You can restart this FAQ support widget if you need anything else.");
+
+                if (selectedResolution.value === "resolved") {
+                    setStatus("Issue marked as resolved. You can restart the widget for another issue.", "success");
+                    appendMessage("bot", "Support Bot", "Great. I’ve marked this issue as resolved.");
+                    resolutionForm.classList.add("d-none");
+                    otherForm.classList.add("d-none");
+                    return;
+                }
+
+                appendMessage("user", "You", "Not Resolved");
+                appendMessage("bot", "Support Bot", "Okay, please select another question from the list or choose Other.");
+                resetPanels();
+                renderQuestions();
             });
 
-            restartButton.addEventListener("click", resetState);
+            otherForm.addEventListener("submit", async (event) => {
+                event.preventDefault();
+                clearStatus();
+                const formData = new FormData(otherForm);
+                if (!(formData.get("free_text") || "").trim()) {
+                    setStatus("Please describe the issue before sending it to the PM dashboard.", "warning");
+                    return;
+                }
+                try {
+                    const response = await fetch(otherIssueUrl, {
+                        method: "POST",
+                        headers: {
+                            "X-CSRFToken": getCookie("csrftoken"),
+                        },
+                        body: formData,
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || !payload.success) {
+                        setStatus("The issue could not be submitted. Please review the details and try again.", "danger");
+                        return;
+                    }
+                    appendMessage("user", "You", formData.get("free_text"));
+                    appendMessage("bot", "Support Bot", payload.message || "Issue recorded for PM review.");
+                    setStatus(payload.message || "Issue recorded for PM review.", "success");
+                    otherForm.reset();
+                    answerPanel.classList.add("d-none");
+                    resolutionForm.classList.add("d-none");
+                } catch (error) {
+                    setStatus("The issue could not be submitted right now. Please try again.", "danger");
+                }
+            });
+
+            restartButton.addEventListener("click", () => {
+                resetConversation();
+            });
 
             loadFaqs();
         })();

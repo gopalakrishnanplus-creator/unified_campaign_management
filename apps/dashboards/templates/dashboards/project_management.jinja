@@ -222,6 +222,64 @@
 </section>
 
 <section class="mb-5">
+    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3" id="other-issue-review">
+        <div>
+            <p class="eyebrow mb-1">Unlisted Support Issues</p>
+            <h2 class="h3 mb-0">“Other” submissions waiting for PM review</h2>
+        </div>
+        <div class="status-code-pill {{ 'status-warning' if support_data.support_cards.other_issue_requests else 'status-success' }}">
+            {{ support_data.support_cards.other_issue_requests }} pending
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body border-bottom">
+            <p class="text-secondary mb-0">These issues came from the FAQ widgets or assistant when the user selected <strong>Other</strong>. Review the context and raise a synced ticket when escalation is required.</p>
+        </div>
+        <div class="table-responsive table-scroll">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>System</th>
+                        <th>Flow / Screen</th>
+                        <th>Issue description</th>
+                        <th>Uploaded file</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in support_data.other_issue_rows %}
+                        <tr>
+                            <td>{{ row.request.created_at.strftime('%d %b %Y %H:%M') }}</td>
+                            <td>
+                                {{ row.request.source_system or 'Customer support' }}
+                                <div class="text-secondary small">{{ row.request.user_type.replace('_', ' ').title() }}</div>
+                            </td>
+                            <td>
+                                {{ row.request.source_flow or 'General support' }}
+                                <div class="text-secondary small">{{ row.request.screen_label or 'Not specified' }}</div>
+                            </td>
+                            <td>{{ row.request.free_text }}</td>
+                            <td>
+                                {% if row.request.uploaded_file %}
+                                    <a class="btn btn-sm btn-outline-secondary" href="{{ row.request.uploaded_file.url }}" target="_blank" rel="noreferrer">Open file</a>
+                                {% else %}
+                                    <span class="text-secondary">No file</span>
+                                {% endif %}
+                            </td>
+                            <td><a class="btn btn-sm btn-primary" href="{{ row.raise_ticket_url }}">Raise Ticket</a></td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="6" class="text-secondary">No unlisted support issues are waiting for review.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="mb-5">
     <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
         <div>
             <p class="eyebrow mb-1">Operational Details</p>

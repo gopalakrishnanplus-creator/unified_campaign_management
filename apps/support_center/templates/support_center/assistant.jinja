@@ -5,7 +5,7 @@
     <div>
         <p class="eyebrow mb-1">{{ role_title }}</p>
         <h1 class="mb-1">{{ page_title }}</h1>
-        <p class="text-secondary mb-0">This guided flow works through FAQs first, then switches to ticket cases only when the issue still needs escalation.</p>
+        <p class="text-secondary mb-0">Choose the matching FAQ question, review the answer, and either mark it resolved or return to the question list. Use “Other” when the issue is not listed.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-secondary" href="{{ url('support_center:landing', user_type=user_type) }}">Browse full catalog</a>
@@ -50,7 +50,7 @@
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h2 class="h5 mb-0">Next step</h2>
-                    {% if selected_system or selected_flow or selected_category or selected_ticket_case %}
+                    {% if selected_system or selected_flow or selected_category or selected_faq or other_selected %}
                         <form method="post">
                             {{ csrf_input }}
                             <input type="hidden" name="action" value="back">
@@ -95,65 +95,80 @@
                             </form>
                         {% endfor %}
                     </div>
-                {% elif stage == 'faq' %}
-                    <p class="text-secondary mb-3">Did the FAQ above solve the issue?</p>
-                    <div class="d-grid gap-2">
-                        <form method="post">
-                            {{ csrf_input }}
-                            <input type="hidden" name="action" value="faq_feedback">
-                            <input type="hidden" name="resolution" value="resolved">
-                            <button class="btn btn-primary w-100" type="submit">Yes, this solved it</button>
-                        </form>
-                        <form method="post">
-                            {{ csrf_input }}
-                            <input type="hidden" name="action" value="faq_feedback">
-                            <input type="hidden" name="resolution" value="unresolved">
-                            <button class="btn btn-outline-primary w-100" type="submit">No, show the next step</button>
-                        </form>
-                    </div>
-                    <div class="small text-secondary mt-3">FAQ progress: {{ faq_index + 1 }} / {{ faqs|length }}</div>
-                {% elif stage == 'ticket_case' %}
-                    <p class="text-secondary">Choose the ticket case that best matches the unresolved problem.</p>
-                    <div class="d-grid gap-2">
-                        {% for item in ticket_cases %}
-                            <form method="post">
-                                {{ csrf_input }}
-                                <input type="hidden" name="action" value="select_ticket_case">
-                                <input type="hidden" name="item_id" value="{{ item.pk }}">
-                                <button class="btn btn-outline-primary text-start w-100" type="submit">
-                                    <strong>{{ item.name }}</strong>
-                                    <div class="small text-secondary mt-1">{{ item.ticket_department.name if item.ticket_department else 'Configured department' }}</div>
-                                </button>
-                            </form>
-                        {% endfor %}
-                    </div>
-                {% elif stage == 'ticket_form' %}
-                    <p class="text-secondary">This case should be escalated. Please fill in the request details so we can create the ticket.</p>
-                    <div class="small text-secondary mb-3">Department: {{ selected_ticket_case.ticket_department.name if selected_ticket_case.ticket_department else 'Configured department' }}</div>
+                {% elif stage in ['faq_menu', 'faq_answer'] %}
+                    <p class="text-secondary">Select the question that best matches the issue. If none match, choose <strong>Other</strong>.</p>
                     <form method="post" class="vstack gap-3">
                         {{ csrf_input }}
-                        <input type="hidden" name="action" value="create_ticket">
-                        {% for field in ticket_form %}
+                        <input type="hidden" name="action" value="select_faq">
+                        <div class="list-group">
+                            {% for faq in faqs %}
+                                <label class="list-group-item d-flex gap-3 align-items-start">
+                                    <input class="form-check-input mt-1" type="radio" name="selection" value="{{ faq.pk }}" {% if selected_faq and selected_faq.pk == faq.pk %}checked{% endif %}>
+                                    <span>{{ faq.name }}</span>
+                                </label>
+                            {% endfor %}
+                            <label class="list-group-item d-flex gap-3 align-items-start">
+                                <input class="form-check-input mt-1" type="radio" name="selection" value="other" {% if other_selected %}checked{% endif %}>
+                                <span>Other</span>
+                            </label>
+                        </div>
+                        <button class="btn btn-primary" type="submit">Show answer</button>
+                    </form>
+
+                    {% if selected_faq %}
+                        <div class="card bg-light-subtle border-0 rounded-4 mt-4">
+                            <div class="card-body">
+                                <p class="eyebrow mb-2">Selected question</p>
+                                <h3 class="h6 mb-2">{{ selected_faq.name }}</h3>
+                                <p class="mb-0">{{ selected_faq.solution_body or selected_faq.summary or 'No standardized answer has been configured yet.' }}</p>
+                                <div class="d-flex gap-2 flex-wrap mt-3">
+                                    {% if selected_faq.associated_pdf_url %}
+                                        <a class="btn btn-sm btn-outline-secondary" href="{{ selected_faq.associated_pdf_url }}" target="_blank">PDF</a>
+                                    {% endif %}
+                                    {% if selected_faq.associated_video_url %}
+                                        <a class="btn btn-sm btn-outline-secondary" href="{{ selected_faq.associated_video_url }}" target="_blank">Video</a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <form method="post" class="vstack gap-3 mt-4">
+                            {{ csrf_input }}
+                            <input type="hidden" name="action" value="faq_resolution">
+                            <label class="list-group-item d-flex gap-3 align-items-start">
+                                <input class="form-check-input mt-1" type="radio" name="resolution" value="resolved" checked>
+                                <span>Resolved</span>
+                            </label>
+                            <label class="list-group-item d-flex gap-3 align-items-start">
+                                <input class="form-check-input mt-1" type="radio" name="resolution" value="unresolved">
+                                <span>Not Resolved</span>
+                            </label>
+                            <button class="btn btn-outline-primary" type="submit">Continue</button>
+                        </form>
+                    {% elif not faqs %}
+                        <div class="alert alert-warning rounded-4 mt-4 mb-0">No FAQ questions are configured for this combination yet. Select Other to send the issue to the PM dashboard.</div>
+                    {% endif %}
+                {% elif stage == 'other_issue' %}
+                    <p class="text-secondary">Describe the issue and upload one image file if it helps explain the problem. This goes to the PM dashboard for review.</p>
+                    <form method="post" enctype="multipart/form-data" class="vstack gap-3">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="submit_other_issue">
+                        {% for field in other_issue_form %}
                             <div>
                                 <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
                                 {{ field }}
+                                {% if field.help_text %}<div class="form-hint mt-1">{{ field.help_text }}</div>{% endif %}
                                 {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
                             </div>
                         {% endfor %}
-                        <button class="btn btn-primary" type="submit">Create ticket</button>
+                        <button class="btn btn-primary" type="submit">Send to PM dashboard</button>
                     </form>
-                {% elif stage == 'ticket_case_info' %}
-                    <div class="alert alert-info rounded-4 mb-0">
-                        <p class="mb-2">This imported case is marked as a non-ticket case.</p>
-                        <p class="mb-0">{{ selected_ticket_case.solution_body or 'Use the documented workaround, or go back and choose another matching case.' }}</p>
-                    </div>
                 {% elif stage == 'resolved' %}
                     <div class="alert alert-success rounded-4">
-                        <p class="mb-0">The issue is marked as resolved. You can restart the assistant for another case or browse the full catalog.</p>
+                        <p class="mb-0">The issue is marked as resolved. You can restart the assistant or choose another screen if you need help with something else.</p>
                     </div>
                 {% else %}
                     <div class="alert alert-warning rounded-4">
-                        <p class="mb-0">No matching FAQ or ticket case is currently configured for this path.</p>
+                        <p class="mb-0">No matching FAQs are currently configured for this path. Use Other to record the issue for PM review.</p>
                     </div>
                 {% endif %}
             </div>
