@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ page_title }}</title>
+    <link rel="icon" href="data:,">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
@@ -253,7 +254,21 @@
                     ],
                 };
 
-            const otherIssueUrl = payload.other_issue_url;
+            function getSameOriginUrl(rawUrl) {
+                if (!rawUrl) {
+                    return "";
+                }
+                const resolvedUrl = new URL(rawUrl, window.location.href);
+                if (resolvedUrl.origin === window.location.origin) {
+                    return `${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`;
+                }
+                if (window.location.protocol === "https:" && resolvedUrl.host === window.location.host && resolvedUrl.protocol !== "https:") {
+                    resolvedUrl.protocol = "https:";
+                }
+                return resolvedUrl.toString();
+            }
+
+            const otherIssueUrl = getSameOriginUrl(payload.other_issue_url);
             const transcriptElement = document.getElementById("transcript");
             const sectionPanel = document.getElementById("section-panel");
             const sectionListElement = document.getElementById("section-list");

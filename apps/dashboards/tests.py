@@ -517,6 +517,8 @@ class SeededIntegrationTestCase(TestCase):
         api_payload = api_response.json()
         self.assertEqual(api_payload["source_system"], "In-clinic")
         self.assertEqual(api_payload["source_flow"], "Campaign Operations")
+        self.assertTrue(api_payload["other_issue_url"].startswith("/support/"))
+        self.assertNotIn("http://", api_payload["other_issue_url"])
         self.assertIn("system=In-clinic", api_payload["other_issue_url"])
         self.assertIn("flow=Campaign+Operations", api_payload["other_issue_url"])
 
@@ -541,6 +543,46 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.source_flow, "Campaign Operations")
         self.assertEqual(support_request.requester_number, "+914444444444")
         self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
+
+    def test_widget_embed_uses_relative_other_issue_url_to_avoid_mixed_content(self):
+        faq_super = SupportSuperCategory.objects.create(name="HTTPS Widget Tests", slug="https-widget-tests")
+        faq_category = SupportCategory.objects.create(super_category=faq_super, name="Doctor Sharing", slug="doctor-sharing")
+        faq_page = SupportPage.objects.create(
+            name="Doctor / Clinic Sharing Page",
+            slug="doctor-clinic-sharing-page",
+            source_system="Patient Education",
+            source_flow="Flow1 / Doctor",
+        )
+        SupportItem.objects.create(
+            page=faq_page,
+            category=faq_category,
+            name="Share with patient issue",
+            slug="share-with-patient-issue",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="Use the sharing troubleshooting steps.",
+            source_system="Patient Education",
+            source_flow="Flow1 / Doctor",
+            is_visible_to_doctors=True,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_brand_managers=False,
+            is_visible_to_field_reps=False,
+            is_visible_to_patients=False,
+        )
+
+        widget_url = reverse(
+            "support_center:faq_page_widget",
+            kwargs={"user_type": "doctor", "page_slug": faq_page.slug},
+        )
+        response = self.client.get(
+            f"{widget_url}?system=Patient+Education&flow=Flow1+%2F+Doctor&embed=1",
+            secure=True,
+            HTTP_X_FORWARDED_PROTO="https",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "/support/doctor/faq/page/doctor-clinic-sharing-page/other/")
+        self.assertContains(response, "system=Patient+Education")
+        self.assertContains(response, "flow=Flow1+%2F+Doctor")
+        self.assertNotContains(response, "http://testserver/support/doctor/faq/page/doctor-clinic-sharing-page/other/")
 
     @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
     def test_pm_can_raise_ticket_from_other_issue_submission(self):

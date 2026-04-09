@@ -68,6 +68,12 @@ def _options_response():
     return response
 
 
+def _with_context_query(path, context_params):
+    if not context_params:
+        return path
+    return f"{path}?{urlencode(context_params)}"
+
+
 def _build_combination_urls(request, user_type, super_slug, category_slug, *, context_params=None):
     if context_params is None:
         context_params = _current_context_params(request)
@@ -194,14 +200,14 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
         "source_system": resolved_system,
         "source_flow": resolved_flow,
         "default_context_available": bool(resolved_system),
-        "other_issue_url": request.build_absolute_uri(
-            "{}{}".format(
-                reverse(
-                    "support_center:faq_other_issue",
-                    kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
-                ),
-                f"?{urlencode(context_params)}" if context_params else "",
-            )
+        # Keep widget submission URLs relative so embedded HTTPS widgets never
+        # attempt a mixed-content POST when Django is behind a proxy.
+        "other_issue_url": _with_context_query(
+            reverse(
+                "support_center:faq_other_issue",
+                kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
+            ),
+            context_params,
         ),
         **urls,
         "faqs": [
@@ -243,11 +249,11 @@ def _build_page_payload(request, user_type, page_slug):
         "faq_count": page_block["faq_count"],
         "section_count": page_block["section_count"],
         "default_context_available": bool(resolved_system),
-        "other_issue_url": request.build_absolute_uri(
-            "{}{}".format(
-                reverse("support_center:faq_page_other_issue", kwargs={"user_type": user_type, "page_slug": page.slug}),
-                f"?{urlencode(context_params)}" if context_params else "",
-            )
+        # Keep widget submission URLs relative so embedded HTTPS widgets never
+        # attempt a mixed-content POST when Django is behind a proxy.
+        "other_issue_url": _with_context_query(
+            reverse("support_center:faq_page_other_issue", kwargs={"user_type": user_type, "page_slug": page.slug}),
+            context_params,
         ),
         **urls,
         "sections": [
