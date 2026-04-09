@@ -18,6 +18,14 @@
                     <strong>{{ support_request.source_flow or 'General support' }}</strong>
                 </div>
                 <div class="metric-row">
+                    <span>Page</span>
+                    <strong>{{ support_request.page_label or 'Not specified' }}</strong>
+                </div>
+                <div class="metric-row">
+                    <span>Section</span>
+                    <strong>{{ support_request.section_label or 'Not specified' }}</strong>
+                </div>
+                <div class="metric-row">
                     <span>Screen</span>
                     <strong>{{ support_request.screen_label or 'Not specified' }}</strong>
                 </div>
@@ -29,6 +37,14 @@
                 <div class="mt-4">
                     <h2 class="h6 mb-2">Issue description</h2>
                     <p class="text-secondary mb-0">{{ support_request.free_text }}</p>
+                </div>
+
+                <div class="mt-4">
+                    <h2 class="h6 mb-2">Requester</h2>
+                    <div class="text-secondary small">Name: {{ support_request.requester_name or 'Not provided' }}</div>
+                    <div class="text-secondary small">Email: {{ support_request.requester_email or 'Not provided' }}</div>
+                    <div class="text-secondary small">Phone: {{ support_request.requester_number or 'Not provided' }}</div>
+                    <div class="text-secondary small">Company: {{ support_request.requester_company or 'Not provided' }}</div>
                 </div>
 
                 {% if support_request.uploaded_file %}

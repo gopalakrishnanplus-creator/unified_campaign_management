@@ -11,7 +11,7 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
 from apps.support_center.services import get_faq_combination
-from apps.support_center.models import SupportCategory, SupportItem, SupportRequest, SupportSuperCategory
+from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory
 from apps.ticketing.models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketTypeDefinition
 from apps.ticketing.external_ticketing import sync_external_directory
 from apps.ticketing.services import create_ticket
@@ -65,6 +65,7 @@ class SeededIntegrationTestCase(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
 
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
     def test_ticket_creation_supports_dynamic_ticket_types(self):
         self.client.force_login(self.pm_user)
         category = TicketCategory.objects.order_by("display_order", "name").first()
@@ -232,7 +233,14 @@ class SeededIntegrationTestCase(TestCase):
             name="Verification Screen",
             slug="verification-screen",
         )
+        assistant_page = SupportPage.objects.create(
+            name="Verification Page",
+            slug="verification-page",
+            source_system="In-clinic",
+            source_flow="Assistant Flow",
+        )
         SupportItem.objects.create(
+            page=assistant_page,
             category=assistant_category,
             name="FAQ step for assistant",
             slug="faq-step-for-assistant",
@@ -261,6 +269,9 @@ class SeededIntegrationTestCase(TestCase):
             assistant_url,
             data={
                 "action": "submit_other_issue",
+                "requester_name": "Doctor Widget User",
+                "requester_number": "+916666666666",
+                "requester_email": "doctor.widget@example.com",
                 "free_text": "The FAQ list did not cover the patient verification issue.",
                 "uploaded_file": SimpleUploadedFile("evidence.webp", b"image-bytes", content_type="image/webp"),
             },
@@ -270,54 +281,63 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         support_request = SupportRequest.objects.get(status=SupportRequest.Status.PENDING_PM_REVIEW)
         self.assertEqual(support_request.support_category, assistant_category)
+        self.assertEqual(support_request.support_page, assistant_page)
+        self.assertEqual(support_request.support_super_category, assistant_super)
         self.assertEqual(support_request.source_system, "In-clinic")
         self.assertEqual(support_request.source_flow, "Assistant Flow")
         self.assertTrue(support_request.uploaded_file.name.endswith(".webp"))
         self.assertFalse(Ticket.objects.filter(support_request=support_request).exists())
 
     def test_faq_page_api_and_widget_render(self):
+        page = SupportPage.objects.get(slug="customer-support-authentication-page")
         faq_page_url = reverse(
-            "support_center:faq_super_category",
-            kwargs={"user_type": "brand_manager", "super_slug": "access-login"},
+            "support_center:faq_page",
+            kwargs={"user_type": "brand_manager", "page_slug": page.slug},
         )
         faq_api_url = reverse(
-            "support_center:faq_combination_api",
-            kwargs={"user_type": "brand_manager", "super_slug": "access-login", "category_slug": "authentication"},
+            "support_center:faq_page_api",
+            kwargs={"user_type": "brand_manager", "page_slug": page.slug},
         )
         faq_links_url = reverse("support_center:faq_links_api", kwargs={"user_type": "brand_manager"})
         widget_url = reverse(
-            "support_center:faq_widget",
-            kwargs={"user_type": "brand_manager", "super_slug": "access-login", "category_slug": "authentication"},
+            "support_center:faq_page_widget",
+            kwargs={"user_type": "brand_manager", "page_slug": page.slug},
         )
 
         page_response = self.client.get(faq_page_url)
         self.assertEqual(page_response.status_code, 200)
-        self.assertContains(page_response, "Authentication")
+        self.assertContains(page_response, page.name)
 
         links_response = self.client.get(faq_links_url)
         self.assertEqual(links_response.status_code, 200)
         self.assertEqual(links_response.headers["Access-Control-Allow-Origin"], "*")
         self.assertGreaterEqual(links_response.json()["count"], 1)
         self.assertIn("source_system", links_response.json()["results"][0])
+        self.assertIn("page", links_response.json()["results"][0])
         self.assertIn("embed=1", links_response.json()["results"][0]["embed_url"])
 
         api_response = self.client.get(faq_api_url)
         self.assertEqual(api_response.status_code, 200)
         self.assertEqual(api_response.headers["Access-Control-Allow-Origin"], "*")
-        self.assertEqual(api_response.json()["faq_count"], 1)
+        self.assertGreaterEqual(api_response.json()["faq_count"], 1)
+        self.assertGreaterEqual(api_response.json()["section_count"], 1)
         self.assertIn("embed_url", api_response.json())
+        self.assertIn("sections", api_response.json())
 
         widget_response = self.client.get(f"{widget_url}?embed=1")
         self.assertEqual(widget_response.status_code, 200)
         self.assertNotIn("X-Frame-Options", widget_response.headers)
         self.assertContains(widget_response, "Support Bot")
-        self.assertContains(widget_response, 'id="restart-button"', html=False)
-        self.assertNotContains(widget_response, "Show Answer")
+        self.assertContains(widget_response, 'id="restart-page-button"', html=False)
+        self.assertContains(widget_response, 'id="restart-section-button"', html=False)
+        self.assertContains(widget_response, "Sections")
 
     def test_widget_other_issue_submission_records_pm_review_item(self):
         faq_super = SupportSuperCategory.objects.create(name="Widget Flow Tests", slug="widget-flow-tests")
         faq_category = SupportCategory.objects.create(super_category=faq_super, name="Landing Screen", slug="landing-screen")
+        faq_page = SupportPage.objects.create(name="Patient Landing Page", slug="patient-landing-page", source_system="Patient Education", source_flow="Widget Flow")
         SupportItem.objects.create(
+            page=faq_page,
             category=faq_category,
             name="Widget FAQ",
             slug="widget-faq",
@@ -334,12 +354,16 @@ class SeededIntegrationTestCase(TestCase):
         )
         response = self.client.post(
             reverse(
-                "support_center:faq_other_issue",
-                kwargs={"user_type": "patient", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+                "support_center:faq_page_other_issue",
+                kwargs={"user_type": "patient", "page_slug": faq_page.slug},
             ),
             data={
+                "requester_name": "Patient Widget User",
+                "requester_email": "patient@example.com",
+                "requester_number": "+911111111111",
                 "free_text": "Need help with a patient screen issue not listed here.",
                 "uploaded_file": SimpleUploadedFile("patient.png", b"image-bytes", content_type="image/png"),
+                "selected_section_slug": faq_super.slug,
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -350,13 +374,18 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.status, SupportRequest.Status.PENDING_PM_REVIEW)
         self.assertEqual(support_request.source_system, "Patient Education")
         self.assertEqual(support_request.source_flow, "Widget Flow")
-        self.assertEqual(support_request.support_category, faq_category)
+        self.assertEqual(support_request.support_page, faq_page)
+        self.assertEqual(support_request.support_super_category, faq_super)
+        self.assertIsNone(support_request.support_category)
+        self.assertEqual(support_request.requester_number, "+911111111111")
         self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
 
     def test_widget_other_issue_uses_selected_faq_context_when_category_has_mixed_systems(self):
         faq_super = SupportSuperCategory.objects.create(name="Mixed Widget Tests", slug="mixed-widget-tests")
         faq_category = SupportCategory.objects.create(super_category=faq_super, name="Shared Screen", slug="shared-screen")
+        faq_page = SupportPage.objects.create(name="Shared Page", slug="shared-page", source_system="", source_flow="")
         first_faq = SupportItem.objects.create(
+            page=faq_page,
             category=faq_category,
             name="Generic support question",
             slug="generic-support-question",
@@ -370,6 +399,7 @@ class SeededIntegrationTestCase(TestCase):
             is_visible_to_field_reps=False,
         )
         second_faq = SupportItem.objects.create(
+            page=faq_page,
             category=faq_category,
             name="In-clinic issue question",
             slug="in-clinic-issue-question",
@@ -386,13 +416,17 @@ class SeededIntegrationTestCase(TestCase):
 
         response = self.client.post(
             reverse(
-                "support_center:faq_other_issue",
-                kwargs={"user_type": "brand_manager", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+                "support_center:faq_page_other_issue",
+                kwargs={"user_type": "brand_manager", "page_slug": faq_page.slug},
             ),
             data={
+                "requester_name": "Brand Manager",
+                "requester_email": "brand.manager@example.com",
+                "requester_number": "+912222222222",
                 "free_text": "The in-clinic screen is blank and I need help.",
                 "uploaded_file": SimpleUploadedFile("evidence.png", b"image-bytes", content_type="image/png"),
                 "selected_faq_id": second_faq.pk,
+                "selected_section_slug": faq_super.slug,
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -400,6 +434,8 @@ class SeededIntegrationTestCase(TestCase):
         self.assertTrue(payload["success"])
 
         support_request = SupportRequest.objects.get(pk=payload["request_id"])
+        self.assertEqual(support_request.support_page, faq_page)
+        self.assertEqual(support_request.support_super_category, faq_super)
         self.assertEqual(support_request.support_category, faq_category)
         self.assertEqual(support_request.source_system, "In-clinic")
         self.assertEqual(support_request.source_flow, "In-clinic Content")
@@ -408,7 +444,9 @@ class SeededIntegrationTestCase(TestCase):
     def test_widget_other_issue_prefers_explicit_system_context_over_faq_source_system(self):
         faq_super = SupportSuperCategory.objects.create(name="Override Widget Tests", slug="override-widget-tests")
         faq_category = SupportCategory.objects.create(super_category=faq_super, name="Sharing & Activation", slug="sharing-activation")
+        faq_page = SupportPage.objects.create(name="Campaign Sharing Page", slug="campaign-sharing-page", source_system="Customer support", source_flow="General support")
         generic_faq = SupportItem.objects.create(
+            page=faq_page,
             category=faq_category,
             name="Doctor or clinic has not been added to the campaign",
             slug="doctor-or-clinic-has-not-been-added-to-the-campaign",
@@ -424,13 +462,17 @@ class SeededIntegrationTestCase(TestCase):
 
         response = self.client.post(
             reverse(
-                "support_center:faq_other_issue",
-                kwargs={"user_type": "brand_manager", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+                "support_center:faq_page_other_issue",
+                kwargs={"user_type": "brand_manager", "page_slug": faq_page.slug},
             ),
             data={
+                "requester_name": "Brand Manager",
+                "requester_email": "brand.manager@example.com",
+                "requester_number": "+913333333333",
                 "free_text": "Testing the chat from the In-clinic system.",
                 "uploaded_file": SimpleUploadedFile("contact.jpg", b"image-bytes", content_type="image/jpeg"),
                 "selected_faq_id": generic_faq.pk,
+                "selected_section_slug": faq_super.slug,
                 "source_system": "In-clinic",
                 "source_flow": "Campaign Operations",
             },
@@ -442,12 +484,15 @@ class SeededIntegrationTestCase(TestCase):
         support_request = SupportRequest.objects.get(pk=payload["request_id"])
         self.assertEqual(support_request.source_system, "In-clinic")
         self.assertEqual(support_request.source_flow, "Campaign Operations")
+        self.assertEqual(support_request.requester_number, "+913333333333")
         self.assertTrue(support_request.uploaded_file.name.endswith(".jpg"))
 
     def test_widget_other_issue_preserves_query_context_for_shared_faq_groups(self):
         faq_super = SupportSuperCategory.objects.create(name="Shared Context Tests", slug="shared-context-tests")
         faq_category = SupportCategory.objects.create(super_category=faq_super, name="Sharing & Activation", slug="sharing-activation")
+        faq_page = SupportPage.objects.create(name="Shared Context Page", slug="shared-context-page", source_system="Customer support", source_flow="General support")
         generic_faq = SupportItem.objects.create(
+            page=faq_page,
             category=faq_category,
             name="Doctor or clinic has not been added to the campaign",
             slug="doctor-or-clinic-has-not-been-added-to-the-campaign",
@@ -463,8 +508,8 @@ class SeededIntegrationTestCase(TestCase):
 
         api_response = self.client.get(
             reverse(
-                "support_center:faq_combination_api",
-                kwargs={"user_type": "brand_manager", "super_slug": faq_super.slug, "category_slug": faq_category.slug},
+                "support_center:faq_page_api",
+                kwargs={"user_type": "brand_manager", "page_slug": faq_page.slug},
             ),
             data={"system": "In-clinic", "flow": "Campaign Operations"},
         )
@@ -476,11 +521,15 @@ class SeededIntegrationTestCase(TestCase):
         self.assertIn("flow=Campaign+Operations", api_payload["other_issue_url"])
 
         response = self.client.post(
-            f"{reverse('support_center:faq_other_issue', kwargs={'user_type': 'brand_manager', 'super_slug': faq_super.slug, 'category_slug': faq_category.slug})}?system=In-clinic&flow=Campaign+Operations",
+            f"{reverse('support_center:faq_page_other_issue', kwargs={'user_type': 'brand_manager', 'page_slug': faq_page.slug})}?system=In-clinic&flow=Campaign+Operations",
             data={
+                "requester_name": "Campaign Project Manager",
+                "requester_email": "campaignpm@inditech.co.in",
+                "requester_number": "+914444444444",
                 "free_text": "Testing the shared FAQ widget from the In-clinic system.",
                 "uploaded_file": SimpleUploadedFile("ku.png", b"image-bytes", content_type="image/png"),
                 "selected_faq_id": generic_faq.pk,
+                "selected_section_slug": faq_super.slug,
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -490,16 +539,24 @@ class SeededIntegrationTestCase(TestCase):
         support_request = SupportRequest.objects.get(pk=payload["request_id"])
         self.assertEqual(support_request.source_system, "In-clinic")
         self.assertEqual(support_request.source_flow, "Campaign Operations")
+        self.assertEqual(support_request.requester_number, "+914444444444")
         self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
 
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
     def test_pm_can_raise_ticket_from_other_issue_submission(self):
+        support_page = SupportPage.objects.create(name="Collateral Viewer Page", slug="collateral-viewer-page", source_system="In-clinic", source_flow="Content Viewing")
+        support_super = SupportSuperCategory.objects.create(name="Content Viewing", slug="content-viewing")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Collateral Viewer Screen", slug="collateral-viewer-screen")
         support_request = SupportRequest.objects.create(
             user_type="doctor",
             requester_name="Doctor support user",
             requester_email="doctor.widget@support-widget.local",
+            requester_number="+915555555555",
             requester_company="",
             campaign=self.campaign,
-            support_category=SupportCategory.objects.first(),
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
             source_system="In-clinic",
             source_flow="Content Viewing",
             subject="Other issue - Collateral Viewer",
@@ -520,6 +577,8 @@ class SeededIntegrationTestCase(TestCase):
         self.assertContains(raise_page, "Raise ticket from support issue")
         self.assertContains(raise_page, "This file will be attached to the created ticket automatically.")
         self.assertContains(raise_page, "viewer.png")
+        self.assertContains(raise_page, "Collateral Viewer Page")
+        self.assertContains(raise_page, "+915555555555")
 
         category = TicketCategory.objects.get(name="Support")
         ticket_type = TicketTypeDefinition.objects.get(category=category, name="Query")

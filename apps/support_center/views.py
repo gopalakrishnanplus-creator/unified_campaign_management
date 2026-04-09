@@ -20,7 +20,7 @@ from apps.ticketing.models import Department, TicketAttachment, TicketNote, Tick
 from apps.ticketing.services import create_ticket
 
 from .forms import SupportOtherIssueForm, SupportRequestForm
-from .models import SupportItem, SupportRequest
+from .models import SupportItem, SupportPage, SupportRequest
 from .services import (
     GENERAL_SUPPORT_FLOW,
     build_support_request_ticket_initial,
@@ -29,6 +29,8 @@ from .services import (
     get_available_flows,
     get_available_systems,
     get_faq_combination,
+    get_faq_page,
+    get_faq_page_overview,
     get_faq_super_category,
     get_faq_super_category_overview,
     resolve_support_request_context,
@@ -89,6 +91,29 @@ def _build_combination_urls(request, user_type, super_slug, category_slug, *, co
     )
     return {
         "page_url": request.build_absolute_uri(with_query(page_url)),
+        "widget_url": request.build_absolute_uri(with_query(widget_path)),
+        "embed_url": request.build_absolute_uri(with_query(widget_path, {"embed": "1"})),
+        "api_url": request.build_absolute_uri(with_query(api_path)),
+    }
+
+
+def _build_page_urls(request, user_type, page_slug, *, context_params=None):
+    if context_params is None:
+        context_params = _current_context_params(request)
+
+    def with_query(path, extra_params=None):
+        params = dict(context_params)
+        if extra_params:
+            params.update(extra_params)
+        if not params:
+            return path
+        return f"{path}?{urlencode(params)}"
+
+    page_path = reverse("support_center:faq_page", kwargs={"user_type": user_type, "page_slug": page_slug})
+    widget_path = reverse("support_center:faq_page_widget", kwargs={"user_type": user_type, "page_slug": page_slug})
+    api_path = reverse("support_center:faq_page_api", kwargs={"user_type": user_type, "page_slug": page_slug})
+    return {
+        "page_url": request.build_absolute_uri(with_query(page_path)),
         "widget_url": request.build_absolute_uri(with_query(widget_path)),
         "embed_url": request.build_absolute_uri(with_query(widget_path, {"embed": "1"})),
         "api_url": request.build_absolute_uri(with_query(api_path)),
@@ -195,6 +220,61 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
     }
 
 
+def _build_page_payload(request, user_type, page_slug):
+    page_block = get_faq_page(user_type, page_slug)
+    if not page_block:
+        raise Http404("FAQ page not found.")
+    context_params = _current_context_params(request)
+    requested_context = _requested_support_context(request)
+    page = page_block["page"]
+    resolved_system = requested_context["system_name"] or page.source_system
+    resolved_flow = requested_context["flow_name"] or page.source_flow or GENERAL_SUPPORT_FLOW
+    urls = _build_page_urls(request, user_type, page_slug, context_params=context_params)
+    return {
+        "user_type": user_type,
+        "role_title": ROLE_CONFIG[user_type]["title"],
+        "page": {
+            "id": page.pk,
+            "name": page.name,
+            "slug": page.slug,
+        },
+        "source_system": resolved_system,
+        "source_flow": resolved_flow,
+        "faq_count": page_block["faq_count"],
+        "section_count": page_block["section_count"],
+        "default_context_available": bool(resolved_system),
+        "other_issue_url": request.build_absolute_uri(
+            "{}{}".format(
+                reverse("support_center:faq_page_other_issue", kwargs={"user_type": user_type, "page_slug": page.slug}),
+                f"?{urlencode(context_params)}" if context_params else "",
+            )
+        ),
+        **urls,
+        "sections": [
+            {
+                "id": section["super_category"].pk,
+                "name": section["super_category"].name,
+                "slug": section["super_category"].slug,
+                "faq_count": section["faq_count"],
+                "category_names": section["category_names"],
+                "faqs": [
+                    {
+                        "id": item.pk,
+                        "question": item.name,
+                        "answer": item.solution_body or item.summary or "No answer has been configured yet.",
+                        "summary": item.summary,
+                        "pdf_url": item.associated_pdf_url,
+                        "video_url": item.associated_video_url,
+                        "category_name": item.category.name,
+                    }
+                    for item in section["faq_items"]
+                ],
+            }
+            for section in page_block["sections"]
+        ],
+    }
+
+
 class ProjectManagerAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
     def test_func(self):
         return self.request.user.is_superuser or self.request.user.is_project_manager
@@ -218,19 +298,20 @@ class SupportLandingView(SupportAudienceMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        faq_super_categories = []
-        for block in get_faq_super_category_overview(self.user_type):
-            faq_super_categories.append(
+        faq_pages = []
+        for block in get_faq_page_overview(self.user_type):
+            faq_pages.append(
                 {
-                    "super_category": block["super_category"],
+                    "page": block["page"],
                     "faq_count": block["faq_count"],
-                    "category_count": block["category_count"],
-                    "category_names": [entry["category"].name for entry in block["categories"]],
+                    "section_count": block["section_count"],
+                    "section_names": [entry["super_category"].name for entry in block["sections"]],
+                    **_build_page_urls(self.request, self.user_type, block["page"].slug),
                 }
             )
         context.update(
             {
-                "faq_super_categories": faq_super_categories,
+                "faq_pages": faq_pages,
                 "user_type": self.user_type,
                 "role_title": self.config["title"],
                 "page_title": self.config["page_title"],
@@ -299,6 +380,27 @@ class SupportFaqSuperCategoryView(SupportAudienceMixin, TemplateView):
         return context
 
 
+class SupportFaqPageView(SupportAudienceMixin, TemplateView):
+    template_name = "support_center/faq_page.jinja"
+    template_engine = "jinja2"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        payload = _build_page_payload(self.request, self.user_type, kwargs["page_slug"])
+        context.update(
+            {
+                "user_type": self.user_type,
+                "role_title": self.config["title"],
+                "page_title": payload["page"]["name"],
+                "faq_payload": payload,
+                "faq_links_api_url": self.request.build_absolute_uri(
+                    reverse("support_center:faq_links_api", kwargs={"user_type": self.user_type})
+                ),
+            }
+        )
+        return context
+
+
 @method_decorator(xframe_options_exempt, name="dispatch")
 class SupportFaqWidgetView(SupportAudienceMixin, TemplateView):
     template_name = "support_center/widget.jinja"
@@ -317,6 +419,26 @@ class SupportFaqWidgetView(SupportAudienceMixin, TemplateView):
                 "user_type": self.user_type,
                 "role_title": self.config["title"],
                 "page_title": f"{payload['super_category']['name']} / {payload['category']['name']}",
+                "embedded": self.request.GET.get("embed") == "1",
+                "faq_payload": payload,
+            }
+        )
+        return context
+
+
+@method_decorator(xframe_options_exempt, name="dispatch")
+class SupportFaqPageWidgetView(SupportAudienceMixin, TemplateView):
+    template_name = "support_center/widget.jinja"
+    template_engine = "jinja2"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        payload = _build_page_payload(self.request, self.user_type, kwargs["page_slug"])
+        context.update(
+            {
+                "user_type": self.user_type,
+                "role_title": self.config["title"],
+                "page_title": payload["page"]["name"],
                 "embedded": self.request.GET.get("embed") == "1",
                 "faq_payload": payload,
             }
@@ -590,8 +712,15 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 selected_system=context["selected_system"],
                 selected_flow=context["selected_flow"],
             )
+            selected_page = None
+            if context["last_selected_faq"] and context["last_selected_faq"].page_id:
+                selected_page = context["last_selected_faq"].page
+            elif context["faqs"]:
+                selected_page = next((item.page for item in context["faqs"] if item.page_id), None)
             support_request = create_other_support_request(
                 user_type=self.user_type,
+                page=selected_page,
+                super_category=context["selected_category"].super_category,
                 category=context["selected_category"],
                 system_name=request_context["system_name"],
                 flow_name=request_context["flow_name"],
@@ -823,7 +952,74 @@ def support_faq_other_issue(request, user_type, super_slug, category_slug):
     )
     support_request = create_other_support_request(
         user_type=user_type,
+        page=selected_faq.page if selected_faq and selected_faq.page_id else next((item.page for item in combination["faq_items"] if item.page_id), None),
+        super_category=combination["super_category"],
         category=combination["category"],
+        system_name=request_context["system_name"],
+        flow_name=request_context["flow_name"],
+        form=form,
+        request_user=request.user,
+    )
+    return JsonResponse(
+        {
+            "success": True,
+            "request_id": support_request.pk,
+            "message": "Issue recorded. It is now available in the PM dashboard for review.",
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def support_faq_page_other_issue(request, user_type, page_slug):
+    if user_type not in ROLE_CONFIG:
+        raise Http404("Unsupported support audience.")
+    page_block = get_faq_page(user_type, page_slug)
+    if not page_block:
+        raise Http404("FAQ page not found.")
+
+    form = SupportOtherIssueForm(request.POST, request.FILES)
+    if not form.is_valid():
+        return JsonResponse({"success": False, "errors": form.errors.get_json_data()}, status=400)
+
+    selected_section = None
+    selected_section_slug = request.POST.get("selected_section_slug")
+    if selected_section_slug:
+        selected_section = next(
+            (section for section in page_block["sections"] if section["super_category"].slug == str(selected_section_slug)),
+            None,
+        )
+    selected_faq = None
+    selected_faq_id = request.POST.get("selected_faq_id")
+    if selected_faq_id:
+        for section in page_block["sections"]:
+            selected_faq = next((item for item in section["faq_items"] if str(item.pk) == str(selected_faq_id)), None)
+            if selected_faq:
+                selected_section = section
+                break
+
+    referrer_context = _infer_support_context_from_referrer(request.POST.get("context_referrer"))
+    requested_context = _requested_support_context(request)
+    request_context = resolve_support_request_context(
+        selected_faq=selected_faq,
+        selected_system=(
+            request.POST.get("source_system")
+            or requested_context["system_name"]
+            or referrer_context["system_name"]
+            or page_block["page"].source_system
+        ),
+        selected_flow=(
+            request.POST.get("source_flow")
+            or requested_context["flow_name"]
+            or referrer_context["flow_name"]
+            or page_block["page"].source_flow
+        ),
+    )
+    support_request = create_other_support_request(
+        user_type=user_type,
+        page=page_block["page"],
+        super_category=selected_section["super_category"] if selected_section else None,
+        category=selected_faq.category if selected_faq else None,
         system_name=request_context["system_name"],
         flow_name=request_context["flow_name"],
         form=form,
@@ -844,31 +1040,35 @@ def support_faq_links_api(request, user_type):
     if user_type not in ROLE_CONFIG:
         raise Http404("Unsupported support audience.")
     results = []
-    for block in get_faq_super_category_overview(user_type):
-        for entry in block["categories"]:
-            category = entry["category"]
-            for context_group in _faq_context_groups(entry["faq_items"]):
-                context_params = {}
-                if context_group["source_system"]:
-                    context_params["system"] = context_group["source_system"]
-                if context_group["source_flow"]:
-                    context_params["flow"] = context_group["source_flow"]
-                results.append(
+    for block in get_faq_page_overview(user_type):
+        context_params = {}
+        if block["page"].source_system:
+            context_params["system"] = block["page"].source_system
+        if block["page"].source_flow:
+            context_params["flow"] = block["page"].source_flow
+        results.append(
+            {
+                "source_system": block["page"].source_system,
+                "source_flow": block["page"].source_flow or GENERAL_SUPPORT_FLOW,
+                "page": {"name": block["page"].name, "slug": block["page"].slug},
+                "section_count": block["section_count"],
+                "faq_count": block["faq_count"],
+                "sections": [
                     {
-                        "source_system": context_group["source_system"],
-                        "source_flow": context_group["source_flow"] or GENERAL_SUPPORT_FLOW,
-                        "super_category": {"name": block["super_category"].name, "slug": block["super_category"].slug},
-                        "category": {"name": category.name, "slug": category.slug},
-                        "faq_count": context_group["faq_count"],
-                        **_build_combination_urls(
-                            request,
-                            user_type,
-                            block["super_category"].slug,
-                            category.slug,
-                            context_params=context_params,
-                        ),
+                        "name": entry["super_category"].name,
+                        "slug": entry["super_category"].slug,
+                        "faq_count": entry["faq_count"],
                     }
-                )
+                    for entry in block["sections"]
+                ],
+                **_build_page_urls(
+                    request,
+                    user_type,
+                    block["page"].slug,
+                    context_params=context_params,
+                ),
+            }
+        )
     return _cors_json(
         {
             "user_type": user_type,
@@ -885,3 +1085,11 @@ def support_faq_combination_api(request, user_type, super_slug, category_slug):
     if user_type not in ROLE_CONFIG:
         raise Http404("Unsupported support audience.")
     return _cors_json(_build_combination_payload(request, user_type, super_slug, category_slug))
+
+
+def support_faq_page_api(request, user_type, page_slug):
+    if request.method == "OPTIONS":
+        return _options_response()
+    if user_type not in ROLE_CONFIG:
+        raise Http404("Unsupported support audience.")
+    return _cors_json(_build_page_payload(request, user_type, page_slug))

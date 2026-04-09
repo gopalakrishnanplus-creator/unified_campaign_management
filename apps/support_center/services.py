@@ -7,7 +7,7 @@ from django.utils.text import Truncator
 from apps.ticketing.models import Department, Ticket
 from apps.ticketing.services import create_ticket, resolve_ticket_classification
 
-from .models import SupportCategory, SupportItem, SupportRequest, SupportSuperCategory
+from .models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory
 
 
 ROLE_VISIBILITY_FIELD = {
@@ -77,6 +77,60 @@ def get_faq_super_category_overview(user_type):
             }
         )
     return results
+
+
+def get_faq_page_overview(user_type):
+    overview = OrderedDict()
+    for item in get_visible_faq_items(user_type):
+        page = item.page
+        if not page:
+            continue
+        if page.pk not in overview:
+            overview[page.pk] = {
+                "page": page,
+                "faq_count": 0,
+                "sections": OrderedDict(),
+            }
+        section_bucket = overview[page.pk]["sections"]
+        super_category = item.category.super_category
+        if super_category.pk not in section_bucket:
+            section_bucket[super_category.pk] = {
+                "super_category": super_category,
+                "faq_items": [],
+                "categories": OrderedDict(),
+            }
+        section_bucket[super_category.pk]["faq_items"].append(item)
+        section_bucket[super_category.pk]["categories"][item.category_id] = item.category
+        overview[page.pk]["faq_count"] += 1
+
+    results = []
+    for block in overview.values():
+        sections = []
+        for section in block["sections"].values():
+            sections.append(
+                {
+                    "super_category": section["super_category"],
+                    "faq_items": section["faq_items"],
+                    "faq_count": len(section["faq_items"]),
+                    "category_names": [category.name for category in section["categories"].values()],
+                }
+            )
+        results.append(
+            {
+                "page": block["page"],
+                "faq_count": block["faq_count"],
+                "section_count": len(sections),
+                "sections": sections,
+            }
+        )
+    return results
+
+
+def get_faq_page(user_type, page_slug):
+    for block in get_faq_page_overview(user_type):
+        if block["page"].slug == page_slug:
+            return block
+    return None
 
 
 def get_faq_super_category(user_type, super_slug):
@@ -179,27 +233,32 @@ def _fallback_requester_identity(user_type, request_user):
         return {
             "name": request_user.full_name or settings.PROJECT_MANAGER_EMAIL,
             "email": request_user.email,
+            "number": request_user.phone_number or "",
             "company": request_user.company or "",
         }
     return {
         "name": f"{user_type.replace('_', ' ').title()} support user",
         "email": f"{user_type}.widget@support-widget.local",
+        "number": "",
         "company": "",
     }
 
 
-def create_other_support_request(*, user_type, category, system_name, flow_name, form, request_user):
+def create_other_support_request(*, user_type, page, super_category, category, system_name, flow_name, form, request_user):
     support_request = form.save(commit=False)
     requester = _fallback_requester_identity(user_type, request_user)
     support_request.user_type = user_type
     support_request.item = None
+    support_request.support_page = page
+    support_request.support_super_category = super_category
     support_request.support_category = category
     support_request.source_system = system_name or ""
     support_request.source_flow = "" if flow_name == GENERAL_SUPPORT_FLOW else (flow_name or "")
-    support_request.requester_name = requester["name"]
-    support_request.requester_email = requester["email"]
+    support_request.requester_name = (support_request.requester_name or requester["name"]).strip()
+    support_request.requester_email = (support_request.requester_email or requester["email"]).strip()
+    support_request.requester_number = (support_request.requester_number or requester["number"]).strip()
     support_request.requester_company = requester["company"]
-    support_request.subject = f"Other issue - {category.name}"
+    support_request.subject = f"Other issue - {(page.name if page else category.name)}"
     support_request.status = SupportRequest.Status.PENDING_PM_REVIEW
     support_request.save()
     return support_request
@@ -227,10 +286,13 @@ def build_support_request_ticket_initial(support_request):
         "Support request context",
         f"System: {support_request.source_system or 'Not provided'}",
         f"Flow: {support_request.source_flow or GENERAL_SUPPORT_FLOW}",
+        f"Page: {support_request.page_label or 'Not specified'}",
+        f"Section: {support_request.section_label or 'Not specified'}",
         f"Screen / Section: {support_request.screen_label or 'Not specified'}",
         f"User type: {support_request.user_type.replace('_', ' ').title()}",
         f"Requester name: {support_request.requester_name or 'Not provided'}",
         f"Requester email: {support_request.requester_email or 'Not provided'}",
+        f"Requester phone: {support_request.requester_number or 'Not provided'}",
         f"Requester company: {support_request.requester_company or 'Not provided'}",
     ]
     if support_request.uploaded_file:
@@ -257,6 +319,7 @@ def build_support_request_ticket_initial(support_request):
         ),
         "requester_name": support_request.requester_name,
         "requester_email": support_request.requester_email,
+        "requester_number": support_request.requester_number,
         "requester_company": support_request.requester_company,
     }
 
@@ -265,6 +328,11 @@ def submit_support_request(*, item, user_type, form, request_user):
     support_request = form.save(commit=False)
     support_request.user_type = user_type
     support_request.item = item
+    support_request.support_page = item.page if item else None
+    support_request.support_super_category = item.category.super_category if item else None
+    support_request.support_category = item.category if item else None
+    if request_user and request_user.is_authenticated and not support_request.requester_number:
+        support_request.requester_number = request_user.phone_number or ""
     department = _resolve_department(item)
 
     if item and item.ticket_required is False:

@@ -1,0 +1,94 @@
+{% extends "base.jinja" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-4">
+    <div>
+        <p class="eyebrow mb-1">{{ role_title }}</p>
+        <h1 class="mb-1">{{ faq_payload.page.name }}</h1>
+        <p class="text-secondary mb-0">This page groups FAQs by section. Open the widget to let users choose a section first, then the matching FAQ.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="{{ url('support_center:landing', user_type=user_type) }}">Back to support home</a>
+        <button
+            class="btn btn-primary"
+            type="button"
+            data-open-widget
+            data-widget-url="{{ faq_payload.embed_url }}"
+            data-widget-label="{{ faq_payload.page.name }}"
+        >
+            Open page widget
+        </button>
+        <a class="btn btn-outline-primary" href="{{ faq_links_api_url }}" target="_blank">Page links API</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    {% for section in faq_payload.sections %}
+        <div class="col-xl-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h2 class="h4 mb-1">{{ section.name }}</h2>
+                            <p class="text-secondary mb-0">{{ section.faq_count }} FAQs in this section</p>
+                        </div>
+                        <span class="badge text-bg-light">{{ section.faq_count }} questions</span>
+                    </div>
+                    {% if section.category_names %}
+                        <div class="small text-secondary mb-3">{{ section.category_names|join(' • ') }}</div>
+                    {% endif %}
+                    <div class="small text-secondary">
+                        {% for faq in section.faqs[:4] %}
+                            <div>{{ faq.question }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-warning rounded-4">No FAQ sections are available for this page and audience.</div>
+        </div>
+    {% endfor %}
+</div>
+
+<div class="faq-dock" id="faq-dock" hidden>
+    <div class="faq-dock-header">
+        <div>
+            <div class="small text-white-50">FAQ Support</div>
+            <strong id="faq-dock-title">Page widget</strong>
+        </div>
+        <button class="btn btn-sm btn-light" type="button" id="faq-dock-close">Close</button>
+    </div>
+    <iframe class="faq-dock-frame" id="faq-dock-frame" title="FAQ Support Widget"></iframe>
+</div>
+
+<script>
+(() => {
+    const dock = document.getElementById("faq-dock");
+    const frame = document.getElementById("faq-dock-frame");
+    const title = document.getElementById("faq-dock-title");
+    const closeButton = document.getElementById("faq-dock-close");
+    const openButton = document.querySelector("[data-open-widget]");
+
+    function openDock(widgetUrl, label) {
+        frame.src = widgetUrl;
+        title.textContent = label;
+        dock.hidden = false;
+        dock.classList.add("faq-dock-open");
+    }
+
+    function closeDock() {
+        dock.hidden = true;
+        dock.classList.remove("faq-dock-open");
+        frame.src = "";
+    }
+
+    if (openButton) {
+        openButton.addEventListener("click", () => openDock(openButton.dataset.widgetUrl, openButton.dataset.widgetLabel));
+    }
+
+    closeButton.addEventListener("click", closeDock);
+})();
+</script>
+{% endblock %}
