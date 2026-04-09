@@ -5,7 +5,7 @@
     <div>
         <p class="eyebrow mb-1">{{ role_title }}</p>
         <h1 class="mb-1">{{ page_title }}</h1>
-        <p class="text-secondary mb-0">Each FAQ super category now has its own page. Open a page, then launch the page-specific FAQ chat for the exact screen or section.</p>
+        <p class="text-secondary mb-0">FAQs are now organized page-wise. Open a page to review its sections and launch the page-specific support widget.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-secondary" href="{{ faq_links_api_url }}" target="_blank">FAQ links API</a>
@@ -17,16 +17,19 @@
 
 <div class="row g-4">
     <div class="col-lg-8">
-        {% for block in faq_super_categories %}
+        {% for block in faq_pages %}
             <div class="card shadow-sm border-0 rounded-4 mb-4">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                         <div>
-                            <h2 class="h4 mb-2">{{ block.super_category.name }}</h2>
-                            <p class="text-secondary mb-2">{{ block.category_count }} sub categories · {{ block.faq_count }} FAQs</p>
-                            <div class="small text-secondary">{{ block.category_names|join(' • ') }}</div>
+                            <h2 class="h4 mb-2">{{ block.page.name }}</h2>
+                            <p class="text-secondary mb-2">{{ block.section_count }} sections · {{ block.faq_count }} FAQs</p>
+                            <div class="small text-secondary">{{ block.section_names|join(' • ') }}</div>
                         </div>
-                        <a class="btn btn-primary" href="{{ url('support_center:faq_super_category', user_type=user_type, super_slug=block.super_category.slug) }}">Open FAQ page</a>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a class="btn btn-primary" href="{{ url('support_center:faq_page', user_type=user_type, page_slug=block.page.slug) }}">Open page</a>
+                            <a class="btn btn-outline-secondary" href="{{ block.widget_url }}" target="_blank" rel="noreferrer">Standalone widget</a>
+                        </div>
                     </div>
                 </div>
             </div>

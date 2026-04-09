@@ -36,7 +36,7 @@
 
         .widget-header p {
             margin: 0;
-            opacity: 0.85;
+            opacity: 0.88;
             font-size: 0.85rem;
         }
 
@@ -51,7 +51,7 @@
         .transcript {
             display: grid;
             gap: 0.75rem;
-            max-height: 38vh;
+            max-height: 34vh;
             overflow-y: auto;
             padding-right: 0.25rem;
         }
@@ -65,7 +65,7 @@
         }
 
         .bubble {
-            max-width: 92%;
+            max-width: 94%;
             border-radius: 1rem;
             padding: 0.85rem 1rem;
             border: 1px solid rgba(15, 23, 42, 0.08);
@@ -86,18 +86,24 @@
             margin-bottom: 0.3rem;
         }
 
-        .question-list,
-        .resolution-list {
+        .menu-list,
+        .question-list {
             display: grid;
             gap: 0.75rem;
         }
 
-        .question-option,
-        .resolution-option {
+        .question-option {
             border: 1px solid rgba(15, 23, 42, 0.08);
             border-radius: 1rem;
             background: white;
             padding: 0.85rem 1rem;
+        }
+
+        .question-meta {
+            display: block;
+            margin-top: 0.2rem;
+            color: var(--faq-muted);
+            font-size: 0.82rem;
         }
 
         .support-link-list {
@@ -117,9 +123,9 @@
 <body>
     <div class="widget-shell">
         <div class="widget-header">
-            <strong>{{ faq_payload.super_category.name }}</strong>
-            <div class="h5 mb-1 mt-1">{{ faq_payload.category.name }}</div>
-            <p>{{ faq_payload.faq_count }} FAQ questions for this page-specific support widget</p>
+            <strong>{{ faq_payload.source_system or role_title }}</strong>
+            <div class="h5 mb-1 mt-1">{{ faq_payload.page.name if faq_payload.page is defined else page_title }}</div>
+            <p>{{ faq_payload.faq_count }} FAQs across {{ faq_payload.section_count if faq_payload.section_count is defined else 1 }} sections on this page</p>
         </div>
         <div class="widget-body">
             <div class="card shadow-sm border-0 rounded-4">
@@ -129,13 +135,40 @@
                             <h1 class="h5 mb-1">Support Bot</h1>
                             <p class="text-secondary mb-0">Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.</p>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-button">Restart</button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-page-button">Restart Page</button>
                     </div>
-                    <div id="question-menu-panel">
+
+                    <div class="transcript mb-4" id="transcript">
+                        <div class="bubble-row">
+                            <div class="bubble">
+                                <div class="bubble-label">Support Bot</div>
+                                <div>Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="section-panel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h2 class="h6 mb-1">Sections</h2>
+                                <p class="text-secondary mb-0">Choose the section that best matches the area you are on.</p>
+                            </div>
+                        </div>
+                        <div class="menu-list" id="section-list"></div>
+                    </div>
+
+                    <div class="d-none" id="faq-panel">
+                        <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                            <div>
+                                <h2 class="h6 mb-1" id="selected-section-title"></h2>
+                                <p class="text-secondary mb-0">Choose the matching question or select <strong>Others</strong> if the issue is not listed.</p>
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-section-button">Restart Section</button>
+                        </div>
                         <div class="question-list" id="question-list"></div>
                     </div>
 
-                    <div class="vstack gap-3 d-none" id="conversation-panel">
+                    <div class="vstack gap-3 d-none mt-4" id="conversation-panel">
                         <div class="bubble-row bubble-row-user">
                             <div class="bubble">
                                 <div class="bubble-label">You</div>
@@ -157,6 +190,20 @@
                     </div>
 
                     <form class="vstack gap-3 mt-4 d-none" id="other-form" enctype="multipart/form-data">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label" for="other-name">Name</label>
+                                <input class="form-control" id="other-name" name="requester_name" type="text" placeholder="Enter your name">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="other-phone">Phone Number</label>
+                                <input class="form-control" id="other-phone" name="requester_number" type="tel" inputmode="tel" placeholder="Enter your phone number">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="other-email">Email Address</label>
+                                <input class="form-control" id="other-email" name="requester_email" type="email" placeholder="Enter your email address">
+                            </div>
+                        </div>
                         <div>
                             <label class="form-label" for="other-description">Describe the issue</label>
                             <textarea class="form-control" id="other-description" name="free_text" rows="4" placeholder="Describe what happened and what the user was trying to do."></textarea>
@@ -166,7 +213,10 @@
                             <input class="form-control" id="other-file" type="file" name="uploaded_file" accept=".jpg,.jpeg,.png,.heic,.svg,.webp">
                             <div class="form-text">Allowed formats: .jpg, .jpeg, .png, .heic, .svg, .webp</div>
                         </div>
-                        <button class="btn btn-primary" type="submit">Raise Query</button>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-primary" type="submit">Raise Query</button>
+                            <button class="btn btn-outline-secondary" type="button" id="cancel-other-button">Restart Section</button>
+                        </div>
                     </form>
 
                     <div class="alert rounded-4 mt-4 d-none" id="status-message"></div>
@@ -182,11 +232,37 @@
 
     <script>
         (() => {
-            const apiUrl = {{ faq_payload.api_url|tojson }};
-            const otherIssueUrl = {{ faq_payload.other_issue_url|tojson }};
-            const questionMenuPanel = document.getElementById("question-menu-panel");
+            const rawPayload = {{ faq_payload|tojson }};
+            const payload = rawPayload.sections
+                ? rawPayload
+                : {
+                    ...rawPayload,
+                    page: rawPayload.page || { name: rawPayload.category ? rawPayload.category.name : "Support", slug: rawPayload.category ? rawPayload.category.slug : "support" },
+                    sections: [
+                        {
+                            id: rawPayload.super_category ? rawPayload.super_category.slug : "default-section",
+                            name: rawPayload.super_category ? rawPayload.super_category.name : "Support",
+                            slug: rawPayload.super_category ? rawPayload.super_category.slug : "default-section",
+                            faq_count: rawPayload.faq_count || (rawPayload.faqs || []).length,
+                            category_names: rawPayload.category ? [rawPayload.category.name] : [],
+                            faqs: (rawPayload.faqs || []).map((faq) => ({
+                                ...faq,
+                                category_name: rawPayload.category ? rawPayload.category.name : "",
+                            })),
+                        },
+                    ],
+                };
+
+            const otherIssueUrl = payload.other_issue_url;
+            const transcriptElement = document.getElementById("transcript");
+            const sectionPanel = document.getElementById("section-panel");
+            const sectionListElement = document.getElementById("section-list");
+            const faqPanel = document.getElementById("faq-panel");
             const questionListElement = document.getElementById("question-list");
-            const restartButton = document.getElementById("restart-button");
+            const selectedSectionTitleElement = document.getElementById("selected-section-title");
+            const restartPageButton = document.getElementById("restart-page-button");
+            const restartSectionButton = document.getElementById("restart-section-button");
+            const cancelOtherButton = document.getElementById("cancel-other-button");
             const conversationPanel = document.getElementById("conversation-panel");
             const resolutionPanel = document.getElementById("resolution-panel");
             const otherForm = document.getElementById("other-form");
@@ -194,14 +270,13 @@
             const selectedAnswerElement = document.getElementById("selected-answer");
             const answerLinksElement = document.getElementById("answer-links");
             const statusMessageElement = document.getElementById("status-message");
+            const urlSearchParams = new URLSearchParams(window.location.search);
 
             const state = {
-                payload: null,
-                faqs: [],
+                selectedSection: null,
                 selectedFaq: null,
                 lastSelectedFaq: null,
             };
-            const urlSearchParams = new URLSearchParams(window.location.search);
 
             function getCookie(name) {
                 const cookieValue = document.cookie
@@ -222,6 +297,13 @@
                 return "";
             }
 
+            function buildLinks(faq) {
+                const links = [];
+                if (faq.pdf_url) links.push({ label: "PDF", url: faq.pdf_url });
+                if (faq.video_url) links.push({ label: "Video", url: faq.video_url });
+                return links;
+            }
+
             function setStatus(message, variant) {
                 statusMessageElement.className = `alert alert-${variant} rounded-4 mt-4`;
                 statusMessageElement.textContent = message;
@@ -233,38 +315,83 @@
                 statusMessageElement.textContent = "";
             }
 
-            function buildLinks(faq) {
-                const links = [];
-                if (faq.pdf_url) {
-                    links.push({ label: "PDF", url: faq.pdf_url });
-                }
-                if (faq.video_url) {
-                    links.push({ label: "Video", url: faq.video_url });
-                }
-                return links;
-            }
-
-            function showSelectionPanel() {
-                questionMenuPanel.classList.remove("d-none");
+            function resetPageFlow() {
+                state.selectedSection = null;
+                state.selectedFaq = null;
+                state.lastSelectedFaq = null;
+                sectionPanel.classList.remove("d-none");
+                faqPanel.classList.add("d-none");
                 conversationPanel.classList.add("d-none");
                 resolutionPanel.classList.add("d-none");
                 otherForm.classList.add("d-none");
+                otherForm.reset();
+                clearStatus();
+                renderSections();
             }
 
-            function hideSelectionPanel() {
-                questionMenuPanel.classList.add("d-none");
+            function restartSectionFlow() {
+                state.selectedFaq = null;
+                state.lastSelectedFaq = null;
+                conversationPanel.classList.add("d-none");
+                resolutionPanel.classList.add("d-none");
+                otherForm.classList.add("d-none");
+                otherForm.reset();
+                clearStatus();
+                if (!state.selectedSection) {
+                    resetPageFlow();
+                    return;
+                }
+                faqPanel.classList.remove("d-none");
+                renderQuestions();
             }
 
-            function renderQuestions() {
-                questionListElement.innerHTML = "";
-                state.faqs.forEach((faq) => {
+            function renderSections() {
+                sectionListElement.innerHTML = "";
+                payload.sections.forEach((section) => {
                     const wrapper = document.createElement("label");
                     wrapper.className = "question-option";
                     wrapper.innerHTML = `
                         <div class="form-check">
-                            <input class="form-check-input" type="radio" name="selection" value="${faq.id}" id="faq-${faq.id}" ${state.selectedFaq && state.selectedFaq.id === faq.id ? "checked" : ""}>
+                            <input class="form-check-input" type="radio" name="section-selection" value="${section.slug}" id="section-${section.slug}">
+                            <span class="form-check-label">${section.name}</span>
+                        </div>
+                        <span class="question-meta">${section.faq_count} FAQs${section.category_names && section.category_names.length ? ` • ${section.category_names.join(", ")}` : ""}</span>
+                    `;
+                    sectionListElement.appendChild(wrapper);
+                });
+
+                sectionListElement.querySelectorAll("input[name='section-selection']").forEach((input) => {
+                    input.addEventListener("change", () => {
+                        state.selectedSection = payload.sections.find((section) => section.slug === input.value) || null;
+                        state.selectedFaq = null;
+                        state.lastSelectedFaq = null;
+                        clearStatus();
+                        sectionPanel.classList.add("d-none");
+                        faqPanel.classList.remove("d-none");
+                        conversationPanel.classList.add("d-none");
+                        resolutionPanel.classList.add("d-none");
+                        otherForm.classList.add("d-none");
+                        renderQuestions();
+                    });
+                });
+            }
+
+            function renderQuestions() {
+                questionListElement.innerHTML = "";
+                if (!state.selectedSection) {
+                    return;
+                }
+
+                selectedSectionTitleElement.textContent = state.selectedSection.name;
+                state.selectedSection.faqs.forEach((faq) => {
+                    const wrapper = document.createElement("label");
+                    wrapper.className = "question-option";
+                    wrapper.innerHTML = `
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="question-selection" value="${faq.id}" id="faq-${faq.id}">
                             <span class="form-check-label">${faq.question}</span>
                         </div>
+                        ${faq.category_name ? `<span class="question-meta">${faq.category_name}</span>` : ""}
                     `;
                     questionListElement.appendChild(wrapper);
                 });
@@ -273,23 +400,25 @@
                 otherWrapper.className = "question-option";
                 otherWrapper.innerHTML = `
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="selection" value="other" id="faq-other">
-                        <span class="form-check-label">Other</span>
+                        <input class="form-check-input" type="radio" name="question-selection" value="other" id="faq-other">
+                        <span class="form-check-label">Others</span>
                     </div>
+                    <span class="question-meta">Use this when none of the listed questions match the issue.</span>
                 `;
                 questionListElement.appendChild(otherWrapper);
 
-                questionListElement.querySelectorAll("input[name='selection']").forEach((input) => {
+                questionListElement.querySelectorAll("input[name='question-selection']").forEach((input) => {
                     input.addEventListener("change", () => {
                         clearStatus();
                         if (input.value === "other") {
-                            hideSelectionPanel();
+                            faqPanel.classList.add("d-none");
                             conversationPanel.classList.add("d-none");
+                            resolutionPanel.classList.add("d-none");
                             otherForm.classList.remove("d-none");
                             return;
                         }
 
-                        const faq = state.faqs.find((entry) => String(entry.id) === input.value);
+                        const faq = state.selectedSection.faqs.find((entry) => String(entry.id) === input.value);
                         if (!faq) {
                             setStatus("That question could not be loaded.", "warning");
                             return;
@@ -297,16 +426,6 @@
                         showSelectedAnswer(faq);
                     });
                 });
-            }
-
-            function resetPanels() {
-                state.selectedFaq = null;
-                showSelectionPanel();
-                clearStatus();
-                questionListElement.querySelectorAll("input[name='selection']").forEach((input) => {
-                    input.checked = false;
-                });
-                otherForm.reset();
             }
 
             function showSelectedAnswer(faq) {
@@ -324,39 +443,22 @@
                     anchor.textContent = link.label;
                     answerLinksElement.appendChild(anchor);
                 });
-                hideSelectionPanel();
+                faqPanel.classList.add("d-none");
+                otherForm.classList.add("d-none");
                 conversationPanel.classList.remove("d-none");
                 resolutionPanel.classList.remove("d-none");
-                otherForm.classList.add("d-none");
                 clearStatus();
-            }
-
-            function resetConversation() {
-                state.lastSelectedFaq = null;
-                resetPanels();
-                renderQuestions();
-            }
-
-            async function loadFaqs() {
-                const response = await fetch(apiUrl);
-                const payload = await response.json();
-                state.payload = payload;
-                state.faqs = payload.faqs || [];
-                resetConversation();
             }
 
             resolutionPanel.querySelectorAll("button[data-resolution]").forEach((button) => {
                 button.addEventListener("click", () => {
                     if (button.dataset.resolution === "resolved") {
-                        setStatus("Issue marked as resolved. You can restart the widget for another issue.", "success");
+                        setStatus("Issue marked as resolved. You can restart the page for another issue.", "success");
                         resolutionPanel.classList.add("d-none");
-                        otherForm.classList.add("d-none");
                         return;
                     }
-
-                    setStatus("Please select another question or choose Other.", "secondary");
-                    resetPanels();
-                    renderQuestions();
+                    setStatus("Please choose another FAQ or use Others.", "secondary");
+                    restartSectionFlow();
                 });
             });
 
@@ -364,42 +466,48 @@
                 event.preventDefault();
                 clearStatus();
                 const formData = new FormData(otherForm);
+                if (!(formData.get("requester_name") || "").trim()) {
+                    setStatus("Please enter your name before raising the query.", "warning");
+                    return;
+                }
+                if (!(formData.get("requester_number") || "").trim()) {
+                    setStatus("Please enter your phone number before raising the query.", "warning");
+                    return;
+                }
+                if (!(formData.get("requester_email") || "").trim()) {
+                    setStatus("Please enter your email address before raising the query.", "warning");
+                    return;
+                }
                 if (!(formData.get("free_text") || "").trim()) {
                     setStatus("Please describe the issue before raising the query.", "warning");
                     return;
                 }
+
                 formData.set("context_referrer", document.referrer || "");
-                const contextFaq = state.selectedFaq || state.lastSelectedFaq;
-                if (state.payload && state.payload.source_system) {
-                    formData.set("source_system", state.payload.source_system);
-                    if (state.payload.source_flow) {
-                        formData.set("source_flow", state.payload.source_flow);
-                    }
+                if (state.selectedSection) {
+                    formData.set("selected_section_slug", state.selectedSection.slug);
+                }
+                if (state.lastSelectedFaq) {
+                    formData.set("selected_faq_id", String(state.lastSelectedFaq.id));
+                }
+                if (payload.source_system) {
+                    formData.set("source_system", payload.source_system);
                 } else if (urlSearchParams.get("system")) {
                     formData.set("source_system", urlSearchParams.get("system"));
-                    if (urlSearchParams.get("flow")) {
-                        formData.set("source_flow", urlSearchParams.get("flow"));
-                    } else if (state.payload && state.payload.super_category && state.payload.super_category.name) {
-                        formData.set("source_flow", state.payload.super_category.name);
-                    }
                 } else {
                     const inferredSystem = inferSystemFromReferrer(document.referrer);
                     if (inferredSystem) {
                         formData.set("source_system", inferredSystem);
-                        if (state.payload && state.payload.super_category && state.payload.super_category.name) {
-                            formData.set("source_flow", state.payload.super_category.name);
-                        }
                     }
                 }
-                if (contextFaq) {
-                    formData.set("selected_faq_id", String(contextFaq.id));
-                    if (!formData.get("source_system") && contextFaq.source_system) {
-                        formData.set("source_system", contextFaq.source_system);
-                    }
-                    if (!formData.get("source_flow") && contextFaq.source_flow) {
-                        formData.set("source_flow", contextFaq.source_flow);
-                    }
+                if (payload.source_flow) {
+                    formData.set("source_flow", payload.source_flow);
+                } else if (urlSearchParams.get("flow")) {
+                    formData.set("source_flow", urlSearchParams.get("flow"));
+                } else if (state.selectedSection) {
+                    formData.set("source_flow", state.selectedSection.name);
                 }
+
                 try {
                     const response = await fetch(otherIssueUrl, {
                         method: "POST",
@@ -408,24 +516,25 @@
                         },
                         body: formData,
                     });
-                    const payload = await response.json();
-                    if (!response.ok || !payload.success) {
+                    const responsePayload = await response.json();
+                    if (!response.ok || !responsePayload.success) {
                         setStatus("The issue could not be submitted. Please review the details and try again.", "danger");
                         return;
                     }
-                    setStatus(payload.message || "Issue recorded for PM review.", "success");
-                    conversationPanel.classList.add("d-none");
+                    setStatus(responsePayload.message || "Issue recorded for PM review.", "success");
+                    otherForm.classList.add("d-none");
                     resolutionPanel.classList.add("d-none");
+                    conversationPanel.classList.add("d-none");
                 } catch (error) {
                     setStatus("The issue could not be submitted right now. Please try again.", "danger");
                 }
             });
 
-            restartButton.addEventListener("click", () => {
-                resetConversation();
-            });
+            restartPageButton.addEventListener("click", resetPageFlow);
+            restartSectionButton.addEventListener("click", resetPageFlow);
+            cancelOtherButton.addEventListener("click", restartSectionFlow);
 
-            loadFaqs();
+            renderSections();
         })();
     </script>
 </body>

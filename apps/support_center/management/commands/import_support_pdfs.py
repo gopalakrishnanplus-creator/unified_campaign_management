@@ -8,7 +8,7 @@ from django.db import transaction
 from django.utils.text import slugify
 
 from apps.accounts.models import User
-from apps.support_center.models import SupportCategory, SupportItem, SupportSuperCategory
+from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportSuperCategory
 from apps.ticketing.models import Department
 
 
@@ -96,6 +96,7 @@ class Command(BaseCommand):
         for sheet in sheets:
             for row in sheet.rows:
                 super_category = self.get_or_create_super_category(sheet.system_name, row["super_category"], counters)
+                page = self.get_or_create_page(sheet, row["page"], counters)
                 category = self.get_or_create_category(super_category, row["category"], counters)
                 department = self.resolve_department(row.get("ticket_department"), departments)
                 ticket_required = self.resolve_ticket_required(row.get("ticket_required"), row.get("ticket_department"))
@@ -112,6 +113,7 @@ class Command(BaseCommand):
                     name=row["name"],
                 ).first()
                 defaults = {
+                    "page": page,
                     "slug": self.build_item_slug(sheet, row["name"]),
                     "summary": row["summary"],
                     "response_mode": response_mode,
@@ -191,14 +193,15 @@ class Command(BaseCommand):
                     if not any(clean_row):
                         continue
                     if knowledge_type == SupportItem.KnowledgeType.FAQ:
-                        if len(clean_row) < 4:
+                        if len(clean_row) < 5:
                             continue
-                        super_category, category, question, answer = clean_row[:4]
-                        if not (super_category and category and question):
+                        super_category, page_name, category, question, answer = clean_row[:5]
+                        if not (super_category and page_name and category and question):
                             continue
                         rows.append(
                             {
                                 "super_category": super_category,
+                                "page": page_name,
                                 "category": category,
                                 "name": question,
                                 "summary": answer[:255],
@@ -209,14 +212,15 @@ class Command(BaseCommand):
                             }
                         )
                     else:
-                        if len(clean_row) < 6:
+                        if len(clean_row) < 7:
                             continue
-                        super_category, category, edge_case, ticket_required, ticket_department, notes = clean_row[:6]
-                        if not (super_category and category and edge_case):
+                        super_category, page_name, category, edge_case, ticket_required, ticket_department, notes = clean_row[:7]
+                        if not (super_category and page_name and category and edge_case):
                             continue
                         rows.append(
                             {
                                 "super_category": super_category,
+                                "page": page_name,
                                 "category": category,
                                 "name": edge_case,
                                 "summary": notes[:255] if notes else "Imported ticket case",
@@ -271,6 +275,23 @@ class Command(BaseCommand):
         if created:
             counters["super"] += 1
         return super_category
+
+    def get_or_create_page(self, sheet, raw_page, counters):
+        page_name = self.normalize_spaces(raw_page)
+        page_slug = slugify(f"{sheet.system_name}-{sheet.flow_name}-{page_name}")[:220]
+        page, created = SupportPage.objects.get_or_create(
+            slug=page_slug,
+            defaults={
+                "name": page_name,
+                "source_system": sheet.system_name,
+                "source_flow": sheet.flow_name,
+                "display_order": counters["category"],
+                "is_active": True,
+            },
+        )
+        if created:
+            counters["category"] += 1
+        return page
 
     def get_or_create_category(self, super_category, raw_category, counters):
         slug = slugify(raw_category)

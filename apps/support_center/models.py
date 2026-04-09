@@ -28,6 +28,27 @@ class SupportSuperCategory(models.Model):
         super().save(*args, **kwargs)
 
 
+class SupportPage(models.Model):
+    name = models.CharField(max_length=160)
+    slug = models.SlugField(max_length=220, unique=True, blank=True)
+    source_system = models.CharField(max_length=120, blank=True)
+    source_flow = models.CharField(max_length=120, blank=True)
+    display_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["source_system", "source_flow", "display_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_name = " ".join(part for part in [self.source_system, self.source_flow, self.name] if part).strip()
+            self.slug = slugify(base_name or self.name)
+        super().save(*args, **kwargs)
+
+
 class SupportCategory(models.Model):
     super_category = models.ForeignKey(SupportSuperCategory, on_delete=models.CASCADE, related_name="categories")
     name = models.CharField(max_length=120)
@@ -57,6 +78,13 @@ class SupportItem(models.Model):
         STANDARDIZED = "standardized", "Standardized solution"
         DIRECT_TICKET = "direct_ticket", "Direct ticket"
 
+    page = models.ForeignKey(
+        SupportPage,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="items",
+    )
     category = models.ForeignKey(SupportCategory, on_delete=models.CASCADE, related_name="items")
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, blank=True)
@@ -120,9 +148,24 @@ class SupportRequest(models.Model):
     user_type = models.CharField(max_length=24)
     requester_name = models.CharField(max_length=255)
     requester_email = models.EmailField()
+    requester_number = models.CharField(max_length=32, blank=True)
     requester_company = models.CharField(max_length=255, blank=True)
     campaign = models.ForeignKey("campaigns.Campaign", null=True, blank=True, on_delete=models.SET_NULL, related_name="support_requests")
     item = models.ForeignKey(SupportItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="requests")
+    support_page = models.ForeignKey(
+        SupportPage,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="requests",
+    )
+    support_super_category = models.ForeignKey(
+        SupportSuperCategory,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="requests",
+    )
     support_category = models.ForeignKey(
         SupportCategory,
         null=True,
@@ -150,8 +193,19 @@ class SupportRequest(models.Model):
 
     @property
     def super_category(self):
+        if self.support_super_category_id:
+            return self.support_super_category
         return self.support_category.super_category if self.support_category_id else None
 
     @property
+    def page_label(self):
+        return self.support_page.name if self.support_page_id else ""
+
+    @property
+    def section_label(self):
+        super_category = self.super_category
+        return super_category.name if super_category else ""
+
+    @property
     def screen_label(self):
-        return self.support_category.name if self.support_category_id else ""
+        return self.support_category.name if self.support_category_id else self.page_label

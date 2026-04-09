@@ -258,7 +258,9 @@
                             </td>
                             <td>
                                 {{ row.request.source_flow or 'General support' }}
-                                <div class="text-secondary small">{{ row.request.screen_label or 'Not specified' }}</div>
+                                <div class="text-secondary small">Page: {{ row.request.page_label or 'Not specified' }}</div>
+                                <div class="text-secondary small">Section: {{ row.request.section_label or 'Not specified' }}</div>
+                                <div class="text-secondary small">Screen: {{ row.request.screen_label or 'Not specified' }}</div>
                             </td>
                             <td>{{ row.request.free_text }}</td>
                             <td>

@@ -7,7 +7,7 @@ from django.db import transaction
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign, CampaignClinicEnrollment, CampaignFieldRepAssignment, Clinic, ClinicGroup, Doctor
 from apps.reporting.models import AdoptionSnapshot, ExternalGrowthSnapshot, InClinicSnapshot, PatientEducationSnapshot, RedFlagSnapshot
-from apps.support_center.models import SupportCategory, SupportItem, SupportRequest, SupportSuperCategory
+from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory
 from apps.ticketing.models import Department, Ticket, TicketNote
 from apps.ticketing.services import change_ticket_status, create_ticket, resolve_ticket_classification, seed_default_ticket_taxonomy
 
@@ -221,11 +221,28 @@ class Command(BaseCommand):
         auth_category, _ = SupportCategory.objects.get_or_create(super_category=access_super, slug="authentication", defaults={"name": "Authentication", "display_order": 1})
         sharing_category, _ = SupportCategory.objects.get_or_create(super_category=campaign_super, slug="sharing-activation", defaults={"name": "Sharing & Activation", "display_order": 1})
         reporting_category, _ = SupportCategory.objects.get_or_create(super_category=reporting_super, slug="reports-insights", defaults={"name": "Reports & Insights", "display_order": 1})
+        auth_page, _ = SupportPage.objects.get_or_create(
+            slug="customer-support-authentication-page",
+            defaults={"name": "Authentication Page", "source_system": "Customer support", "source_flow": "", "display_order": 1},
+        )
+        sharing_page, _ = SupportPage.objects.get_or_create(
+            slug="customer-support-sharing-activation-page",
+            defaults={"name": "Sharing & Activation Page", "source_system": "Customer support", "source_flow": "", "display_order": 2},
+        )
+        reporting_page, _ = SupportPage.objects.get_or_create(
+            slug="campaign-performance-reports-insights-page",
+            defaults={"name": "Reports & Insights Page", "source_system": "Campaign performance", "source_flow": "", "display_order": 3},
+        )
+        inclinic_page, _ = SupportPage.objects.get_or_create(
+            slug="in-clinic-collateral-viewer-page",
+            defaults={"name": "Collateral Viewer Page", "source_system": "In-clinic", "source_flow": "", "display_order": 4},
+        )
 
         SupportItem.objects.update_or_create(
             category=auth_category,
             slug="google-sign-in-not-working",
             defaults={
+                "page": auth_page,
                 "name": "Google sign-in is not working",
                 "summary": "Troubleshoot browser session, allowed domain, and pop-up restrictions.",
                 "response_mode": SupportItem.ResponseMode.STANDARDIZED,
@@ -245,6 +262,7 @@ class Command(BaseCommand):
             category=sharing_category,
             slug="doctor-not-added-to-campaign",
             defaults={
+                "page": sharing_page,
                 "name": "Doctor or clinic has not been added to the campaign",
                 "summary": "Escalate onboarding gaps to campaign operations.",
                 "response_mode": SupportItem.ResponseMode.DIRECT_TICKET,
@@ -257,6 +275,7 @@ class Command(BaseCommand):
             category=sharing_category,
             slug="in-clinic-collateral-not-opening",
             defaults={
+                "page": inclinic_page,
                 "name": "In-clinic collateral is not opening",
                 "summary": "Provide the self-checklist for link opens, PDF access, and WhatsApp share formatting.",
                 "response_mode": SupportItem.ResponseMode.STANDARDIZED,
@@ -272,6 +291,7 @@ class Command(BaseCommand):
             category=reporting_category,
             slug="weekly-report-missing",
             defaults={
+                "page": reporting_page,
                 "name": "Weekly campaign report is missing",
                 "summary": "Escalate missing or delayed reporting data to analytics.",
                 "response_mode": SupportItem.ResponseMode.DIRECT_TICKET,

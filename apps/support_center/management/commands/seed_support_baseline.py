@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from apps.accounts.models import User
-from apps.support_center.models import SupportCategory, SupportItem, SupportSuperCategory
+from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportSuperCategory
 from apps.ticketing.models import Department
 
 
@@ -42,11 +42,24 @@ class Command(BaseCommand):
             slug="reports-insights",
             defaults={"name": "Reports & Insights", "display_order": 1},
         )
+        auth_page, _ = SupportPage.objects.get_or_create(
+            slug="customer-support-authentication-page",
+            defaults={"name": "Authentication Page", "source_system": "Customer support", "source_flow": "", "display_order": 1},
+        )
+        sharing_page, _ = SupportPage.objects.get_or_create(
+            slug="customer-support-sharing-activation-page",
+            defaults={"name": "Sharing & Activation Page", "source_system": "Customer support", "source_flow": "", "display_order": 2},
+        )
+        reporting_page, _ = SupportPage.objects.get_or_create(
+            slug="campaign-performance-reports-insights-page",
+            defaults={"name": "Reports & Insights Page", "source_system": "Campaign performance", "source_flow": "", "display_order": 3},
+        )
 
         SupportItem.objects.update_or_create(
             category=auth_category,
             slug="google-sign-in-not-working",
             defaults={
+                "page": auth_page,
                 "name": "Google sign-in is not working",
                 "summary": "Troubleshoot browser session, allowed domain, and pop-up restrictions.",
                 "knowledge_type": SupportItem.KnowledgeType.FAQ,
@@ -73,6 +86,7 @@ class Command(BaseCommand):
             category=sharing_category,
             slug="doctor-not-added-to-campaign",
             defaults={
+                "page": sharing_page,
                 "name": "Doctor or clinic has not been added to the campaign",
                 "summary": "Escalate onboarding gaps to campaign operations.",
                 "knowledge_type": SupportItem.KnowledgeType.FAQ,
@@ -98,6 +112,7 @@ class Command(BaseCommand):
             category=reporting_category,
             slug="weekly-report-missing",
             defaults={
+                "page": reporting_page,
                 "name": "Weekly campaign report is missing",
                 "summary": "Escalate missing or delayed reporting data to analytics.",
                 "knowledge_type": SupportItem.KnowledgeType.FAQ,
