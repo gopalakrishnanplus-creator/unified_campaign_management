@@ -25,12 +25,19 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "campaign-management-local-secret-ke
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost,testserver,help.cpdinclinic.co.in").split(",")
+    for host in os.getenv(
+        "ALLOWED_HOSTS",
+        "127.0.0.1,localhost,testserver,65.1.101.252,help.cpdinclinic.co.in"
+    ).split(",")
     if host.strip()
 ]
+
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
-    for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        "http://65.1.101.252,http://help.cpdinclinic.co.in,https://help.cpdinclinic.co.in"
+    ).split(",")
     if origin.strip()
 ]
 
