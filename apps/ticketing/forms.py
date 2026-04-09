@@ -106,6 +106,8 @@ class TicketCreateForm(forms.ModelForm):
         manager = ""
         if department.default_recipient_id:
             manager = department.default_recipient.full_name or department.default_recipient.email
+        elif department.external_manager_email:
+            manager = department.external_manager_email
         label = department.display_name
         if manager:
             label = f"{label} - Auto route to {manager}"

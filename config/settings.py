@@ -193,8 +193,11 @@ SOCIALACCOUNT_PROVIDERS = {
 
 PROJECT_MANAGER_EMAIL = os.getenv("PROJECT_MANAGER_EMAIL", "campaignpm@inditech.co.in")
 ENABLE_DEV_LOGIN = os.getenv("ENABLE_DEV_LOGIN", "true").lower() == "true"
-EXTERNAL_TICKETING_SYNC_ENABLED = os.getenv("EXTERNAL_TICKETING_SYNC_ENABLED", "false").lower() == "true"
-EXTERNAL_TICKETING_BASE_URL = os.getenv("EXTERNAL_TICKETING_BASE_URL", "").strip()
+EXTERNAL_TICKETING_SYNC_ENABLED = os.getenv(
+    "EXTERNAL_TICKETING_SYNC_ENABLED",
+    "false" if DEBUG else "true",
+).lower() == "true"
+EXTERNAL_TICKETING_BASE_URL = os.getenv("EXTERNAL_TICKETING_BASE_URL", "https://support.inditech.co.in").strip()
 EXTERNAL_TICKETING_API_TOKEN = os.getenv("EXTERNAL_TICKETING_API_TOKEN", "").strip()
 EXTERNAL_TICKETING_TIMEOUT = float(os.getenv("EXTERNAL_TICKETING_TIMEOUT", "10"))
 EXTERNAL_TICKETING_SOURCE_SYSTEM = os.getenv("EXTERNAL_TICKETING_SOURCE_SYSTEM", "campaign_management").strip() or "campaign_management"
