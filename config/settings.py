@@ -48,20 +48,21 @@ JINJA_TEMPLATE_DIRS = [
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "campaign-management-local-secret-key")
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.getenv(
-        "ALLOWED_HOSTS",
-        "127.0.0.1,localhost,testserver,65.1.101.252,help.cpdinclinic.co.in,support.inditech.co.in,*.cpdinclinic.co.in",
-    ).split(",")
-    if host.strip()
+    "127.0.0.1",
+    "localhost",
+    "testserver",
+    "65.1.101.252",
+    "help.cpdinclinic.co.in",
+    "support.inditech.co.in",
+    ".cpdinclinic.co.in",
 ]
 CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "CSRF_TRUSTED_ORIGINS",
-        "http://65.1.101.252,https://65.1.101.252,http://help.cpdinclinic.co.in,https://help.cpdinclinic.co.in,http://support.inditech.co.in,https://support.inditech.co.in",
-    ).split(",")
-    if origin.strip()
+    "http://65.1.101.252",
+    "https://65.1.101.252",
+    "http://help.cpdinclinic.co.in",
+    "https://help.cpdinclinic.co.in",
+    "http://support.inditech.co.in",
+    "https://support.inditech.co.in",
 ]
 
 INSTALLED_APPS = [
