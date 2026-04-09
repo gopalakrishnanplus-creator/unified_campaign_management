@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -8,9 +9,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 LOCAL_ENV_PATH = BASE_DIR / ".env"
 SECRETS_ENV_PATH = Path(os.getenv("SECRETS_ENV_PATH", "/var/www/secrets/.env"))
 
-load_dotenv(LOCAL_ENV_PATH)
-if SECRETS_ENV_PATH.exists():
-    load_dotenv(SECRETS_ENV_PATH, override=True)
+
+def safe_load_env_file(path: Path, *, override: bool = False) -> bool:
+    try:
+        if not path.is_file():
+            return False
+        if not os.access(path, os.R_OK):
+            sys.stderr.write(f"Skipping unreadable env file: {path}\n")
+            return False
+    except OSError as exc:
+        sys.stderr.write(f"Skipping env file {path}: {exc}\n")
+        return False
+
+    try:
+        load_dotenv(path, override=override)
+        return True
+    except OSError as exc:
+        sys.stderr.write(f"Failed to load env file {path}: {exc}\n")
+        return False
+
+
+safe_load_env_file(LOCAL_ENV_PATH)
+safe_load_env_file(SECRETS_ENV_PATH, override=True)
 
 TEMPLATES_DIR = BASE_DIR / "templates"
 JINJA_DIR = BASE_DIR / "jinja2"

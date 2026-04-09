@@ -4,6 +4,8 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/var/www/unified_campaign_management}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 SHARED_VENV_DIR="${SHARED_VENV_DIR:-/var/www/venv}"
+SECRETS_ENV_PATH="${SECRETS_ENV_PATH:-/var/www/secrets/.env}"
+SECRETS_ENV_GROUP="${SECRETS_ENV_GROUP:-$(id -gn)}"
 
 ensure_shared_venv() {
   if [ -x "$SHARED_VENV_DIR/bin/python" ]; then
@@ -29,11 +31,34 @@ ensure_shared_venv() {
   "$PYTHON_BIN" -m venv "$SHARED_VENV_DIR"
 }
 
+ensure_secrets_env_permissions() {
+  local secrets_dir
+  secrets_dir="$(dirname "$SECRETS_ENV_PATH")"
+
+  if [ ! -d "$secrets_dir" ]; then
+    sudo mkdir -p "$secrets_dir"
+  fi
+
+  sudo chgrp "$SECRETS_ENV_GROUP" "$secrets_dir" || true
+  sudo chmod 750 "$secrets_dir" || true
+
+  if [ -f "$SECRETS_ENV_PATH" ]; then
+    sudo chgrp "$SECRETS_ENV_GROUP" "$SECRETS_ENV_PATH" || true
+    sudo chmod 640 "$SECRETS_ENV_PATH" || true
+  fi
+
+  if [ -e "$SECRETS_ENV_PATH" ] && [ ! -r "$SECRETS_ENV_PATH" ]; then
+    echo "Secrets env file exists but is still unreadable: $SECRETS_ENV_PATH" >&2
+    exit 1
+  fi
+}
+
 cd "$APP_DIR"
 
 mkdir -p "$APP_DIR/media" "$APP_DIR/staticfiles"
 
 ensure_shared_venv
+ensure_secrets_env_permissions
 
 # shellcheck disable=SC1090
 source "$SHARED_VENV_DIR/bin/activate"
