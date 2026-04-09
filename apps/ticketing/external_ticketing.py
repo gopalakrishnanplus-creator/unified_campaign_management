@@ -54,7 +54,7 @@ TOKEN_SYNONYMS = {
 
 
 def external_ticketing_enabled():
-    return bool(settings.EXTERNAL_TICKETING_SYNC_ENABLED and settings.EXTERNAL_TICKETING_BASE_URL)
+    return bool(settings.EXTERNAL_TICKETING_BASE_URL and settings.EXTERNAL_TICKETING_SYNC_ENABLED)
 
 
 def should_sync_external_ticket(ticket):
@@ -65,7 +65,7 @@ def sync_external_directory():
     if not external_ticketing_enabled():
         return []
 
-    directory = fetch_system_directory()
+    directory = fetch_directory_snapshot()
     synced_departments = []
     with transaction.atomic():
         for raw_department in directory.get("departments") or []:
@@ -248,7 +248,7 @@ def resolve_external_department(ticket):
         except ExternalTicketingSyncError:
             pass
 
-    directory = fetch_system_directory()
+    directory = fetch_directory_snapshot()
     departments = directory.get("departments") or []
     managers = directory.get("department_managers") or []
     users = directory.get("users") or []
@@ -298,12 +298,47 @@ def resolve_external_department(ticket):
         return fuzzy_match
 
     raise ExternalTicketingSyncError(
-        f"Could not match local department {ticket.department.name} ({ticket.department.code}) in the external system directory."
+        f"Could not match local department {ticket.department.display_name} ({ticket.department.display_code}) in the internal ticketing directory."
     )
+
+
+def fetch_directory_snapshot():
+    directory = {
+        "departments": [],
+        "department_managers": [],
+        "users": [],
+    }
+
+    department_lookup_error = None
+    try:
+        departments_payload = fetch_external_departments()
+    except ExternalTicketingSyncError as exc:
+        departments_payload = {}
+        department_lookup_error = exc
+    directory["departments"] = departments_payload.get("departments") or []
+
+    try:
+        system_directory = fetch_system_directory()
+    except ExternalTicketingSyncError as exc:
+        system_directory = {}
+        if not directory["departments"]:
+            raise department_lookup_error or exc
+
+    if system_directory.get("departments"):
+        directory["departments"] = merge_department_records(directory["departments"], system_directory.get("departments") or [])
+    directory["department_managers"] = system_directory.get("department_managers") or []
+    directory["users"] = system_directory.get("users") or []
+    if not directory["departments"] and department_lookup_error:
+        raise department_lookup_error
+    return directory
 
 
 def fetch_system_directory():
     return api_request("GET", "/client-tickets/api/lookups/system-directory/")
+
+
+def fetch_external_departments():
+    return api_request("GET", "/client-tickets/api/lookups/departments/")
 
 
 def upsert_local_department(external_department):
@@ -460,6 +495,21 @@ def find_department_manager_record(department, managers):
         if department_code and normalize_value(manager.get("department_code")) == department_code:
             return manager
     return None
+
+
+def merge_department_records(primary_departments, secondary_departments):
+    merged = []
+    seen = set()
+    for department in [*(primary_departments or []), *(secondary_departments or [])]:
+        key = department.get("id") or (
+            normalize_value(department.get("code")),
+            normalize_value(department.get("name")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(department)
+    return merged
 
 
 def find_best_department_match(target_names, target_codes, departments, managers, users):

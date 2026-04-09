@@ -752,7 +752,7 @@ class TicketingDropdownSeedCommandTests(TestCase):
 @override_settings(
     EXTERNAL_TICKETING_SYNC_ENABLED=True,
     EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
-    EXTERNAL_TICKETING_API_TOKEN="test-token",
+    EXTERNAL_TICKETING_API_TOKEN="",
     EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK="+919876543210",
 )
 class ExternalTicketSyncTests(TestCase):
@@ -777,6 +777,24 @@ class ExternalTicketSyncTests(TestCase):
         mock_get.return_value = self._json_response({}, status_code=404)
 
         def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
+            self.assertNotIn("X-Client-Ticket-Token", headers or {})
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/departments/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
             if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
                 return self._json_response(
                     {
@@ -890,6 +908,24 @@ class ExternalTicketSyncTests(TestCase):
     @patch("apps.ticketing.external_ticketing.requests.request")
     def test_directory_sync_updates_local_department_manager_routing(self, mock_request):
         def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
+            self.assertNotIn("X-Client-Ticket-Token", headers or {})
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/departments/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
             if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
                 return self._json_response(
                     {
@@ -934,6 +970,24 @@ class ExternalTicketSyncTests(TestCase):
     @patch("apps.ticketing.external_ticketing.requests.request")
     def test_ticket_create_page_uses_synced_internal_directory_departments(self, mock_request):
         def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
+            self.assertNotIn("X-Client-Ticket-Token", headers or {})
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/departments/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
             if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
                 return self._json_response(
                     {
@@ -972,3 +1026,76 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "IT Support - Auto route to Tech Manager")
         self.assertContains(response, self.pm_user.phone_number)
+
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_issue_raise_ticket_page_uses_synced_internal_directory_departments(self, mock_request):
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Doctor support user",
+            requester_email="doctor.widget@support-widget.local",
+            requester_company="Clinic A",
+            campaign=self.campaign,
+            support_category=SupportCategory.objects.first(),
+            source_system="In-clinic",
+            source_flow="Content Viewing",
+            subject="Other issue - Collateral Viewer",
+            free_text="The viewer is opening a blank white screen after verification.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+
+        def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
+            self.assertNotIn("X-Client-Ticket-Token", headers or {})
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/departments/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                        "department_managers": [],
+                        "users": [
+                            {
+                                "id": 19,
+                                "full_name": "Tech Manager",
+                                "email": "tech.manager@inditech.co.in",
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+
+        self.client.force_login(self.pm_user)
+        response = self.client.get(reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "IT Support - Auto route to Tech Manager")
