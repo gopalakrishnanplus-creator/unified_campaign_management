@@ -53,6 +53,16 @@ ensure_secrets_env_permissions() {
   fi
 }
 
+all_files_exist() {
+  local file_path
+  for file_path in "$@"; do
+    if [ ! -f "$file_path" ]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 cd "$APP_DIR"
 
 mkdir -p "$APP_DIR/media" "$APP_DIR/staticfiles"
@@ -70,21 +80,56 @@ python manage.py migrate
 python manage.py check
 python manage.py seed_support_baseline
 
-for pdf_path in \
-  "$APP_DIR/Inclinic-FAQs - Google Sheets.pdf" \
-  "$APP_DIR/PE-FAQs - Google Sheets.pdf" \
+FLOW_SUPPORT_PDFS=(
+  "$APP_DIR/Inclinic-FAQsDoctorFlow.pdf"
+  "$APP_DIR/Inclinic-FAQsFieldRepFlow.pdf"
+  "$APP_DIR/PE-FAQsDoctorFlow.pdf"
+  "$APP_DIR/PE-FAQsPatientFlow.pdf"
+  "$APP_DIR/RFA-FAQsDoctorFlow.pdf"
+  "$APP_DIR/RFA-FAQsFieldRepFlow.pdf"
+  "$APP_DIR/RFA-FAQsPatientFlow.pdf"
+)
+
+LEGACY_SUPPORT_PDFS=(
+  "$APP_DIR/Inclinic-FAQs - Google Sheets.pdf"
+  "$APP_DIR/PE-FAQs - Google Sheets.pdf"
   "$APP_DIR/RFA-FAQs - Google Sheets.pdf"
-do
-  if [ ! -f "$pdf_path" ]; then
-    echo "Missing required support PDF: $pdf_path" >&2
-    exit 1
-  fi
+)
+
+if all_files_exist "${FLOW_SUPPORT_PDFS[@]}"; then
+  SUPPORT_PDFS=("${FLOW_SUPPORT_PDFS[@]}")
+  echo "Using flow-wise support PDFs from repo root."
+elif all_files_exist "${LEGACY_SUPPORT_PDFS[@]}"; then
+  SUPPORT_PDFS=("${LEGACY_SUPPORT_PDFS[@]}")
+  echo "Using legacy combined support PDFs."
+else
+  echo "Missing required support PDFs." >&2
+  echo "Checked flow-wise set:" >&2
+  for pdf_path in "${FLOW_SUPPORT_PDFS[@]}"; do
+    if [ -f "$pdf_path" ]; then
+      echo "  OK: $pdf_path" >&2
+    else
+      echo "  MISSING: $pdf_path" >&2
+    fi
+  done
+
+  echo "Checked legacy set:" >&2
+  for pdf_path in "${LEGACY_SUPPORT_PDFS[@]}"; do
+    if [ -f "$pdf_path" ]; then
+      echo "  OK: $pdf_path" >&2
+    else
+      echo "  MISSING: $pdf_path" >&2
+    fi
+  done
+  exit 1
+fi
+
+echo "Importing support PDFs:"
+for pdf_path in "${SUPPORT_PDFS[@]}"; do
+  echo " - $pdf_path"
 done
 
-python manage.py import_support_pdfs --replace \
-  "$APP_DIR/Inclinic-FAQs - Google Sheets.pdf" \
-  "$APP_DIR/PE-FAQs - Google Sheets.pdf" \
-  "$APP_DIR/RFA-FAQs - Google Sheets.pdf"
+python manage.py import_support_pdfs --replace "${SUPPORT_PDFS[@]}"
 
 python manage.py shell <<'PY'
 import csv
