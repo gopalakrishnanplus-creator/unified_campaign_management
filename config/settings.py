@@ -4,10 +4,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+LOCAL_ENV_PATH = BASE_DIR / ".env"
+SECRETS_ENV_PATH = Path(os.getenv("SECRETS_ENV_PATH", "/var/www/secrets/.env"))
+
+load_dotenv(LOCAL_ENV_PATH)
+if SECRETS_ENV_PATH.exists():
+    load_dotenv(SECRETS_ENV_PATH, override=True)
+
 TEMPLATES_DIR = BASE_DIR / "templates"
 JINJA_DIR = BASE_DIR / "jinja2"
 STATIC_DIR = BASE_DIR / "static"
@@ -24,10 +28,21 @@ JINJA_TEMPLATE_DIRS = [
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "campaign-management-local-secret-key")
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [
-        "help.cpdinclinic.co.in","127.0.0.1","localhost","testserver","65.1.101.252","*.cpdinclinic.co.in"
+    host.strip()
+    for host in os.getenv(
+        "ALLOWED_HOSTS",
+        "127.0.0.1,localhost,testserver,65.1.101.252,help.cpdinclinic.co.in,support.inditech.co.in,*.cpdinclinic.co.in",
+    ).split(",")
+    if host.strip()
 ]
-
-CSRF_TRUSTED_ORIGINS = ["http://65.1.101.252","http://help.cpdinclinic.co.in","https://help.cpdinclinic.co.in"]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        "http://65.1.101.252,https://65.1.101.252,http://help.cpdinclinic.co.in,https://help.cpdinclinic.co.in,http://support.inditech.co.in,https://support.inditech.co.in",
+    ).split(",")
+    if origin.strip()
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
