@@ -26,7 +26,14 @@ from .services import (
     delegate_ticket,
     return_ticket_to_sender,
 )
-from .external_ticketing import ExternalTicketingSyncError, external_ticketing_enabled, sync_external_directory
+from .external_ticketing import (
+    ExternalTicketingSyncError,
+    external_ticketing_enabled,
+    should_sync_external_ticket,
+    sync_external_directory,
+    sync_external_ticket,
+    sync_external_ticket_attachments,
+)
 
 
 PRIORITY_RANK = Case(
@@ -300,7 +307,13 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
             note.ticket = self.object
             note.author = self.request.user
             note.save()
-            form.save_attachments(note)
+            attachments = form.save_attachments(note)
+            if attachments and external_ticketing_enabled():
+                attachment_ids = [attachment.pk for attachment in attachments]
+                if self.object.external_ticket_number:
+                    sync_external_ticket_attachments(self.object.pk, attachment_ids=attachment_ids)
+                elif should_sync_external_ticket(self.object):
+                    sync_external_ticket(self.object.pk)
             messages.success(self.request, "Note added to ticket.")
         else:
             messages.error(self.request, "Note could not be saved.")

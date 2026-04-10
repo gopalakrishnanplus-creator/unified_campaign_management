@@ -1,5 +1,8 @@
 import logging
+import mimetypes
+import os
 import re
+from contextlib import ExitStack
 from urllib.parse import urljoin
 
 import requests
@@ -9,7 +12,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 
-from .models import Department, Ticket
+from .models import Department, Ticket, TicketAttachment
 
 
 logger = logging.getLogger(__name__)
@@ -88,6 +91,7 @@ def sync_external_ticket(ticket_id):
             "created_by",
             "submitted_by",
             "ticket_type_definition",
+            "support_request",
         )
         .filter(pk=ticket_id)
         .first()
@@ -116,6 +120,7 @@ def sync_external_ticket(ticket_id):
             return persist_external_ticket_mapping(ticket, existing_ticket, sync_log)
 
         payload = build_external_ticket_payload(ticket)
+        attachment_sources = get_ticket_attachment_sources(ticket)
         sync_log.append(
             log_line(
                 "Creating external ticket.",
@@ -125,9 +130,10 @@ def sync_external_ticket(ticket_id):
                 ticket_type_id=payload.get("ticket_type_id"),
                 ticket_type_other=payload.get("ticket_type_other"),
                 priority=payload.get("priority"),
+                attachment_count=len(attachment_sources),
             )
         )
-        response_payload = api_request("POST", "/client-tickets/api/tickets/", json=payload)
+        response_payload = send_external_ticket_create_request(payload, attachment_sources)
         external_ticket = response_payload.get("ticket") or {}
         if not response_payload.get("success") or not external_ticket.get("ticket_number"):
             raise ExternalTicketingSyncError(
@@ -148,6 +154,79 @@ def sync_external_ticket(ticket_id):
         ticket.external_ticket_log = "\n".join(sync_log)
         ticket.save(update_fields=["external_ticket_error", "external_ticket_log"])
         logger.warning("External ticket sync failed for %s\n%s", ticket.ticket_number, ticket.external_ticket_log)
+        return None
+
+
+def sync_external_ticket_attachments(ticket_id, *, attachment_ids=None):
+    ticket = (
+        Ticket.objects.select_related(
+            "department",
+            "current_assignee",
+            "direct_recipient",
+            "created_by",
+            "submitted_by",
+            "support_request",
+        )
+        .filter(pk=ticket_id)
+        .first()
+    )
+    if not ticket or not external_ticketing_enabled() or not ticket.external_ticket_number:
+        return None
+
+    attachment_sources = get_ticket_attachment_sources(
+        ticket,
+        attachment_ids=attachment_ids,
+        include_support_request=False,
+    )
+    if not attachment_sources:
+        return None
+
+    sync_log = [
+        log_line(
+            "Syncing ticket attachments to external ticket.",
+            external_ticket_number=ticket.external_ticket_number,
+            attachment_count=len(attachment_sources),
+        )
+    ]
+    try:
+        payload = {
+            "updated_by_email": resolve_external_update_actor_email(ticket),
+            "message": f"{len(attachment_sources)} attachment(s) uploaded from Campaign Management.",
+        }
+        response_payload = send_external_ticket_update_request(
+            ticket,
+            payload,
+            attachment_sources,
+        )
+        external_ticket = response_payload.get("ticket") or {}
+        sync_log.append(
+            log_line(
+                "External ticket attachments synced successfully.",
+                external_ticket_number=ticket.external_ticket_number,
+                status=external_ticket.get("status_code") or external_ticket.get("status"),
+            )
+        )
+        ticket.external_ticket_synced_at = timezone.now()
+        ticket.external_ticket_error = ""
+        if external_ticket.get("status_code") or external_ticket.get("status"):
+            ticket.external_ticket_status = external_ticket.get("status_code") or external_ticket.get("status") or ticket.external_ticket_status
+        ticket.external_ticket_log = "\n".join(filter(None, [ticket.external_ticket_log, *sync_log]))
+        ticket.save(
+            update_fields=[
+                "external_ticket_status",
+                "external_ticket_synced_at",
+                "external_ticket_error",
+                "external_ticket_log",
+            ]
+        )
+        logger.info("External ticket attachment sync succeeded for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
+        return ticket
+    except Exception as exc:
+        sync_log.append(log_line("External ticket attachment sync failed.", error=str(exc)))
+        ticket.external_ticket_error = str(exc)
+        ticket.external_ticket_log = "\n".join(filter(None, [ticket.external_ticket_log, *sync_log]))
+        ticket.save(update_fields=["external_ticket_error", "external_ticket_log"])
+        logger.warning("External ticket attachment sync failed for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
         return None
 
 
@@ -204,6 +283,90 @@ def build_external_ticket_payload(ticket):
     return payload
 
 
+def get_ticket_attachment_sources(ticket, *, attachment_ids=None, include_support_request=True):
+    sources = []
+    seen = set()
+    attachments = TicketAttachment.objects.filter(note__ticket=ticket).order_by("created_at")
+    if attachment_ids is not None:
+        attachments = attachments.filter(pk__in=list(attachment_ids))
+
+    for attachment in attachments:
+        add_attachment_source(sources, seen, attachment.file)
+
+    if include_support_request and ticket.support_request_id and ticket.support_request and ticket.support_request.uploaded_file:
+        add_attachment_source(sources, seen, ticket.support_request.uploaded_file)
+    return sources
+
+
+def add_attachment_source(sources, seen, field_file):
+    if not field_file:
+        return
+    filename = os.path.basename(getattr(field_file, "name", "") or "")
+    if not filename:
+        return
+    try:
+        size = field_file.size
+    except Exception:
+        size = None
+    key = (filename.lower(), size)
+    if key in seen:
+        return
+    seen.add(key)
+    sources.append({"filename": filename, "field_file": field_file})
+
+
+def send_external_ticket_create_request(payload, attachment_sources):
+    if not attachment_sources:
+        return api_request("POST", "/client-tickets/api/tickets/", json=payload)
+    with AttachmentUploadContext(attachment_sources) as files:
+        return api_request("POST", "/client-tickets/api/tickets/", data=payload, files=files)
+
+
+def send_external_ticket_update_request(ticket, payload, attachment_sources):
+    if not attachment_sources:
+        return api_request(
+            "POST",
+            f"/client-tickets/api/tickets/{ticket.external_ticket_number}/inditech-update/",
+            json=payload,
+        )
+    with AttachmentUploadContext(attachment_sources) as files:
+        return api_request(
+            "POST",
+            f"/client-tickets/api/tickets/{ticket.external_ticket_number}/inditech-update/",
+            data=payload,
+            files=files,
+        )
+
+
+class AttachmentUploadContext:
+    def __init__(self, attachment_sources):
+        self.attachment_sources = attachment_sources
+        self.stack = ExitStack()
+        self.files = []
+
+    def __enter__(self):
+        for source in self.attachment_sources:
+            field_file = source["field_file"]
+            self.stack.callback(field_file.close)
+            field_file.open("rb")
+            content_type = mimetypes.guess_type(source["filename"])[0] or "application/octet-stream"
+            self.files.append(
+                (
+                    "attachments",
+                    (
+                        source["filename"],
+                        field_file.file,
+                        content_type,
+                    ),
+                )
+            )
+        return self.files
+
+    def __exit__(self, exc_type, exc, tb):
+        self.stack.close()
+        return False
+
+
 def resolve_requester_number(ticket):
     if ticket.requester_number:
         return ticket.requester_number
@@ -229,6 +392,13 @@ def resolve_project_manager_email(ticket):
     if settings.PROJECT_MANAGER_EMAIL:
         return settings.PROJECT_MANAGER_EMAIL
     raise ExternalTicketingSyncError("External ticket sync requires a valid project manager email.")
+
+
+def resolve_external_update_actor_email(ticket):
+    for user in (ticket.current_assignee, ticket.direct_recipient, ticket.created_by, ticket.submitted_by):
+        if user and user.email:
+            return user.email
+    return resolve_project_manager_email(ticket)
 
 
 def resolve_department_manager_email(ticket, external_department):
@@ -570,16 +740,20 @@ def find_external_ticket_by_reference(ticket):
     return data.get("ticket")
 
 
-def api_request(method, path, *, params=None, json=None):
+def api_request(method, path, *, params=None, json=None, data=None, files=None):
     url = build_api_url(path)
-    response = requests.request(
-        method,
-        url,
-        headers=build_headers(),
-        params=params,
-        json=json,
-        timeout=settings.EXTERNAL_TICKETING_TIMEOUT,
-    )
+    request_kwargs = {
+        "headers": build_headers(),
+        "params": params,
+        "timeout": settings.EXTERNAL_TICKETING_TIMEOUT,
+    }
+    if json is not None:
+        request_kwargs["json"] = json
+    if data is not None:
+        request_kwargs["data"] = data
+    if files is not None:
+        request_kwargs["files"] = files
+    response = requests.request(method, url, **request_kwargs)
     data = parse_json_response(response, method, url)
     if data.get("success") is False:
         raise ExternalTicketingSyncError(

@@ -1007,6 +1007,139 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(self.department.external_directory_code, "IT_SUPPORT")
 
     @patch("apps.ticketing.external_ticketing.requests.request")
+    @patch("apps.ticketing.external_ticketing.requests.get")
+    def test_support_request_file_is_sent_to_external_ticket_create(self, mock_get, mock_request):
+        mock_get.return_value = self._json_response({}, status_code=404)
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            campaign=self.campaign,
+            source_system="Patient Education",
+            source_flow="Flow1 / Doctor",
+            subject="Other issue - Sharing page",
+            free_text="Sharing page attachment should be mirrored to the internal ticket.",
+            uploaded_file=SimpleUploadedFile("contact.jpg", b"image-bytes", content_type="image/jpeg"),
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+
+        def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None, data=None, files=None):
+            self.assertNotIn("X-Client-Ticket-Token", headers or {})
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/departments/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_id": 19,
+                                "manager_name": "Tech Manager",
+                                "manager_email": "tech.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                        "department_managers": [],
+                        "users": [
+                            {
+                                "id": 19,
+                                "full_name": "Tech Manager",
+                                "email": "tech.manager@inditech.co.in",
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/ticket-types/"):
+                return self._json_response(
+                    {
+                        "success": True,
+                        "ticket_types": [
+                            {
+                                "id": 12,
+                                "name": "System Down",
+                                "department_id": 3,
+                                "department_name": "Technical Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "POST" and url.endswith("/client-tickets/api/tickets/"):
+                self.assertIsNone(json)
+                self.assertEqual(data["assigned_to_email"], "tech.manager@inditech.co.in")
+                self.assertEqual(data["project_manager_email"], settings.PROJECT_MANAGER_EMAIL)
+                self.assertEqual(data["department_id"], 3)
+                self.assertEqual(data["ticket_type_id"], 12)
+                self.assertEqual(len(files), 1)
+                field_name, file_tuple = files[0]
+                filename, file_handle, content_type = file_tuple
+                self.assertEqual(field_name, "attachments")
+                self.assertEqual(filename, "contact.jpg")
+                self.assertEqual(file_handle.read(), b"image-bytes")
+                self.assertEqual(content_type, "image/jpeg")
+                return self._json_response(
+                    {
+                        "success": True,
+                        "ticket": {
+                            "ticket_number": "CLT-8F3A1B2C",
+                            "ticket_url": "https://support.inditech.co.in/client-tickets/tickets/CLT-8F3A1B2C/",
+                            "status_code": "open",
+                        },
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+
+        with self.captureOnCommitCallbacks(execute=True):
+            ticket = create_ticket(
+                title="Reports Site Down",
+                description="Reporting site is returning 503.",
+                ticket_type="System Down",
+                user_type=Ticket.UserType.INTERNAL,
+                source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+                priority=Ticket.Priority.CRITICAL,
+                department=self.department,
+                campaign=self.campaign,
+                created_by=self.pm_user,
+                submitted_by=self.pm_user,
+                direct_recipient=self.department.default_recipient,
+                current_assignee=self.department.default_recipient,
+                requester_name="Campaign PM",
+                requester_email=self.pm_user.email,
+                requester_number=self.pm_user.phone_number,
+                requester_company="Inditech",
+                support_request=support_request,
+            )
+
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.external_ticket_number, "CLT-8F3A1B2C")
+        self.assertEqual(ticket.external_ticket_error, "")
+
+    @patch("apps.ticketing.external_ticketing.requests.request")
     def test_directory_sync_updates_local_department_manager_routing(self, mock_request):
         def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None):
             self.assertNotIn("X-Client-Ticket-Token", headers or {})
@@ -1127,6 +1260,72 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "IT Support - Auto route to Tech Manager")
         self.assertContains(response, self.pm_user.phone_number)
+
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_note_attachment_syncs_to_existing_external_ticket(self, mock_request):
+        ticket = Ticket.objects.create(
+            title="Reports Site Down",
+            description="Reporting site is returning 503.",
+            ticket_type="System Down",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.CRITICAL,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-EXISTING",
+            external_ticket_url="https://support.inditech.co.in/client-tickets/tickets/CLT-EXISTING/",
+            external_ticket_status="open",
+        )
+
+        def request_side_effect(method, url, headers=None, params=None, json=None, timeout=None, data=None, files=None):
+            self.assertNotIn("X-Client-Ticket-Token", headers or {})
+            if method == "POST" and url.endswith("/client-tickets/api/tickets/CLT-EXISTING/inditech-update/"):
+                self.assertIsNone(json)
+                self.assertEqual(data["updated_by_email"], ticket.current_assignee.email)
+                self.assertEqual(len(files), 1)
+                field_name, file_tuple = files[0]
+                filename, file_handle, content_type = file_tuple
+                self.assertEqual(field_name, "attachments")
+                self.assertEqual(filename, "note.txt")
+                self.assertEqual(file_handle.read(), b"attachment")
+                self.assertEqual(content_type, "text/plain")
+                return self._json_response(
+                    {
+                        "success": True,
+                        "ticket": {
+                            "ticket_number": "CLT-EXISTING",
+                            "status_code": "open",
+                        },
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+
+        self.client.force_login(ticket.current_assignee)
+        response = self.client.post(
+            reverse("ticketing:detail", kwargs={"pk": ticket.pk}),
+            data={
+                "action": "note",
+                "body": "Added a diagnostic note from test coverage.",
+                "attachments": SimpleUploadedFile("note.txt", b"attachment", content_type="text/plain"),
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.external_ticket_error, "")
+        self.assertIn("External ticket attachments synced successfully.", ticket.external_ticket_log)
 
     @patch("apps.ticketing.external_ticketing.requests.request")
     def test_support_issue_raise_ticket_page_uses_synced_internal_directory_departments(self, mock_request):

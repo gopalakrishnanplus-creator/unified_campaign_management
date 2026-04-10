@@ -15,7 +15,13 @@ from django.views.decorators.http import require_http_methods
 from django.views.generic import DetailView, TemplateView
 
 from apps.ticketing.forms import TicketCreateForm
-from apps.ticketing.external_ticketing import ExternalTicketingSyncError, external_ticketing_enabled, sync_external_directory
+from apps.ticketing.external_ticketing import (
+    ExternalTicketingSyncError,
+    external_ticketing_enabled,
+    should_sync_external_ticket,
+    sync_external_directory,
+    sync_external_ticket,
+)
 from apps.ticketing.models import Department, TicketAttachment, TicketNote, TicketTypeDefinition
 from apps.ticketing.services import create_ticket
 
@@ -839,7 +845,7 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
 
     def _attach_uploaded_file(self, ticket):
         if not self.support_request.uploaded_file:
-            return
+            return None
         note = TicketNote.objects.create(
             ticket=ticket,
             author=self.request.user,
@@ -853,6 +859,7 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
             save=True,
         )
         self.support_request.uploaded_file.close()
+        return attachment
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -902,7 +909,9 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
             support_request=self.support_request,
             **payload,
         )
-        self._attach_uploaded_file(ticket)
+        attachment = self._attach_uploaded_file(ticket)
+        if attachment and external_ticketing_enabled() and should_sync_external_ticket(ticket):
+            sync_external_ticket(ticket.pk)
         self.support_request.status = SupportRequest.Status.TICKET_CREATED
         self.support_request.save(update_fields=["status"])
         ticket.refresh_from_db()

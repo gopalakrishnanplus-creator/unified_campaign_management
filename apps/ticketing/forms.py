@@ -152,8 +152,10 @@ class TicketNoteForm(forms.ModelForm):
         return files
 
     def save_attachments(self, note):
+        created_attachments = []
         for file in self.files.getlist("attachments"):
-            TicketAttachment.objects.create(note=note, file=file)
+            created_attachments.append(TicketAttachment.objects.create(note=note, file=file))
+        return created_attachments
 
 
 class TicketFilterForm(forms.Form):
