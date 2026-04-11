@@ -51,24 +51,19 @@
     <div class="col-lg-5">
         <div class="card shadow-sm border-0 rounded-4">
             <div class="card-body p-4">
-                <h2 class="h5 mb-3">
-                    {% if item.response_mode == 'standardized' %}
-                        This did not solve the problem
+                <h2 class="h5 mb-3">Continue in the integrated support flow</h2>
+                <p class="text-secondary">
+                    Extra free-text request fields have been removed from this page. Use the page-wise and section-wise FAQ navigation to stay inside the built-in support experience.
+                </p>
+                <div class="d-grid gap-2">
+                    {% if item.page_id %}
+                        <a class="btn btn-primary" href="{{ url('support_center:faq_page', user_type=user_type, page_slug=item.page.slug) }}">Open page FAQs</a>
+                        <a class="btn btn-outline-secondary" href="{{ url('support_center:faq_page_widget', user_type=user_type, page_slug=item.page.slug) }}" target="_blank" rel="noreferrer">Open support widget</a>
                     {% else %}
-                        Raise a ticket
+                        <a class="btn btn-primary" href="{{ url('support_center:faq_super_category', user_type=user_type, super_slug=item.category.super_category.slug) }}">Open section FAQs</a>
                     {% endif %}
-                </h2>
-                <form method="post" class="vstack gap-3">
-                    {{ csrf_input }}
-                    {% for field in request_form %}
-                        <div>
-                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                            {{ field }}
-                            {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
-                        </div>
-                    {% endfor %}
-                    <button class="btn btn-primary" type="submit">Create support ticket</button>
-                </form>
+                    <a class="btn btn-outline-primary" href="{{ url('support_center:assistant', user_type=user_type) }}">Use guided assistant</a>
+                </div>
             </div>
         </div>
     </div>

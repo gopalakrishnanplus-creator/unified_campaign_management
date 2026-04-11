@@ -65,6 +65,23 @@ class SeededIntegrationTestCase(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
 
+    @patch("apps.dashboards.services.requests.get")
+    def test_pm_pages_and_ticket_create_hide_campaign_filters(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        self.client.force_login(self.pm_user)
+
+        dashboard_response = self.client.get(reverse("dashboards:home"))
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertNotContains(dashboard_response, 'name="campaign"', html=False)
+
+        performance_response = self.client.get(reverse("dashboards:performance"))
+        self.assertEqual(performance_response.status_code, 200)
+        self.assertNotContains(performance_response, 'name="campaign"', html=False)
+
+        ticket_create_response = self.client.get(reverse("ticketing:create"))
+        self.assertEqual(ticket_create_response.status_code, 200)
+        self.assertNotContains(ticket_create_response, 'id="id_campaign"', html=False)
+
     @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
     def test_ticket_creation_supports_dynamic_ticket_types(self):
         self.client.force_login(self.pm_user)
@@ -287,6 +304,14 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.source_flow, "Assistant Flow")
         self.assertTrue(support_request.uploaded_file.name.endswith(".webp"))
         self.assertFalse(Ticket.objects.filter(support_request=support_request).exists())
+
+    def test_support_landing_shows_page_and_section_faqs_without_free_text_form(self):
+        response = self.client.get(reverse("support_center:landing", kwargs={"user_type": "brand_manager"}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "sections")
+        self.assertNotContains(response, "Free-text support request")
+        self.assertContains(response, "Standalone widget")
 
     def test_faq_page_api_and_widget_render(self):
         page = SupportPage.objects.get(slug="customer-support-authentication-page")

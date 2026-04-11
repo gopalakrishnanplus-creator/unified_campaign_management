@@ -87,8 +87,6 @@ def get_selected_campaign(slug=None, default_to_active=False):
 
 def _ticket_list_url(campaign=None, scope=None, **filters):
     params = {}
-    if campaign:
-        params["campaign"] = campaign.pk
     if scope:
         params["scope"] = scope
     for key, value in filters.items():
@@ -192,7 +190,7 @@ def get_support_dashboard_data(campaign=None):
     quality_rows = quality_rows[:8]
 
     pending_rows = list(
-        pending.values("ticket_type", "ticket_type_definition", "ticket_category__name", "ticket_category", "campaign__name")
+        pending.values("ticket_type", "ticket_type_definition", "ticket_category__name", "ticket_category")
         .annotate(total=Count("id"))
         .order_by("-total", "ticket_category__name", "ticket_type")[:10]
     )
@@ -204,7 +202,6 @@ def get_support_dashboard_data(campaign=None):
             ticket.ticket_type_definition_id,
             ticket.ticket_category.name if ticket.ticket_category else "Uncategorized",
             ticket.ticket_category_id,
-            ticket.campaign.name if ticket.campaign else "Unassigned",
         )
         pending_age[key] += ticket.ageing_days
         pending_count[key] += 1
@@ -214,7 +211,6 @@ def get_support_dashboard_data(campaign=None):
             row["ticket_type_definition"],
             row["ticket_category__name"] or "Uncategorized",
             row["ticket_category"],
-            row["campaign__name"] or "Unassigned",
         )
         row["average_ageing_days"] = round(pending_age[key] / pending_count[key], 1) if pending_count[key] else 0
         row["url"] = _ticket_list_url(

@@ -318,6 +318,15 @@ class SupportLandingView(SupportAudienceMixin, TemplateView):
                     "faq_count": block["faq_count"],
                     "section_count": block["section_count"],
                     "section_names": [entry["super_category"].name for entry in block["sections"]],
+                    "sections": [
+                        {
+                            "name": entry["super_category"].name,
+                            "slug": entry["super_category"].slug,
+                            "faq_count": entry["faq_count"],
+                            "category_names": entry["category_names"],
+                        }
+                        for entry in block["sections"]
+                    ],
                     **_build_page_urls(self.request, self.user_type, block["page"].slug),
                 }
             )
@@ -328,7 +337,6 @@ class SupportLandingView(SupportAudienceMixin, TemplateView):
                 "role_title": self.config["title"],
                 "page_title": self.config["page_title"],
                 "assistant_systems": get_available_systems(self.user_type),
-                "free_text_form": kwargs.get("free_text_form") or SupportRequestForm(initial={"subject": f"{self.config['title']} request"}),
                 "faq_links_api_url": self.request.build_absolute_uri(
                     reverse("support_center:faq_links_api", kwargs={"user_type": self.user_type})
                 ),
@@ -534,8 +542,6 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             return "category"
         if context["resolved_item"]:
             return "resolved"
-        if context["other_selected"]:
-            return "other_issue"
         if context["selected_faq"]:
             return "faq_answer"
         return "faq_menu"
@@ -900,6 +906,7 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
             for key, value in form.cleaned_data.items()
             if key not in {"ticket_category", "ticket_type_definition", "new_ticket_type_name"}
         }
+        payload["campaign"] = self.support_request.campaign
         ticket = create_ticket(
             created_by=request.user,
             submitted_by=request.user,

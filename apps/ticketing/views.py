@@ -88,7 +88,6 @@ class TicketListView(LoginRequiredMixin, ListView):
         priority = self.request.GET.get("priority")
         ticket_category = self.request.GET.get("ticket_category")
         ticket_type_definition = self.request.GET.get("ticket_type_definition")
-        campaign = self.request.GET.get("campaign")
         period_days = self.request.GET.get("period_days")
         sort_by = self.request.GET.get("sort_by") or "newest"
 
@@ -121,8 +120,6 @@ class TicketListView(LoginRequiredMixin, ListView):
             queryset = queryset.filter(ticket_category_id=ticket_category)
         if ticket_type_definition:
             queryset = queryset.filter(ticket_type_definition_id=ticket_type_definition)
-        if campaign:
-            queryset = queryset.filter(campaign_id=campaign)
         if period_days:
             queryset = queryset.filter(created_at__gte=timezone.now() - timedelta(days=int(period_days)))
         if sort_by == "oldest":

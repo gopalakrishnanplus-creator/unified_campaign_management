@@ -139,6 +139,10 @@
                         <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-page-button">Restart Page</button>
                     </div>
 
+                    <div class="support-link-list mb-4">
+                        <a class="btn btn-sm btn-outline-secondary" href="{{ faq_payload.page_url if faq_payload.page_url is defined else '#' }}" target="_blank" rel="noreferrer">Open full FAQ page</a>
+                    </div>
+
                     <div class="transcript mb-4" id="transcript">
                         <div class="bubble-row">
                             <div class="bubble">
@@ -162,7 +166,7 @@
                         <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
                             <div>
                                 <h2 class="h6 mb-1" id="selected-section-title"></h2>
-                                <p class="text-secondary mb-0">Choose the matching question or select <strong>Others</strong> if the issue is not listed.</p>
+                                <p class="text-secondary mb-0">Choose the matching question for this section.</p>
                             </div>
                             <button class="btn btn-sm btn-outline-secondary" type="button" id="restart-section-button">Restart Section</button>
                         </div>
@@ -189,36 +193,6 @@
                         <button class="btn btn-success" type="button" data-resolution="resolved">Resolved</button>
                         <button class="btn btn-outline-primary" type="button" data-resolution="unresolved">Not Resolved</button>
                     </div>
-
-                    <form class="vstack gap-3 mt-4 d-none" id="other-form" enctype="multipart/form-data">
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <label class="form-label" for="other-name">Name</label>
-                                <input class="form-control" id="other-name" name="requester_name" type="text" placeholder="Enter your name">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="other-phone">Phone Number</label>
-                                <input class="form-control" id="other-phone" name="requester_number" type="tel" inputmode="tel" placeholder="Enter your phone number">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="other-email">Email Address</label>
-                                <input class="form-control" id="other-email" name="requester_email" type="email" placeholder="Enter your email address">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="form-label" for="other-description">Describe the issue</label>
-                            <textarea class="form-control" id="other-description" name="free_text" rows="4" placeholder="Describe what happened and what the user was trying to do."></textarea>
-                        </div>
-                        <div>
-                            <label class="form-label" for="other-file">Upload screenshot or image</label>
-                            <input class="form-control" id="other-file" type="file" name="uploaded_file" accept=".jpg,.jpeg,.png,.heic,.svg,.webp">
-                            <div class="form-text">Allowed formats: .jpg, .jpeg, .png, .heic, .svg, .webp</div>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-primary" type="submit">Raise Query</button>
-                            <button class="btn btn-outline-secondary" type="button" id="cancel-other-button">Restart Section</button>
-                        </div>
-                    </form>
 
                     <div class="alert rounded-4 mt-4 d-none" id="status-message"></div>
                 </div>
@@ -254,21 +228,6 @@
                     ],
                 };
 
-            function getSameOriginUrl(rawUrl) {
-                if (!rawUrl) {
-                    return "";
-                }
-                const resolvedUrl = new URL(rawUrl, window.location.href);
-                if (resolvedUrl.origin === window.location.origin) {
-                    return `${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`;
-                }
-                if (window.location.protocol === "https:" && resolvedUrl.host === window.location.host && resolvedUrl.protocol !== "https:") {
-                    resolvedUrl.protocol = "https:";
-                }
-                return resolvedUrl.toString();
-            }
-
-            const otherIssueUrl = getSameOriginUrl(payload.other_issue_url);
             const transcriptElement = document.getElementById("transcript");
             const sectionPanel = document.getElementById("section-panel");
             const sectionListElement = document.getElementById("section-list");
@@ -277,40 +236,18 @@
             const selectedSectionTitleElement = document.getElementById("selected-section-title");
             const restartPageButton = document.getElementById("restart-page-button");
             const restartSectionButton = document.getElementById("restart-section-button");
-            const cancelOtherButton = document.getElementById("cancel-other-button");
             const conversationPanel = document.getElementById("conversation-panel");
             const resolutionPanel = document.getElementById("resolution-panel");
-            const otherForm = document.getElementById("other-form");
             const selectedQuestionElement = document.getElementById("selected-question");
             const selectedAnswerElement = document.getElementById("selected-answer");
             const answerLinksElement = document.getElementById("answer-links");
             const statusMessageElement = document.getElementById("status-message");
-            const urlSearchParams = new URLSearchParams(window.location.search);
 
             const state = {
                 selectedSection: null,
                 selectedFaq: null,
                 lastSelectedFaq: null,
             };
-
-            function getCookie(name) {
-                const cookieValue = document.cookie
-                    .split(";")
-                    .map((item) => item.trim())
-                    .find((item) => item.startsWith(`${name}=`));
-                return cookieValue ? decodeURIComponent(cookieValue.split("=").slice(1).join("=")) : "";
-            }
-
-            function inferSystemFromReferrer(referrer) {
-                const value = (referrer || "").toLowerCase();
-                if (!value) return "";
-                if (value.includes("in-clinic") || value.includes("inclinic")) return "In-clinic";
-                if (value.includes("patient-education") || value.includes("patienteducation") || value.includes("patient_education")) return "Patient Education";
-                if (value.includes("red-flag") || value.includes("red_flag") || value.includes("redflag") || value.includes("/rfa") || value.includes("sapa")) {
-                    return "Red Flag Alert";
-                }
-                return "";
-            }
 
             function buildLinks(faq) {
                 const links = [];
@@ -338,8 +275,6 @@
                 faqPanel.classList.add("d-none");
                 conversationPanel.classList.add("d-none");
                 resolutionPanel.classList.add("d-none");
-                otherForm.classList.add("d-none");
-                otherForm.reset();
                 clearStatus();
                 renderSections();
             }
@@ -349,8 +284,6 @@
                 state.lastSelectedFaq = null;
                 conversationPanel.classList.add("d-none");
                 resolutionPanel.classList.add("d-none");
-                otherForm.classList.add("d-none");
-                otherForm.reset();
                 clearStatus();
                 if (!state.selectedSection) {
                     resetPageFlow();
@@ -385,7 +318,6 @@
                         faqPanel.classList.remove("d-none");
                         conversationPanel.classList.add("d-none");
                         resolutionPanel.classList.add("d-none");
-                        otherForm.classList.add("d-none");
                         renderQuestions();
                     });
                 });
@@ -411,28 +343,9 @@
                     questionListElement.appendChild(wrapper);
                 });
 
-                const otherWrapper = document.createElement("label");
-                otherWrapper.className = "question-option";
-                otherWrapper.innerHTML = `
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="question-selection" value="other" id="faq-other">
-                        <span class="form-check-label">Others</span>
-                    </div>
-                    <span class="question-meta">Use this when none of the listed questions match the issue.</span>
-                `;
-                questionListElement.appendChild(otherWrapper);
-
                 questionListElement.querySelectorAll("input[name='question-selection']").forEach((input) => {
                     input.addEventListener("change", () => {
                         clearStatus();
-                        if (input.value === "other") {
-                            faqPanel.classList.add("d-none");
-                            conversationPanel.classList.add("d-none");
-                            resolutionPanel.classList.add("d-none");
-                            otherForm.classList.remove("d-none");
-                            return;
-                        }
-
                         const faq = state.selectedSection.faqs.find((entry) => String(entry.id) === input.value);
                         if (!faq) {
                             setStatus("That question could not be loaded.", "warning");
@@ -459,7 +372,6 @@
                     answerLinksElement.appendChild(anchor);
                 });
                 faqPanel.classList.add("d-none");
-                otherForm.classList.add("d-none");
                 conversationPanel.classList.remove("d-none");
                 resolutionPanel.classList.remove("d-none");
                 clearStatus();
@@ -472,82 +384,13 @@
                         resolutionPanel.classList.add("d-none");
                         return;
                     }
-                    setStatus("Please choose another FAQ or use Others.", "secondary");
+                    setStatus("Please choose another FAQ or open the full FAQ page for a wider section view.", "secondary");
                     restartSectionFlow();
                 });
             });
 
-            otherForm.addEventListener("submit", async (event) => {
-                event.preventDefault();
-                clearStatus();
-                const formData = new FormData(otherForm);
-                if (!(formData.get("requester_name") || "").trim()) {
-                    setStatus("Please enter your name before raising the query.", "warning");
-                    return;
-                }
-                if (!(formData.get("requester_number") || "").trim()) {
-                    setStatus("Please enter your phone number before raising the query.", "warning");
-                    return;
-                }
-                if (!(formData.get("requester_email") || "").trim()) {
-                    setStatus("Please enter your email address before raising the query.", "warning");
-                    return;
-                }
-                if (!(formData.get("free_text") || "").trim()) {
-                    setStatus("Please describe the issue before raising the query.", "warning");
-                    return;
-                }
-
-                formData.set("context_referrer", document.referrer || "");
-                if (state.selectedSection) {
-                    formData.set("selected_section_slug", state.selectedSection.slug);
-                }
-                if (state.lastSelectedFaq) {
-                    formData.set("selected_faq_id", String(state.lastSelectedFaq.id));
-                }
-                if (payload.source_system) {
-                    formData.set("source_system", payload.source_system);
-                } else if (urlSearchParams.get("system")) {
-                    formData.set("source_system", urlSearchParams.get("system"));
-                } else {
-                    const inferredSystem = inferSystemFromReferrer(document.referrer);
-                    if (inferredSystem) {
-                        formData.set("source_system", inferredSystem);
-                    }
-                }
-                if (payload.source_flow) {
-                    formData.set("source_flow", payload.source_flow);
-                } else if (urlSearchParams.get("flow")) {
-                    formData.set("source_flow", urlSearchParams.get("flow"));
-                } else if (state.selectedSection) {
-                    formData.set("source_flow", state.selectedSection.name);
-                }
-
-                try {
-                    const response = await fetch(otherIssueUrl, {
-                        method: "POST",
-                        headers: {
-                            "X-CSRFToken": getCookie("csrftoken"),
-                        },
-                        body: formData,
-                    });
-                    const responsePayload = await response.json();
-                    if (!response.ok || !responsePayload.success) {
-                        setStatus("The issue could not be submitted. Please review the details and try again.", "danger");
-                        return;
-                    }
-                    setStatus(responsePayload.message || "Issue recorded for PM review.", "success");
-                    otherForm.classList.add("d-none");
-                    resolutionPanel.classList.add("d-none");
-                    conversationPanel.classList.add("d-none");
-                } catch (error) {
-                    setStatus("The issue could not be submitted right now. Please try again.", "danger");
-                }
-            });
-
             restartPageButton.addEventListener("click", resetPageFlow);
-            restartSectionButton.addEventListener("click", resetPageFlow);
-            cancelOtherButton.addEventListener("click", restartSectionFlow);
+            restartSectionButton.addEventListener("click", restartSectionFlow);
 
             renderSections();
         })();
