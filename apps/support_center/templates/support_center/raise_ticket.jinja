@@ -129,11 +129,6 @@
                             {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors|join(', ') }}</div>{% endif %}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label" for="{{ form.campaign.id_for_label }}">{{ form.campaign.label }}</label>
-                            {{ form.campaign }}
-                            {% if form.campaign.errors %}<div class="text-danger small mt-1">{{ form.campaign.errors|join(', ') }}</div>{% endif %}
-                        </div>
-                        <div class="col-md-6">
                             <label class="form-label" for="{{ form.requester_name.id_for_label }}">{{ form.requester_name.label }}</label>
                             {{ form.requester_name }}
                             {% if form.requester_name.errors %}<div class="text-danger small mt-1">{{ form.requester_name.errors|join(', ') }}</div>{% endif %}

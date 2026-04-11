@@ -11,23 +11,10 @@
         <p class="text-secondary mb-0">Monitor ticket load, spot bottlenecks, and jump straight into the queues that need attention.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <form class="d-flex gap-2" method="get">
-            <select class="form-select" name="campaign">
-                <option value="">All campaigns / default active campaign</option>
-                {% for campaign in campaigns %}
-                    <option value="{{ campaign.slug }}" {% if selected_campaign and selected_campaign.pk == campaign.pk %}selected{% endif %}>{{ campaign.name }}</option>
-                {% endfor %}
-            </select>
-            <button class="btn btn-primary" type="submit">Apply</button>
-        </form>
-        <a class="btn btn-outline-secondary" href="{{ url('dashboards:performance') }}{% if selected_campaign %}?campaign={{ selected_campaign.slug }}{% endif %}">Campaign performance</a>
+        <a class="btn btn-outline-secondary" href="{{ url('dashboards:performance') }}">Campaign performance</a>
         <a class="btn btn-outline-secondary" href="{{ url('ticketing:distribution') }}">Ticket trends</a>
     </div>
 </div>
-
-{% if selected_campaign %}
-    <div class="alert alert-info rounded-4">Showing campaign context for <strong>{{ selected_campaign.name }}</strong> ({{ selected_campaign.brand_name }}).</div>
-{% endif %}
 
 <section class="mb-5">
     <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
@@ -36,7 +23,7 @@
             <h2 class="h3 mb-0">Decision-ready summary</h2>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}{% if selected_campaign %}?campaign={{ selected_campaign.pk }}{% endif %}">Open full queue</a>
+            <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Open full queue</a>
             <a class="btn btn-primary" href="{{ url('ticketing:create') }}">Create ticket</a>
         </div>
     </div>
@@ -135,7 +122,7 @@
                             <h2 class="h4 mb-1">All tickets in one place</h2>
                             <p class="text-secondary mb-0">Every row links to the full ticket detail page. Use the full queue for filtering and sorting.</p>
                         </div>
-                        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}{% if selected_campaign %}?campaign={{ selected_campaign.pk }}{% endif %}">Open filtered ticket list</a>
+                        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Open ticket list</a>
                     </div>
                 </div>
                 <div class="table-responsive table-scroll">
@@ -185,7 +172,7 @@
                             <h2 class="h4 mb-1">High-priority queue</h2>
                             <p class="text-secondary mb-0">A compact queue for urgent review.</p>
                         </div>
-                        <a class="btn btn-sm btn-outline-secondary" href="{{ url('ticketing:list') }}?scope=critical{% if selected_campaign %}&campaign={{ selected_campaign.pk }}{% endif %}">Critical queue</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="{{ url('ticketing:list') }}?scope=critical">Critical queue</a>
                     </div>
                     <div class="insight-list card-scroll">
                         {% for ticket in support_data.high_priority_tickets %}
@@ -212,7 +199,7 @@
                                 <div class="insight-item-title">Campaign performance</div>
                                 <div class="insight-item-subtitle">Screening, adoption, and content metrics are separated to keep this dashboard focused on decisions and operations.</div>
                             </div>
-                            <a class="btn btn-sm btn-primary" href="{{ url('dashboards:performance') }}{% if selected_campaign %}?campaign={{ selected_campaign.slug }}{% endif %}">Open page</a>
+                            <a class="btn btn-sm btn-primary" href="{{ url('dashboards:performance') }}">Open page</a>
                         </div>
                     </div>
                 </div>

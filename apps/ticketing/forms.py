@@ -1,7 +1,6 @@
 from django import forms
 
 from apps.accounts.models import User
-from apps.campaigns.models import Campaign
 
 from .models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketRoutingEvent, TicketTypeDefinition
 
@@ -47,7 +46,6 @@ class TicketCreateForm(forms.ModelForm):
             "priority",
             "status",
             "department",
-            "campaign",
             "requester_name",
             "requester_email",
             "requester_number",
@@ -174,11 +172,6 @@ class TicketFilterForm(forms.Form):
         queryset=TicketTypeDefinition.objects.filter(is_active=True).select_related("category").order_by("category__name", "name"),
         required=False,
         empty_label="All ticket types",
-    )
-    campaign = forms.ModelChoiceField(
-        queryset=Campaign.objects.order_by("name"),
-        required=False,
-        empty_label="All campaigns",
     )
     period_days = forms.ChoiceField(
         required=False,
