@@ -245,6 +245,7 @@ class SeededIntegrationTestCase(TestCase):
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.current_assignee, backup_user)
 
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
     def test_ticket_views_render_timestamps_in_india_time(self):
         utc_zone = ZoneInfo("UTC")
         note = TicketNote.objects.create(ticket=self.ticket, author=self.pm_user, body="Timezone rendering check.")
@@ -1418,6 +1419,107 @@ class ExternalTicketSyncTests(TestCase):
         ticket.refresh_from_db()
         self.assertEqual(ticket.external_ticket_error, "")
         self.assertIn("External ticket attachments synced successfully.", ticket.external_ticket_log)
+
+    @patch("apps.ticketing.external_ticketing.requests.get")
+    @patch("apps.dashboards.services.requests.get")
+    def test_pm_dashboard_refreshes_mirrored_ticket_state_from_external_system(self, mock_status_get, mock_external_get):
+        mock_status_get.return_value = Mock(status_code=200)
+        ticket = Ticket.objects.create(
+            title="External sync state check",
+            description="State changes should sync from Inditech ticketing.",
+            ticket_type="System Down",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-72E24C64",
+            external_ticket_url="https://support.inditech.co.in/client-tickets/tickets/CLT-72E24C64/",
+            external_ticket_status="open",
+        )
+        mock_external_get.return_value = self._json_response(
+            {
+                "success": True,
+                "ticket": {
+                    "ticket_number": "CLT-72E24C64",
+                    "ticket_url": "https://support.inditech.co.in/client-tickets/tickets/CLT-72E24C64/",
+                    "status_code": "in_progress",
+                    "assigned_to_email": "queue.owner@inditech.co.in",
+                    "assigned_to_name": "Queue Owner",
+                },
+            }
+        )
+
+        self.client.force_login(self.pm_user)
+        response = self.client.get(reverse("dashboards:home"))
+
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.IN_PROCESS)
+        self.assertEqual(ticket.external_ticket_status, "in_progress")
+        self.assertEqual(ticket.current_assignee.email, "queue.owner@inditech.co.in")
+        self.assertContains(response, "Queue Owner")
+        self.assertContains(response, "In process")
+
+    @patch("apps.ticketing.external_ticketing.requests.get")
+    def test_mirrored_ticket_detail_is_read_only_and_refreshes_from_external_system(self, mock_external_get):
+        ticket = Ticket.objects.create(
+            title="External read only check",
+            description="Mirrored tickets should be managed from Inditech ticketing.",
+            ticket_type="System Down",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-READONLY",
+            external_ticket_url="https://support.inditech.co.in/client-tickets/tickets/CLT-READONLY/",
+            external_ticket_status="open",
+        )
+        mock_external_get.return_value = self._json_response(
+            {
+                "success": True,
+                "ticket": {
+                    "ticket_number": "CLT-READONLY",
+                    "ticket_url": "https://support.inditech.co.in/client-tickets/tickets/CLT-READONLY/",
+                    "status_code": "closed",
+                    "assigned_to_email": "closed.owner@inditech.co.in",
+                    "assigned_to_name": "Closed Owner",
+                },
+            }
+        )
+
+        self.client.force_login(self.pm_user)
+        response = self.client.get(reverse("ticketing:detail", kwargs={"pk": ticket.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ticket management")
+        self.assertContains(response, "Manage in Inditech ticketing")
+        self.assertContains(response, "Closed Owner")
+        self.assertNotContains(response, "Change status")
+        self.assertNotContains(response, "Delegate ticket")
+        self.assertNotContains(response, "Return to sender")
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.COMPLETED)
+        self.assertEqual(ticket.current_assignee.email, "closed.owner@inditech.co.in")
 
     @patch("apps.ticketing.external_ticketing.requests.request")
     def test_support_issue_raise_ticket_page_uses_synced_internal_directory_departments(self, mock_request):

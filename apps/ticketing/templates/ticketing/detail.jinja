@@ -62,36 +62,48 @@
             </div>
         </div>
 
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
-            <div class="card-body">
-                <h2 class="h5 mb-3">Status update</h2>
-                <form method="post" class="vstack gap-3">
-                    {{ csrf_input }}
-                    <input type="hidden" name="action" value="status">
-                    {{ status_form.status }}
-                    <button class="btn btn-primary" type="submit">Change status</button>
-                </form>
+        {% if ticket_management_locked %}
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Ticket management</h2>
+                    <p class="text-secondary mb-0">Status and delegation are managed in the Inditech ticketing system for mirrored tickets. Any updates made there will sync back into this dashboard.</p>
+                    {% if ticket.external_ticket_url %}
+                        <a class="btn btn-outline-primary btn-sm mt-3" href="{{ ticket.external_ticket_url }}" target="_blank" rel="noreferrer">Manage in Inditech ticketing</a>
+                    {% endif %}
+                </div>
             </div>
-        </div>
-
-        <div class="card shadow-sm border-0 rounded-4">
-            <div class="card-body">
-                <h2 class="h5 mb-3">Delegate ticket</h2>
-                <form method="post" class="vstack gap-3">
-                    {{ csrf_input }}
-                    <input type="hidden" name="action" value="delegate">
-                    {{ delegation_form.assignee }}
-                    <button class="btn btn-outline-primary" type="submit">Delegate</button>
-                </form>
-                {% if ticket.created_by %}
-                    <form method="post" class="mt-3">
+        {% else %}
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Status update</h2>
+                    <form method="post" class="vstack gap-3">
                         {{ csrf_input }}
-                        <input type="hidden" name="action" value="return">
-                        <button class="btn btn-outline-secondary" type="submit">Return to sender</button>
+                        <input type="hidden" name="action" value="status">
+                        {{ status_form.status }}
+                        <button class="btn btn-primary" type="submit">Change status</button>
                     </form>
-                {% endif %}
+                </div>
             </div>
-        </div>
+
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Delegate ticket</h2>
+                    <form method="post" class="vstack gap-3">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delegate">
+                        {{ delegation_form.assignee }}
+                        <button class="btn btn-outline-primary" type="submit">Delegate</button>
+                    </form>
+                    {% if ticket.created_by %}
+                        <form method="post" class="mt-3">
+                            {{ csrf_input }}
+                            <input type="hidden" name="action" value="return">
+                            <button class="btn btn-outline-secondary" type="submit">Return to sender</button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
     </div>
 
     <div class="col-lg-8">

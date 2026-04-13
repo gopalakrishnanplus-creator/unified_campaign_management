@@ -32,6 +32,8 @@ from .external_ticketing import (
     should_sync_external_ticket,
     sync_external_directory,
     sync_external_ticket,
+    sync_external_ticket_state,
+    sync_external_ticket_states,
     sync_external_ticket_attachments,
 )
 
@@ -82,6 +84,8 @@ class TicketListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         queryset = _scoped_ticket_queryset(self.request)
+        if self.request.user.is_superuser or self.request.user.is_project_manager:
+            sync_external_ticket_states(queryset)
         scope = self.request.GET.get("scope")
         query = self.request.GET.get("query")
         status = self.request.GET.get("status")
@@ -248,6 +252,14 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
             raise PermissionDenied("You do not have access to this ticket.")
         return ticket
 
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.is_externally_managed:
+            sync_external_ticket_state(self.object.pk)
+            self.object = self.get_object()
+        context = self.get_context_data(object=self.object)
+        return self.render_to_response(context)
+
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
         action = request.POST.get("action")
@@ -263,6 +275,12 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
         return redirect("ticketing:detail", pk=self.object.pk)
 
     def handle_status_change(self):
+        if self.object.is_externally_managed:
+            messages.info(
+                self.request,
+                "Status changes are managed in the Inditech ticketing system for mirrored tickets.",
+            )
+            return redirect("ticketing:detail", pk=self.object.pk)
         if not self.object.can_change_status(self.request.user):
             messages.error(self.request, "Only the direct recipient can change ticket status.")
             return redirect("ticketing:detail", pk=self.object.pk)
@@ -275,6 +293,12 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
         return redirect("ticketing:detail", pk=self.object.pk)
 
     def handle_delegate(self):
+        if self.object.is_externally_managed:
+            messages.info(
+                self.request,
+                "Delegation is managed in the Inditech ticketing system for mirrored tickets.",
+            )
+            return redirect("ticketing:detail", pk=self.object.pk)
         if self.request.user != self.object.current_assignee and not self.request.user.is_superuser:
             messages.error(self.request, "Only the current assignee can delegate this ticket.")
             return redirect("ticketing:detail", pk=self.object.pk)
@@ -287,6 +311,12 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
         return redirect("ticketing:detail", pk=self.object.pk)
 
     def handle_return(self):
+        if self.object.is_externally_managed:
+            messages.info(
+                self.request,
+                "Assignment changes are managed in the Inditech ticketing system for mirrored tickets.",
+            )
+            return redirect("ticketing:detail", pk=self.object.pk)
         if self.request.user != self.object.current_assignee and not self.request.user.is_superuser:
             messages.error(self.request, "Only the current assignee can return this ticket.")
             return redirect("ticketing:detail", pk=self.object.pk)
@@ -318,8 +348,10 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["status_form"] = TicketStatusForm(instance=self.object)
-        context["delegation_form"] = TicketDelegationForm(user=self.request.user)
+        context["ticket_management_locked"] = self.object.is_externally_managed
+        if not self.object.is_externally_managed:
+            context["status_form"] = TicketStatusForm(instance=self.object)
+            context["delegation_form"] = TicketDelegationForm(user=self.request.user)
         context["note_form"] = TicketNoteForm()
         return context
 
