@@ -194,8 +194,17 @@ class Ticket(models.Model):
         delta = self.resolved_at - self.created_at
         return round(delta.total_seconds() / 3600, 2)
 
+    @property
+    def is_externally_managed(self):
+        return bool(settings.EXTERNAL_TICKETING_SYNC_ENABLED and self.external_ticket_number)
+
     def can_change_status(self, user):
-        return bool(user and user.is_authenticated and (user == self.direct_recipient or user.is_superuser))
+        return bool(
+            not self.is_externally_managed
+            and user
+            and user.is_authenticated
+            and (user == self.direct_recipient or user.is_superuser)
+        )
 
     def can_view(self, user):
         if not user or not user.is_authenticated:

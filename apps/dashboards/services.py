@@ -11,6 +11,7 @@ from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
 from apps.support_center.models import SupportRequest
 from apps.ticketing.models import Ticket
+from apps.ticketing.external_ticketing import sync_external_ticket_states
 from apps.ticketing.services import build_ticket_distribution_data
 
 
@@ -129,6 +130,7 @@ def get_support_dashboard_data(campaign=None):
     )
     if campaign:
         tickets = tickets.filter(campaign=campaign)
+    sync_external_ticket_states(tickets)
 
     completed = tickets.filter(status=Ticket.Status.COMPLETED)
     pending = tickets.exclude(status=Ticket.Status.COMPLETED)
