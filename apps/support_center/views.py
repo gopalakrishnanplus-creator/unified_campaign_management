@@ -555,7 +555,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             {
                 "speaker": "bot",
                 "title": "Support Bot",
-                "body": "Select the FAQ question that best matches your issue. I’ll show the answer immediately, and you can continue until the issue is resolved.",
+                "body": "Choose the question that matches your issue. You will see the answer right away.",
             }
         ]
 
@@ -587,8 +587,8 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                     "speaker": "bot",
                     "title": "Support Bot",
                     "body": (
-                        "Describe the unlisted issue in your own words and attach a screenshot if it helps. "
-                        f"We will log a queue ticket and reply in about {get_pm_queue_estimated_response_time()}."
+                        "Describe the issue and attach a screenshot if it helps. "
+                        f"You will receive a ticket ID and an estimated response time of {get_pm_queue_estimated_response_time()}."
                     ),
                 }
             )
@@ -597,7 +597,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 {
                     "speaker": "bot",
                     "title": "Support Bot",
-                    "body": f"Great. I’ll treat “{context['resolved_item'].name}” as the working solution for now.",
+                    "body": f"You marked “{context['resolved_item'].name}” as the working solution for now.",
                 }
             )
         elif stage == "empty":
@@ -941,6 +941,7 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
             ticket_type_definition=form.cleaned_data.get("ticket_type_definition"),
             new_ticket_type_name=form.cleaned_data.get("new_ticket_type_name"),
             support_request=self.support_request,
+            is_escalated=self.support_request.is_escalated,
             **payload,
         )
         attachment = self._attach_uploaded_file(ticket)

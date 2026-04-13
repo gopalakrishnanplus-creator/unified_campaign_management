@@ -474,6 +474,33 @@ def delegate_ticket(ticket, actor, assignee):
 
 
 @transaction.atomic
+def escalate_ticket(ticket, actor):
+    update_fields = ["updated_at"]
+    if not ticket.is_escalated:
+        ticket.is_escalated = True
+        update_fields.append("is_escalated")
+    if ticket.priority != Ticket.Priority.CRITICAL:
+        ticket.priority = Ticket.Priority.CRITICAL
+        update_fields.append("priority")
+    if len(update_fields) > 1:
+        ticket.save(update_fields=update_fields)
+
+    if ticket.support_request_id and not ticket.support_request.is_escalated:
+        ticket.support_request.is_escalated = True
+        ticket.support_request.save(update_fields=["is_escalated"])
+
+    TicketRoutingEvent.objects.create(
+        ticket=ticket,
+        action=TicketRoutingEvent.Action.ESCALATED,
+        actor=actor,
+        from_user=ticket.current_assignee,
+        to_user=ticket.current_assignee,
+        description="Marked as High Priority and moved to the top of the PM queue.",
+    )
+    return ticket
+
+
+@transaction.atomic
 def return_ticket_to_sender(ticket, actor):
     if not ticket.created_by:
         return ticket

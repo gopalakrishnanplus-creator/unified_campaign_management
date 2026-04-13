@@ -106,11 +106,11 @@
             </thead>
             <tbody>
                 {% for ticket in tickets %}
-                    <tr class="{% if ticket.support_request and ticket.support_request.is_escalated %}ticket-row-escalated{% elif ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
+                    <tr class="{% if ticket.is_high_priority_escalated %}ticket-row-escalated{% elif ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
                         <td>
                             <a class="fw-semibold text-decoration-none" href="{{ url('ticketing:detail', pk=ticket.pk) }}">{{ ticket.ticket_number }}</a>
                             <div class="text-secondary small">{{ ticket.title }}</div>
-                            {% if ticket.support_request and ticket.support_request.is_escalated %}
+                            {% if ticket.is_high_priority_escalated %}
                                 <div class="mt-1"><span class="status-code-pill status-danger">High Priority / Escalated</span></div>
                             {% endif %}
                         </td>
@@ -128,7 +128,7 @@
                         </td>
                         <td>
                             <span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span>
-                            {% if ticket.support_request and ticket.support_request.is_escalated %}
+                            {% if ticket.is_high_priority_escalated %}
                                 <div class="text-danger small mt-1">Escalated</div>
                             {% endif %}
                         </td>

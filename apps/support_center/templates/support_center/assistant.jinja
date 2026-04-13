@@ -5,7 +5,7 @@
     <div>
         <p class="eyebrow mb-1">{{ role_title }}</p>
         <h1 class="mb-1">{{ page_title }}</h1>
-        <p class="text-secondary mb-0">Choose the matching question, review the answer, and keep going only if you still need help.</p>
+        <p class="text-secondary mb-0">Choose a question. If it does not help, send a ticket.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-secondary" href="{{ url('support_center:landing', user_type=user_type) }}">Browse full catalog</a>
@@ -60,7 +60,7 @@
                 </div>
 
                 {% if stage == 'system' %}
-                    <p class="text-secondary small">Choose the product or support system you need help with.</p>
+                    <p class="text-secondary small">Choose the system.</p>
                     <div class="d-grid gap-2">
                         {% for system_name in systems %}
                             <form method="post">
@@ -72,7 +72,7 @@
                         {% endfor %}
                     </div>
                 {% elif stage == 'flow' %}
-                    <p class="text-secondary small">Choose the flow that matches the screen or journey you are on.</p>
+                    <p class="text-secondary small">Choose the flow.</p>
                     <div class="d-grid gap-2">
                         {% for flow_name in flows %}
                             <form method="post">
@@ -84,7 +84,7 @@
                         {% endfor %}
                     </div>
                 {% elif stage == 'category' %}
-                    <p class="text-secondary small">Choose the screen or section where the issue is happening.</p>
+                    <p class="text-secondary small">Choose where the issue appears.</p>
                     <div class="d-grid gap-2">
                         {% for category in categories %}
                             <form method="post">
@@ -96,7 +96,7 @@
                         {% endfor %}
                     </div>
                 {% elif stage in ['faq_menu', 'faq_answer'] %}
-                    <p class="text-secondary small">Select the question that best matches the issue. If none match, choose <strong>Other</strong>.</p>
+                    <p class="text-secondary small">Choose a question or select <strong>Other</strong>.</p>
                     <form method="post" class="vstack gap-3" id="assistant-faq-form">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="select_faq">
@@ -122,10 +122,10 @@
                             <button class="btn btn-outline-primary" type="submit" name="resolution" value="unresolved">Not Resolved</button>
                         </form>
                     {% elif not faqs %}
-                        <div class="alert alert-warning rounded-4 mt-3 mb-0">No FAQ questions are configured for this combination yet. Select Other to create a support ticket for review.</div>
+                        <div class="alert alert-warning rounded-4 mt-3 mb-0">No FAQs are configured for this path yet. Select Other to send a ticket.</div>
                     {% endif %}
                 {% elif stage == 'other_issue' %}
-                    <p class="text-secondary small">Describe the issue in your own words. We will send you a ticket ID and reply within {{ pm_queue_estimated_response_time }}.</p>
+                    <p class="text-secondary small">Describe the issue. You will receive a ticket ID and an estimated response time of {{ pm_queue_estimated_response_time }}.</p>
                     <form method="post" enctype="multipart/form-data" class="vstack gap-3">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="submit_other_issue">
@@ -168,15 +168,15 @@
                             {{ other_issue_form.uploaded_file }}
                             {% if other_issue_form.uploaded_file.errors %}<div class="text-danger small mt-1">{{ other_issue_form.uploaded_file.errors|join(', ') }}</div>{% endif %}
                         </div>
-                        <button class="btn btn-primary" type="submit">Raise Query</button>
+                        <button class="btn btn-primary" type="submit">Send Ticket</button>
                     </form>
                 {% elif stage == 'resolved' %}
                     <div class="alert alert-success rounded-4">
-                        <p class="mb-0">The issue is marked as resolved. You can restart the assistant or choose another screen if you need help with something else.</p>
+                        <p class="mb-0">You marked this issue as resolved. Restart the assistant if you need help with something else.</p>
                     </div>
                 {% else %}
                     <div class="alert alert-warning rounded-4">
-                        <p class="mb-0">No matching FAQs are currently configured for this path. Use Other to record the issue for PM review.</p>
+                        <p class="mb-0">No FAQs match this path right now. Use Other to send a ticket.</p>
                     </div>
                 {% endif %}
             </div>

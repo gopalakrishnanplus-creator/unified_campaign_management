@@ -163,6 +163,87 @@ class SeededIntegrationTestCase(TestCase):
         self.assertContains(response, "404")
         self.assertContains(response, "Campaign performance")
 
+    @patch("apps.dashboards.services.requests.get")
+    def test_pm_dashboard_uses_decluttered_queue_layout(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        self.client.force_login(self.pm_user)
+
+        response = self.client.get(reverse("dashboards:home"))
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertContains(response, "View Visualizations")
+        self.assertNotContains(response, "Monitor ticket load, spot bottlenecks, and jump straight into the queues that need attention.")
+        self.assertNotContains(response, "Every row links to the full ticket detail page. Use the full queue for filtering and sorting.")
+        self.assertNotContains(response, "Operational Details")
+        self.assertNotContains(response, "Volume, resolution quality, and bottlenecks")
+        self.assertNotContains(response, "Screening, adoption, and content metrics are separated to keep this dashboard focused on decisions and operations.")
+        self.assertLess(content.index('metric-label">Open tickets'), content.index('metric-label">Critical'))
+        self.assertLess(content.index('metric-label">Critical'), content.index('metric-label">In progress'))
+        self.assertLess(content.index('metric-label">In progress'), content.index('metric-label">Closed'))
+        self.assertLess(content.index('metric-label">Closed'), content.index('metric-label">Total tickets'))
+        self.assertLess(content.index("Other Issues"), content.index("Critical Tickets"))
+        self.assertLess(content.index("Critical Tickets"), content.index("Full Ticket Queue"))
+
+    @patch("apps.dashboards.services.requests.get")
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
+    def test_project_manager_can_escalate_ticket_from_dashboard_queue(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        standard_ticket = Ticket.objects.create(
+            title="Standard high priority issue",
+            description="Needs attention but is not escalated yet.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.ticket.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.ticket.department.default_recipient,
+            current_assignee=self.ticket.department.default_recipient,
+            requester_name="Standard Queue User",
+            requester_email="standard-queue@example.com",
+            requester_number="+919900000001",
+            requester_company="Inditech",
+        )
+        escalated_ticket = Ticket.objects.create(
+            title="Needs PM escalation",
+            description="This should move to the top after escalation.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.ticket.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.ticket.department.default_recipient,
+            current_assignee=self.ticket.department.default_recipient,
+            requester_name="Escalation Queue User",
+            requester_email="escalation-queue@example.com",
+            requester_number="+919900000002",
+            requester_company="Inditech",
+        )
+
+        self.client.force_login(self.pm_user)
+        response = self.client.post(
+            reverse("ticketing:escalate", kwargs={"pk": escalated_ticket.pk}),
+            data={"next": f"{reverse('dashboards:home')}#critical-ticket-review"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        escalated_ticket.refresh_from_db()
+        self.assertTrue(escalated_ticket.is_escalated)
+        self.assertEqual(escalated_ticket.priority, Ticket.Priority.CRITICAL)
+        self.assertContains(response, f"{escalated_ticket.ticket_number} marked as High Priority and moved to the top of the queue.")
+        self.assertContains(response, "High Priority / Escalated")
+        content = response.content.decode()
+        self.assertLess(content.index(escalated_ticket.ticket_number), content.index(standard_ticket.ticket_number))
+
     def test_reporting_api_endpoints_return_data(self):
         self.client.force_login(self.pm_user)
         endpoints = [
@@ -390,7 +471,7 @@ class SeededIntegrationTestCase(TestCase):
         self.assertContains(widget_response, 'id="restart-page-button"', html=False)
         self.assertContains(widget_response, 'id="restart-section-button"', html=False)
         self.assertContains(widget_response, "Sections")
-        self.assertContains(widget_response, "Others")
+        self.assertContains(widget_response, "Other")
         self.assertNotContains(widget_response, "Open full FAQ page")
 
     def test_widget_other_issue_submission_records_pm_review_item(self):
@@ -724,7 +805,7 @@ class SeededIntegrationTestCase(TestCase):
         self.client.force_login(self.pm_user)
         dashboard_response = self.client.get(reverse("dashboards:home"))
         self.assertEqual(dashboard_response.status_code, 200)
-        self.assertContains(dashboard_response, "Unlisted Support Issues")
+        self.assertContains(dashboard_response, "Other Issues")
         self.assertContains(dashboard_response, "The viewer is opening a blank white screen after verification.")
         self.assertContains(dashboard_response, support_request.queue_ticket_number)
         self.assertContains(dashboard_response, "Doctor support user")

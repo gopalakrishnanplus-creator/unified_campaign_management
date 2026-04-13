@@ -96,6 +96,7 @@ class Ticket(models.Model):
     source_system = models.CharField(max_length=24, choices=SourceSystem.choices, default=SourceSystem.MANUAL)
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.NOT_STARTED)
     priority = models.CharField(max_length=16, choices=Priority.choices, default=Priority.MEDIUM)
+    is_escalated = models.BooleanField(default=False)
     department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name="tickets")
     campaign = models.ForeignKey("campaigns.Campaign", null=True, blank=True, on_delete=models.SET_NULL, related_name="tickets")
     created_by = models.ForeignKey(
@@ -172,6 +173,8 @@ class Ticket(models.Model):
             self.resolved_at = timezone.now()
         if self.status != self.Status.COMPLETED:
             self.resolved_at = None
+        if self.is_escalated:
+            self.priority = self.Priority.CRITICAL
         super().save(*args, **kwargs)
         if is_new:
             TicketRoutingEvent.objects.create(
@@ -197,6 +200,10 @@ class Ticket(models.Model):
     @property
     def is_externally_managed(self):
         return bool(settings.EXTERNAL_TICKETING_SYNC_ENABLED and self.external_ticket_number)
+
+    @property
+    def is_high_priority_escalated(self):
+        return self.is_escalated or bool(self.support_request_id and self.support_request.is_escalated)
 
     def can_change_status(self, user):
         return bool(
@@ -295,6 +302,7 @@ class TicketRoutingEvent(models.Model):
     class Action(models.TextChoices):
         ASSIGNED = "assigned", "Assigned"
         DELEGATED = "delegated", "Delegated"
+        ESCALATED = "escalated", "Escalated"
         RETURNED = "returned", "Returned to sender"
         STATUS_CHANGED = "status_changed", "Status changed"
 

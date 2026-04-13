@@ -255,7 +255,7 @@ def get_pm_queue_estimated_response_time():
 
 def build_pm_queue_success_message(support_request):
     return (
-        f"Support ticket {support_request.queue_ticket_number} received. "
+        f"Your ticket ID is {support_request.queue_ticket_number}. "
         f"Estimated response time: {get_pm_queue_estimated_response_time()}."
     )
 
@@ -465,6 +465,7 @@ def submit_support_request(*, item, user_type, form, request_user):
         requester_name=support_request.requester_name,
         requester_email=support_request.requester_email,
         requester_company=support_request.requester_company,
+        is_escalated=support_request.is_escalated,
         support_request=support_request,
         support_item=item,
     )
