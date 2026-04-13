@@ -3,6 +3,7 @@ import mimetypes
 import os
 import re
 from contextlib import ExitStack
+from datetime import timedelta
 from urllib.parse import urljoin
 
 import requests
@@ -13,7 +14,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from config.timezones import format_india_datetime
 
-from .models import Department, Ticket, TicketAttachment
+from .models import Department, Ticket, TicketAttachment, TicketRoutingEvent
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,24 @@ STATUS_MAP = {
     Ticket.Status.ON_HOLD: "waiting_for_inditech",
     Ticket.Status.CANNOT_COMPLETE: "cancelled",
     Ticket.Status.COMPLETED: "closed",
+}
+EXTERNAL_STATUS_TO_LOCAL_MAP = {
+    "open": Ticket.Status.NOT_STARTED,
+    "new": Ticket.Status.NOT_STARTED,
+    "in_progress": Ticket.Status.IN_PROCESS,
+    "inprogress": Ticket.Status.IN_PROCESS,
+    "working": Ticket.Status.IN_PROCESS,
+    "waiting_for_inditech": Ticket.Status.ON_HOLD,
+    "waiting_for_client": Ticket.Status.ON_HOLD,
+    "waiting": Ticket.Status.ON_HOLD,
+    "on_hold": Ticket.Status.ON_HOLD,
+    "hold": Ticket.Status.ON_HOLD,
+    "pending": Ticket.Status.ON_HOLD,
+    "cancelled": Ticket.Status.CANNOT_COMPLETE,
+    "canceled": Ticket.Status.CANNOT_COMPLETE,
+    "closed": Ticket.Status.COMPLETED,
+    "completed": Ticket.Status.COMPLETED,
+    "resolved": Ticket.Status.COMPLETED,
 }
 
 USER_TYPE_MAP = {
@@ -63,6 +82,33 @@ def external_ticketing_enabled():
 
 def should_sync_external_ticket(ticket):
     return bool(external_ticketing_enabled() and not ticket.external_ticket_number)
+
+
+def should_refresh_external_ticket(ticket, *, force=False):
+    if not external_ticketing_enabled() or not ticket.external_ticket_number:
+        return False
+    if force:
+        return True
+    max_age_seconds = max(settings.EXTERNAL_TICKETING_PULL_SYNC_MAX_AGE_SECONDS, 0)
+    if max_age_seconds == 0 or not ticket.external_ticket_synced_at:
+        return True
+    return ticket.external_ticket_synced_at <= timezone.now() - timedelta(seconds=max_age_seconds)
+
+
+def sync_external_ticket_states(queryset, *, force=False):
+    if not external_ticketing_enabled() or queryset is None:
+        return 0
+
+    refreshed_count = 0
+    seen_ticket_ids = set()
+    for ticket in queryset.exclude(external_ticket_number=""):
+        if ticket.pk in seen_ticket_ids:
+            continue
+        seen_ticket_ids.add(ticket.pk)
+        if should_refresh_external_ticket(ticket, force=force):
+            sync_external_ticket_state(ticket.pk, force=True)
+            refreshed_count += 1
+    return refreshed_count
 
 
 def sync_external_directory():
@@ -158,6 +204,46 @@ def sync_external_ticket(ticket_id):
         return None
 
 
+def sync_external_ticket_state(ticket_id, *, force=False):
+    ticket = (
+        Ticket.objects.select_related(
+            "department",
+            "current_assignee",
+            "direct_recipient",
+            "created_by",
+            "submitted_by",
+            "ticket_type_definition",
+            "support_request",
+        )
+        .filter(pk=ticket_id)
+        .first()
+    )
+    if not ticket or not should_refresh_external_ticket(ticket, force=force):
+        return ticket
+
+    sync_log = [
+        log_line(
+            "Refreshing external ticket snapshot.",
+            external_ticket_number=ticket.external_ticket_number,
+            external_reference=ticket.ticket_number,
+        )
+    ]
+    try:
+        external_ticket = find_external_ticket_by_reference(ticket)
+        if not external_ticket:
+            ticket.external_ticket_synced_at = timezone.now()
+            ticket.save(update_fields=["external_ticket_synced_at"])
+            return ticket
+        return persist_external_ticket_mapping(ticket, external_ticket, sync_log, append_log=True)
+    except Exception as exc:
+        sync_log.append(log_line("External ticket refresh failed.", error=str(exc)))
+        ticket.external_ticket_error = str(exc)
+        ticket.external_ticket_log = "\n".join(filter(None, [ticket.external_ticket_log, *sync_log]))
+        ticket.save(update_fields=["external_ticket_error", "external_ticket_log"])
+        logger.warning("External ticket refresh failed for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
+        return ticket
+
+
 def sync_external_ticket_attachments(ticket_id, *, attachment_ids=None):
     ticket = (
         Ticket.objects.select_related(
@@ -207,21 +293,9 @@ def sync_external_ticket_attachments(ticket_id, *, attachment_ids=None):
                 status=external_ticket.get("status_code") or external_ticket.get("status"),
             )
         )
-        ticket.external_ticket_synced_at = timezone.now()
-        ticket.external_ticket_error = ""
-        if external_ticket.get("status_code") or external_ticket.get("status"):
-            ticket.external_ticket_status = external_ticket.get("status_code") or external_ticket.get("status") or ticket.external_ticket_status
-        ticket.external_ticket_log = "\n".join(filter(None, [ticket.external_ticket_log, *sync_log]))
-        ticket.save(
-            update_fields=[
-                "external_ticket_status",
-                "external_ticket_synced_at",
-                "external_ticket_error",
-                "external_ticket_log",
-            ]
-        )
+        synced_ticket = persist_external_ticket_mapping(ticket, external_ticket, sync_log, append_log=True)
         logger.info("External ticket attachment sync succeeded for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
-        return ticket
+        return synced_ticket
     except Exception as exc:
         sync_log.append(log_line("External ticket attachment sync failed.", error=str(exc)))
         ticket.external_ticket_error = str(exc)
@@ -231,27 +305,191 @@ def sync_external_ticket_attachments(ticket_id, *, attachment_ids=None):
         return None
 
 
-def persist_external_ticket_mapping(ticket, external_ticket, sync_log=None):
-    ticket.external_ticket_number = external_ticket.get("ticket_number", "") or ticket.external_ticket_number
-    ticket.external_ticket_url = external_ticket.get("ticket_url", "") or ticket.external_ticket_url
-    ticket.external_ticket_status = (
-        external_ticket.get("status_code", "") or external_ticket.get("status", "") or ticket.external_ticket_status
+def map_external_status_to_local(status):
+    normalized_status = normalize_value(status).replace("-", "_").replace(" ", "_")
+    return EXTERNAL_STATUS_TO_LOCAL_MAP.get(normalized_status)
+
+
+def extract_external_assignee_email(external_ticket):
+    candidate_values = [
+        external_ticket.get("assigned_to_email"),
+        external_ticket.get("assignee_email"),
+        external_ticket.get("assigned_user_email"),
+        external_ticket.get("current_assignee_email"),
+    ]
+    for field_name in ("assigned_to", "assignee", "current_assignee"):
+        candidate = external_ticket.get(field_name)
+        if isinstance(candidate, dict):
+            candidate_values.extend(
+                [
+                    candidate.get("email"),
+                    candidate.get("assigned_to_email"),
+                    candidate.get("user_email"),
+                ]
+            )
+        elif isinstance(candidate, str) and "@" in candidate:
+            candidate_values.append(candidate)
+    for value in candidate_values:
+        normalized_value = (value or "").strip()
+        if "@" in normalized_value:
+            return User.objects.normalize_email(normalized_value)
+    return ""
+
+
+def extract_external_assignee_name(external_ticket):
+    candidate_values = [
+        external_ticket.get("assigned_to_name"),
+        external_ticket.get("assignee_name"),
+        external_ticket.get("current_assignee_name"),
+    ]
+    for field_name in ("assigned_to", "assignee", "current_assignee"):
+        candidate = external_ticket.get(field_name)
+        if isinstance(candidate, dict):
+            candidate_values.extend(
+                [
+                    candidate.get("full_name"),
+                    candidate.get("name"),
+                    candidate.get("assigned_to_name"),
+                ]
+            )
+    for value in candidate_values:
+        normalized_value = (value or "").strip()
+        if normalized_value and "@" not in normalized_value:
+            return normalized_value
+    return ""
+
+
+def resolve_external_assignee_user(external_ticket, *, department=None):
+    assignee_email = extract_external_assignee_email(external_ticket)
+    if not assignee_email:
+        return None
+
+    existing_user = User.objects.filter(email__iexact=assignee_email).first()
+    assignee_name = extract_external_assignee_name(external_ticket) or (
+        existing_user.full_name if existing_user else assignee_email.split("@")[0].replace(".", " ").title()
     )
+    if existing_user:
+        updated_fields = []
+        if assignee_name and existing_user.full_name != assignee_name:
+            existing_user.full_name = assignee_name
+            updated_fields.append("full_name")
+        if department and not existing_user.department_id:
+            existing_user.department = department
+            updated_fields.append("department")
+        if not existing_user.company:
+            existing_user.company = "Inditech"
+            updated_fields.append("company")
+        if not existing_user.is_staff:
+            existing_user.is_staff = True
+            updated_fields.append("is_staff")
+        if updated_fields:
+            existing_user.save(update_fields=updated_fields)
+        return existing_user
+
+    return User.objects.create_user(
+        email=assignee_email,
+        full_name=assignee_name,
+        role=User.Role.SUPPORT_AGENT,
+        department=department,
+        company="Inditech",
+        is_staff=True,
+    )
+
+
+def persist_external_ticket_mapping(ticket, external_ticket, sync_log=None, *, append_log=False):
+    previous_status = ticket.status
+    previous_status_label = ticket.get_status_display()
+    previous_assignee = ticket.current_assignee
+    changed_fields = set()
+
+    external_ticket_number = external_ticket.get("ticket_number", "") or ticket.external_ticket_number
+    if external_ticket_number != ticket.external_ticket_number:
+        ticket.external_ticket_number = external_ticket_number
+        changed_fields.add("external_ticket_number")
+
+    external_ticket_url = external_ticket.get("ticket_url", "") or ticket.external_ticket_url
+    if external_ticket_url != ticket.external_ticket_url:
+        ticket.external_ticket_url = external_ticket_url
+        changed_fields.add("external_ticket_url")
+
+    external_status = external_ticket.get("status_code", "") or external_ticket.get("status", "")
+    if external_status and external_status != ticket.external_ticket_status:
+        ticket.external_ticket_status = external_status
+        changed_fields.add("external_ticket_status")
+
+    local_status = map_external_status_to_local(external_status)
+    status_changed = False
+    if local_status and local_status != ticket.status:
+        ticket.status = local_status
+        changed_fields.update({"status", "resolved_at"})
+        status_changed = True
+        if sync_log is not None:
+            sync_log.append(
+                log_line(
+                    "External ticket status synced locally.",
+                    external_ticket_number=external_ticket_number,
+                    previous_status=previous_status,
+                    status=local_status,
+                )
+            )
+
+    assignee_user = resolve_external_assignee_user(external_ticket, department=ticket.department)
+    assignee_changed = bool(assignee_user and assignee_user.pk != ticket.current_assignee_id)
+    if assignee_changed:
+        ticket.current_assignee = assignee_user
+        changed_fields.add("current_assignee")
+        if sync_log is not None:
+            sync_log.append(
+                log_line(
+                    "External ticket assignee synced locally.",
+                    external_ticket_number=external_ticket_number,
+                    assignee=assignee_user.email,
+                )
+            )
+
     ticket.external_ticket_synced_at = timezone.now()
     ticket.external_ticket_error = ""
-    if sync_log:
-        ticket.external_ticket_log = "\n".join(sync_log)
-    ticket.save(
-        update_fields=[
-            "external_ticket_number",
-            "external_ticket_url",
-            "external_ticket_status",
-            "external_ticket_synced_at",
-            "external_ticket_error",
-            "external_ticket_log",
-        ]
-    )
-    if ticket.external_ticket_log:
+    changed_fields.update({"external_ticket_synced_at", "external_ticket_error"})
+    if status_changed or assignee_changed:
+        changed_fields.add("updated_at")
+
+    should_store_sync_log = bool(sync_log and (not append_log or len(sync_log) > 1))
+    if should_store_sync_log:
+        if append_log and ticket.external_ticket_log:
+            ticket.external_ticket_log = "\n".join(filter(None, [ticket.external_ticket_log, *sync_log]))
+        else:
+            ticket.external_ticket_log = "\n".join(sync_log)
+        changed_fields.add("external_ticket_log")
+
+    if changed_fields:
+        ticket.save(update_fields=sorted(changed_fields))
+
+    if status_changed:
+        TicketRoutingEvent.objects.create(
+            ticket=ticket,
+            action=TicketRoutingEvent.Action.STATUS_CHANGED,
+            actor=None,
+            from_user=previous_assignee,
+            to_user=ticket.current_assignee,
+            description=(
+                "Status synced from Inditech ticketing system "
+                f"from {previous_status_label} to {ticket.get_status_display()}."
+            ),
+        )
+    if assignee_changed:
+        TicketRoutingEvent.objects.create(
+            ticket=ticket,
+            action=TicketRoutingEvent.Action.DELEGATED,
+            actor=None,
+            from_user=previous_assignee,
+            to_user=ticket.current_assignee,
+            description=(
+                "Assignee synced from Inditech ticketing system "
+                f"to {ticket.current_assignee.full_name or ticket.current_assignee.email}."
+            ),
+        )
+
+    if should_store_sync_log and ticket.external_ticket_log:
         logger.info("External ticket sync succeeded for %s\n%s", ticket.ticket_number, ticket.external_ticket_log)
     return ticket
 
