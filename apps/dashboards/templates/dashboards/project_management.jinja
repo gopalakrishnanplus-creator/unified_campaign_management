@@ -7,8 +7,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
     <div>
         <p class="eyebrow mb-1">Project Management Dashboard</p>
-        <h1 class="mb-1">Ticket and support command center</h1>
-        <p class="text-secondary mb-0">Monitor ticket load, spot bottlenecks, and jump straight into the queues that need attention.</p>
+        <h1 class="mb-0">Ticket and support command center</h1>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-secondary" href="{{ url('dashboards:performance') }}">Campaign performance</a>
@@ -23,6 +22,17 @@
             <h2 class="h3 mb-0">Decision-ready summary</h2>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            <button
+                class="btn btn-outline-secondary"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#dashboard-visualizations"
+                aria-expanded="false"
+                aria-controls="dashboard-visualizations"
+                id="toggle-visualizations"
+            >
+                View Visualizations
+            </button>
             <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Open full queue</a>
             <a class="btn btn-primary" href="{{ url('ticketing:create') }}">Create ticket</a>
         </div>
@@ -43,175 +53,61 @@
         {% endfor %}
     </div>
 
-    <div class="row g-3">
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <h3 class="h5 mb-1">Ticket distribution by category</h3>
-                            <p class="text-secondary mb-0">Click any bar or legend row to open that queue.</p>
+    <div class="collapse" id="dashboard-visualizations">
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="card shadow-sm border-0 rounded-4 h-100">
+                    <div class="card-body">
+                        <h3 class="h5 mb-3">Ticket distribution by category</h3>
+                        <div class="chart-panel mb-3">
+                            <canvas id="pm-category-chart"></canvas>
                         </div>
-                    </div>
-                    <div class="chart-panel mb-3">
-                        <canvas id="pm-category-chart"></canvas>
-                    </div>
-                    <div class="chart-legend-list">
-                        {% for row in support_data.category_breakdown %}
-                            <a class="chart-legend-item text-decoration-none text-reset" href="{{ row.url }}">
-                                <span class="chart-legend-swatch" style="background: {{ row.color }};"></span>
-                                <span class="chart-legend-label">{{ row.label }}</span>
-                                <strong>{{ row.count }}</strong>
-                            </a>
-                        {% else %}
-                            <p class="text-secondary mb-0">No category data yet.</p>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body">
-                    <h3 class="h5 mb-1">Status breakdown</h3>
-                    <p class="text-secondary mb-3">Use this to identify stalled or newly active work quickly.</p>
-                    <div class="chart-panel mb-3">
-                        <canvas id="pm-status-chart"></canvas>
-                    </div>
-                    <div class="chart-legend-list">
-                        {% for row in support_data.status_breakdown %}
-                            <a class="chart-legend-item text-decoration-none text-reset" href="{{ row.url }}">
-                                <span class="status-pill {{ row.badge_class }}">{{ row.label }}</span>
-                                <strong>{{ row.count }}</strong>
-                            </a>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body">
-                    <h3 class="h5 mb-1">Priority levels</h3>
-                    <p class="text-secondary mb-3">Critical and high-priority slices should stay small and short-lived.</p>
-                    <div class="chart-panel mb-3">
-                        <canvas id="pm-priority-chart"></canvas>
-                    </div>
-                    <div class="chart-legend-list">
-                        {% for row in support_data.priority_breakdown %}
-                            <a class="chart-legend-item text-decoration-none text-reset" href="{{ row.url }}">
-                                <span class="priority-pill {{ row.badge_class }}">{{ row.label }}</span>
-                                <strong>{{ row.count }}</strong>
-                            </a>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="mb-4">
-    <div class="row g-3">
-        <div class="col-xl-8">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body border-bottom">
-                    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-                        <div>
-                            <p class="eyebrow mb-1">Centralized View</p>
-                            <h2 class="h4 mb-1">All tickets in one place</h2>
-                            <p class="text-secondary mb-0">Every row links to the full ticket detail page. Use the full queue for filtering and sorting.</p>
-                        </div>
-                        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Open ticket list</a>
-                    </div>
-                </div>
-                <div class="table-responsive table-scroll">
-                    <table class="table align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Ticket</th>
-                                <th>Requester</th>
-                                <th>Category</th>
-                                <th>Priority</th>
-                                <th>Status</th>
-                                <th>Assignee</th>
-                                <th>Age</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for ticket in support_data.overview_tickets %}
-                                <tr class="{% if ticket.support_request and ticket.support_request.is_escalated %}ticket-row-escalated{% elif ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
-                                    <td>
-                                        <a class="fw-semibold text-decoration-none" href="{{ url('ticketing:detail', pk=ticket.pk) }}">{{ ticket.ticket_number }}</a>
-                                        <div class="text-secondary small">{{ ticket.title }}</div>
-                                        {% if ticket.support_request and ticket.support_request.is_escalated %}
-                                            <div class="mt-1"><span class="status-code-pill status-danger">High Priority / Escalated</span></div>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <div>{{ ticket.requester_name }}</div>
-                                        <div class="text-secondary small">{{ ticket.requester_email }}</div>
-                                        <div class="text-secondary small">{{ ticket.requester_number or 'Phone not provided' }}</div>
-                                    </td>
-                                    <td>
-                                        {{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }}
-                                        <div class="text-secondary small">{{ ticket.ticket_type }}</div>
-                                    </td>
-                                    <td><span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span></td>
-                                    <td><span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span></td>
-                                    <td>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td>
-                                    <td>{{ ticket.ageing_days }} day{{ '' if ticket.ageing_days == 1 else 's' }}</td>
-                                </tr>
+                        <div class="chart-legend-list">
+                            {% for row in support_data.category_breakdown %}
+                                <a class="chart-legend-item text-decoration-none text-reset" href="{{ row.url }}">
+                                    <span class="chart-legend-swatch" style="background: {{ row.color }};"></span>
+                                    <span class="chart-legend-label">{{ row.label }}</span>
+                                    <strong>{{ row.count }}</strong>
+                                </a>
                             {% else %}
-                                <tr><td colspan="7" class="p-4 text-secondary">No tickets are available for this view yet.</td></tr>
+                                <p class="text-secondary mb-0">No category data yet.</p>
                             {% endfor %}
-                        </tbody>
-                    </table>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="col-xl-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
-                        <div>
-                            <p class="eyebrow mb-1">Immediate Action</p>
-                            <h2 class="h4 mb-1">High-priority queue</h2>
-                            <p class="text-secondary mb-0">A compact queue for urgent review.</p>
+            <div class="col-lg-4">
+                <div class="card shadow-sm border-0 rounded-4 h-100">
+                    <div class="card-body">
+                        <h3 class="h5 mb-3">Status breakdown</h3>
+                        <div class="chart-panel mb-3">
+                            <canvas id="pm-status-chart"></canvas>
                         </div>
-                        <a class="btn btn-sm btn-outline-secondary" href="{{ url('ticketing:list') }}?scope=critical">Critical queue</a>
+                        <div class="chart-legend-list">
+                            {% for row in support_data.status_breakdown %}
+                                <a class="chart-legend-item text-decoration-none text-reset" href="{{ row.url }}">
+                                    <span class="status-pill {{ row.badge_class }}">{{ row.label }}</span>
+                                    <strong>{{ row.count }}</strong>
+                                </a>
+                            {% endfor %}
+                        </div>
                     </div>
-                    <div class="insight-list card-scroll">
-                        {% for ticket in support_data.high_priority_tickets %}
-                            <a class="insight-item text-decoration-none text-reset" href="{{ url('ticketing:detail', pk=ticket.pk) }}">
-                                <div>
-                                    <div class="insight-item-title">{{ ticket.ticket_number }} · {{ ticket.title }}</div>
-                                    <div class="insight-item-subtitle">
-                                        {{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }} ·
-                                        {{ ticket.department.name }} ·
-                                        {{ ticket.requester_name }} ·
-                                        {{ ticket.requester_number or ticket.requester_email }}
-                                    </div>
-                                </div>
-                                <div class="d-flex flex-column align-items-end gap-2">
-                                    <span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span>
-                                    {% if ticket.support_request and ticket.support_request.is_escalated %}
-                                        <span class="status-code-pill status-danger">Escalated</span>
-                                    {% endif %}
-                                    <span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span>
-                                </div>
-                            </a>
-                        {% else %}
-                            <p class="text-secondary mb-0">No urgent tickets are waiting right now.</p>
-                        {% endfor %}
-                    </div>
-                    <div class="card-section-divider">
-                        <div class="insight-item">
-                            <div>
-                                <div class="insight-item-title">Campaign performance</div>
-                                <div class="insight-item-subtitle">Screening, adoption, and content metrics are separated to keep this dashboard focused on decisions and operations.</div>
-                            </div>
-                            <a class="btn btn-sm btn-primary" href="{{ url('dashboards:performance') }}">Open page</a>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card shadow-sm border-0 rounded-4 h-100">
+                    <div class="card-body">
+                        <h3 class="h5 mb-3">Priority levels</h3>
+                        <div class="chart-panel mb-3">
+                            <canvas id="pm-priority-chart"></canvas>
+                        </div>
+                        <div class="chart-legend-list">
+                            {% for row in support_data.priority_breakdown %}
+                                <a class="chart-legend-item text-decoration-none text-reset" href="{{ row.url }}">
+                                    <span class="priority-pill {{ row.badge_class }}">{{ row.label }}</span>
+                                    <strong>{{ row.count }}</strong>
+                                </a>
+                            {% endfor %}
                         </div>
                     </div>
                 </div>
@@ -223,8 +119,8 @@
 <section class="mb-4">
     <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3" id="other-issue-review">
         <div>
-            <p class="eyebrow mb-1">Unlisted Support Issues</p>
-            <h2 class="h3 mb-0">“Other” submissions waiting for PM review</h2>
+            <p class="eyebrow mb-1">PM Queue</p>
+            <h2 class="h3 mb-0">Other Issues</h2>
         </div>
         <div class="status-code-pill {{ 'status-warning' if support_data.support_cards.other_issue_requests else 'status-success' }}">
             {{ support_data.support_cards.other_issue_requests }} pending
@@ -232,9 +128,6 @@
     </div>
 
     <div class="card shadow-sm border-0 rounded-4">
-        <div class="card-body border-bottom">
-            <p class="text-secondary mb-0">These issues came from the FAQ widgets or assistant when the user selected <strong>Other</strong>. Review the context, escalate urgent items, and raise a synced ticket when needed.</p>
-        </div>
         <div class="table-responsive table-scroll">
             <table class="table align-middle mb-0">
                 <thead>
@@ -316,86 +209,108 @@
 </section>
 
 <section class="mb-4">
-    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3" id="critical-ticket-review">
         <div>
-            <p class="eyebrow mb-1">Operational Details</p>
-            <h2 class="h3 mb-0">Volume, resolution quality, and bottlenecks</h2>
+            <p class="eyebrow mb-1">Immediate Action</p>
+            <h2 class="h3 mb-0">Critical Tickets</h2>
         </div>
-        <a class="btn btn-outline-secondary" href="{{ url('ticketing:distribution') }}">Open time-based drill-down</a>
+        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}?scope=critical">Open critical queue</a>
     </div>
 
-    <div class="row g-3">
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body">
-                    <h3 class="h5 mb-3">Ticket volume by type</h3>
-                    <div class="table-responsive table-scroll">
-                        <table class="table align-middle mb-0">
-                            <thead><tr><th>Category</th><th>Type</th><th>Total</th><th></th></tr></thead>
-                            <tbody>
-                                {% for row in support_data.requests_by_type %}
-                                    <tr>
-                                        <td>{{ row.ticket_category__name or 'Uncategorized' }}</td>
-                                        <td>{{ row.ticket_type }}</td>
-                                        <td>{{ row.total }}</td>
-                                        <td><a class="btn btn-sm btn-outline-secondary" href="{{ row.url }}">View</a></td>
-                                    </tr>
-                                {% else %}
-                                    <tr><td colspan="4" class="text-secondary">No ticket activity yet.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body">
+            <div class="insight-list card-scroll">
+                {% for ticket in support_data.high_priority_tickets %}
+                    <div class="insight-item {% if ticket.is_high_priority_escalated %}insight-item-escalated{% elif ticket.priority == 'critical' %}insight-item-critical{% elif ticket.priority == 'high' %}insight-item-high{% endif %}">
+                        <div>
+                            <div class="insight-item-title">{{ ticket.ticket_number }} · {{ ticket.title }}</div>
+                            <div class="insight-item-subtitle">
+                                {{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }} ·
+                                {{ ticket.department.name }} ·
+                                {{ ticket.current_assignee.full_name or ticket.current_assignee.email }}
+                            </div>
+                            <div class="text-secondary small mt-2">
+                                {{ ticket.requester_name }} · {{ ticket.requester_email }} · {{ ticket.requester_number or 'Phone not provided' }}
+                            </div>
+                        </div>
+                        <div class="d-flex flex-column align-items-end gap-2">
+                            {% if ticket.is_high_priority_escalated %}
+                                <span class="status-code-pill status-danger">High Priority / Escalated</span>
+                            {% endif %}
+                            <span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span>
+                            <span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span>
+                            <div class="insight-actions">
+                                {% if not ticket.is_high_priority_escalated %}
+                                    <form method="post" action="{{ url('ticketing:escalate', pk=ticket.pk) }}">
+                                        {{ csrf_input }}
+                                        <input type="hidden" name="next" value="{{ url('dashboards:home') }}#critical-ticket-review">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">Escalate</button>
+                                    </form>
+                                {% endif %}
+                                <a class="btn btn-sm btn-primary" href="{{ url('ticketing:detail', pk=ticket.pk) }}">Open ticket</a>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                {% else %}
+                    <p class="text-secondary mb-0">No urgent tickets are waiting right now.</p>
+                {% endfor %}
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body">
-                    <h3 class="h5 mb-3">Resolution quality</h3>
-                    <div class="table-responsive table-scroll">
-                        <table class="table align-middle mb-0">
-                            <thead><tr><th>Category</th><th>Type</th><th>Avg. hours</th><th></th></tr></thead>
-                            <tbody>
-                                {% for row in support_data.quality_rows %}
-                                    <tr>
-                                        <td>{{ row.ticket_category }}</td>
-                                        <td>{{ row.ticket_type }}</td>
-                                        <td>{{ row.average_resolution_hours }}</td>
-                                        <td><a class="btn btn-sm btn-outline-secondary" href="{{ row.url }}">View</a></td>
-                                    </tr>
-                                {% else %}
-                                    <tr><td colspan="4" class="text-secondary">No completed tickets yet.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+    </div>
+</section>
+
+<section class="mb-4">
+    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+        <div>
+            <p class="eyebrow mb-1">Queue</p>
+            <h2 class="h3 mb-0">Full Ticket Queue</h2>
         </div>
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-body">
-                    <h3 class="h5 mb-3">Pending bottlenecks</h3>
-                    <div class="table-responsive table-scroll">
-                        <table class="table align-middle mb-0">
-                            <thead><tr><th>Category</th><th>Type</th><th>Avg. age</th><th></th></tr></thead>
-                            <tbody>
-                                {% for row in support_data.pending_rows %}
-                                    <tr>
-                                        <td>{{ row.ticket_category__name or 'Uncategorized' }}</td>
-                                        <td>{{ row.ticket_type }}</td>
-                                        <td>{{ row.average_ageing_days }} days</td>
-                                        <td><a class="btn btn-sm btn-outline-secondary" href="{{ row.url }}">View</a></td>
-                                    </tr>
-                                {% else %}
-                                    <tr><td colspan="4" class="text-secondary">No pending issues.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+        <a class="btn btn-outline-secondary" href="{{ url('ticketing:list') }}">Open ticket list</a>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="table-responsive table-scroll">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Ticket</th>
+                        <th>Requester</th>
+                        <th>Category</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Assignee</th>
+                        <th>Age</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ticket in support_data.overview_tickets %}
+                        <tr class="{% if ticket.is_high_priority_escalated %}ticket-row-escalated{% elif ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
+                            <td>
+                                <a class="fw-semibold text-decoration-none" href="{{ url('ticketing:detail', pk=ticket.pk) }}">{{ ticket.ticket_number }}</a>
+                                <div class="text-secondary small">{{ ticket.title }}</div>
+                                {% if ticket.is_high_priority_escalated %}
+                                    <div class="mt-1"><span class="status-code-pill status-danger">High Priority / Escalated</span></div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div>{{ ticket.requester_name }}</div>
+                                <div class="text-secondary small">{{ ticket.requester_email }}</div>
+                                <div class="text-secondary small">{{ ticket.requester_number or 'Phone not provided' }}</div>
+                            </td>
+                            <td>
+                                {{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }}
+                                <div class="text-secondary small">{{ ticket.ticket_type }}</div>
+                            </td>
+                            <td><span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span></td>
+                            <td><span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span></td>
+                            <td>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td>
+                            <td>{{ ticket.ageing_days }} day{{ '' if ticket.ageing_days == 1 else 's' }}</td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="7" class="p-4 text-secondary">No tickets are available for this view yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </section>
@@ -472,6 +387,9 @@
 <script>
 (() => {
     const chartPayload = {{ support_data.chart_data|tojson }};
+    const visualizations = document.getElementById("dashboard-visualizations");
+    const toggleButton = document.getElementById("toggle-visualizations");
+    let chartsInitialized = false;
 
     function navigateOnClick(urls, elements) {
         if (!elements.length) {
@@ -483,56 +401,80 @@
         }
     }
 
-    new Chart(document.getElementById("pm-category-chart"), {
-        type: "bar",
-        data: {
-            labels: chartPayload.category.labels,
-            datasets: [{
-                data: chartPayload.category.values,
-                backgroundColor: chartPayload.category.colors,
-                borderRadius: 10,
-            }],
-        },
-        options: {
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, ticks: { precision: 0 } },
+    function buildCharts() {
+        if (chartsInitialized || !window.Chart) {
+            return;
+        }
+        chartsInitialized = true;
+
+        new Chart(document.getElementById("pm-category-chart"), {
+            type: "bar",
+            data: {
+                labels: chartPayload.category.labels,
+                datasets: [{
+                    data: chartPayload.category.values,
+                    backgroundColor: chartPayload.category.colors,
+                    borderRadius: 10,
+                }],
             },
-            onClick: (_event, elements) => navigateOnClick(chartPayload.category.urls, elements),
-        },
+            options: {
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+                onClick: (_event, elements) => navigateOnClick(chartPayload.category.urls, elements),
+            },
+        });
+
+        new Chart(document.getElementById("pm-status-chart"), {
+            type: "doughnut",
+            data: {
+                labels: chartPayload.status.labels,
+                datasets: [{
+                    data: chartPayload.status.values,
+                    backgroundColor: chartPayload.status.colors,
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                maintainAspectRatio: false,
+                onClick: (_event, elements) => navigateOnClick(chartPayload.status.urls, elements),
+            },
+        });
+
+        new Chart(document.getElementById("pm-priority-chart"), {
+            type: "polarArea",
+            data: {
+                labels: chartPayload.priority.labels,
+                datasets: [{
+                    data: chartPayload.priority.values,
+                    backgroundColor: chartPayload.priority.colors,
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                maintainAspectRatio: false,
+                onClick: (_event, elements) => navigateOnClick(chartPayload.priority.urls, elements),
+            },
+        });
+    }
+
+    if (!visualizations) {
+        return;
+    }
+
+    visualizations.addEventListener("shown.bs.collapse", () => {
+        buildCharts();
+        if (toggleButton) {
+            toggleButton.textContent = "Hide Visualizations";
+        }
     });
 
-    new Chart(document.getElementById("pm-status-chart"), {
-        type: "doughnut",
-        data: {
-            labels: chartPayload.status.labels,
-            datasets: [{
-                data: chartPayload.status.values,
-                backgroundColor: chartPayload.status.colors,
-                borderWidth: 0,
-            }],
-        },
-        options: {
-            maintainAspectRatio: false,
-            onClick: (_event, elements) => navigateOnClick(chartPayload.status.urls, elements),
-        },
-    });
-
-    new Chart(document.getElementById("pm-priority-chart"), {
-        type: "doughnut",
-        data: {
-            labels: chartPayload.priority.labels,
-            datasets: [{
-                data: chartPayload.priority.values,
-                backgroundColor: chartPayload.priority.colors,
-                borderWidth: 0,
-            }],
-        },
-        options: {
-            maintainAspectRatio: false,
-            onClick: (_event, elements) => navigateOnClick(chartPayload.priority.urls, elements),
-        },
+    visualizations.addEventListener("hidden.bs.collapse", () => {
+        if (toggleButton) {
+            toggleButton.textContent = "View Visualizations";
+        }
     });
 })();
 </script>

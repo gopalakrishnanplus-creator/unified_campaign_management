@@ -6,8 +6,9 @@ from django.core.exceptions import PermissionDenied
 from django.conf import settings
 from django.db.models import Case, IntegerField, Q, When
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
 from django.utils import timezone
-from django.views.generic import CreateView, DetailView, ListView, TemplateView
+from django.views.generic import CreateView, DetailView, ListView, TemplateView, View
 
 from .forms import (
     TicketCreateForm,
@@ -24,6 +25,7 @@ from .services import (
     change_ticket_status,
     create_ticket,
     delegate_ticket,
+    escalate_ticket,
     return_ticket_to_sender,
 )
 from .external_ticketing import (
@@ -55,6 +57,12 @@ STATUS_RANK = Case(
     default=99,
     output_field=IntegerField(),
 )
+ESCALATION_RANK = Case(
+    When(is_escalated=True, then=2),
+    When(support_request__is_escalated=True, then=1),
+    default=0,
+    output_field=IntegerField(),
+)
 
 
 def _scoped_ticket_queryset(request):
@@ -67,6 +75,7 @@ def _scoped_ticket_queryset(request):
         "ticket_category",
         "ticket_type_definition",
     ).annotate(
+        escalation_rank=ESCALATION_RANK,
         priority_rank=PRIORITY_RANK,
         status_rank=STATUS_RANK,
     )
@@ -128,14 +137,14 @@ class TicketListView(LoginRequiredMixin, ListView):
         if period_days:
             queryset = queryset.filter(created_at__gte=timezone.now() - timedelta(days=int(period_days)))
         if sort_by == "oldest":
-            return queryset.order_by("created_at")
+            return queryset.order_by("-escalation_rank", "created_at")
         if sort_by == "priority_desc":
-            return queryset.order_by("-priority_rank", "status_rank", "-created_at")
+            return queryset.order_by("-escalation_rank", "-priority_rank", "status_rank", "-created_at")
         if sort_by == "status":
-            return queryset.order_by("status_rank", "-priority_rank", "-created_at")
+            return queryset.order_by("-escalation_rank", "status_rank", "-priority_rank", "-created_at")
         if sort_by == "updated":
-            return queryset.order_by("-updated_at", "-created_at")
-        return queryset.order_by("-created_at")
+            return queryset.order_by("-escalation_rank", "-updated_at", "-created_at")
+        return queryset.order_by("-escalation_rank", "-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -228,6 +237,22 @@ class TicketCreateView(LoginRequiredMixin, CreateView):
             for ticket_type in ticket_types
         ]
         return context
+
+
+class TicketEscalateView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        if not (request.user.is_superuser or request.user.is_project_manager):
+            raise PermissionDenied("Only project managers can escalate tickets.")
+
+        ticket = get_object_or_404(_scoped_ticket_queryset(request), pk=pk)
+        next_url = request.POST.get("next") or reverse("ticketing:detail", kwargs={"pk": ticket.pk})
+        if ticket.is_high_priority_escalated and ticket.priority == Ticket.Priority.CRITICAL:
+            messages.info(request, f"{ticket.ticket_number} is already marked as High Priority.")
+            return redirect(next_url)
+
+        escalate_ticket(ticket, request.user)
+        messages.success(request, f"{ticket.ticket_number} marked as High Priority and moved to the top of the queue.")
+        return redirect(next_url)
 
 
 class TicketDetailView(LoginRequiredMixin, DetailView):

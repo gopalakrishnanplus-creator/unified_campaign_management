@@ -3,7 +3,7 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 from django.conf import settings
-from django.db.models import Case, Count, IntegerField, When
+from django.db.models import Case, Count, IntegerField, Q, When
 from django.test import Client
 from django.urls import reverse
 
@@ -75,6 +75,12 @@ STATUS_RANK = Case(
     default=99,
     output_field=IntegerField(),
 )
+ESCALATION_RANK = Case(
+    When(is_escalated=True, then=2),
+    When(support_request__is_escalated=True, then=1),
+    default=0,
+    output_field=IntegerField(),
+)
 
 
 def get_selected_campaign(slug=None, default_to_active=False):
@@ -126,8 +132,8 @@ def get_support_dashboard_data(campaign=None):
             "ticket_category",
             "ticket_type_definition",
         )
-        .annotate(priority_rank=PRIORITY_RANK, status_rank=STATUS_RANK)
-        .order_by("-priority_rank", "status_rank", "-created_at")
+        .annotate(escalation_rank=ESCALATION_RANK, priority_rank=PRIORITY_RANK, status_rank=STATUS_RANK)
+        .order_by("-escalation_rank", "-priority_rank", "status_rank", "-created_at")
     )
     if campaign:
         tickets = tickets.filter(campaign=campaign)
@@ -223,7 +229,11 @@ def get_support_dashboard_data(campaign=None):
         )
 
     high_priority_tickets = list(
-        pending.filter(priority__in=[Ticket.Priority.HIGH, Ticket.Priority.CRITICAL]).order_by("-priority_rank", "status_rank", "-created_at")[:8]
+        pending.filter(
+            Q(priority__in=[Ticket.Priority.HIGH, Ticket.Priority.CRITICAL])
+            | Q(is_escalated=True)
+            | Q(support_request__is_escalated=True)
+        ).order_by("-escalation_rank", "-priority_rank", "status_rank", "-created_at")[:8]
     )
 
     status_counts = {row["status"]: row["total"] for row in tickets.values("status").annotate(total=Count("id"))}
@@ -272,20 +282,20 @@ def get_support_dashboard_data(campaign=None):
 
     overview_cards = [
         {
-            "label": "Total tickets",
-            "value": total_count,
-            "subtitle": "All tickets in current scope",
-            "badge": "Overview",
-            "badge_class": "status-secondary",
-            "url": _ticket_list_url(campaign),
-        },
-        {
             "label": "Open tickets",
             "value": open_count,
             "subtitle": "Not yet completed",
             "badge": "Action",
             "badge_class": "status-warning",
             "url": _ticket_list_url(campaign, scope="open"),
+        },
+        {
+            "label": "Critical",
+            "value": critical_count,
+            "subtitle": "Needs immediate response",
+            "badge": "Urgent",
+            "badge_class": "status-danger",
+            "url": _ticket_list_url(campaign, scope="critical"),
         },
         {
             "label": "In progress",
@@ -304,12 +314,12 @@ def get_support_dashboard_data(campaign=None):
             "url": _ticket_list_url(campaign, status=Ticket.Status.COMPLETED),
         },
         {
-            "label": "Critical",
-            "value": critical_count,
-            "subtitle": "Needs immediate response",
-            "badge": "Urgent",
-            "badge_class": "status-danger",
-            "url": _ticket_list_url(campaign, scope="critical"),
+            "label": "Total tickets",
+            "value": total_count,
+            "subtitle": "All tickets in current scope",
+            "badge": "Overview",
+            "badge_class": "status-secondary",
+            "url": _ticket_list_url(campaign),
         },
     ]
 
