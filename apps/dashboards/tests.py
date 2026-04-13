@@ -281,6 +281,8 @@ class SeededIntegrationTestCase(TestCase):
         self.client.post(assistant_url, data={"action": "choose_system", "system": "In-clinic"})
         self.client.post(assistant_url, data={"action": "choose_flow", "flow": "Assistant Flow"})
         self.client.post(assistant_url, data={"action": "choose_category", "category_id": assistant_category.pk})
+        selection_response = self.client.get(assistant_url)
+        self.assertContains(selection_response, "Other")
         self.client.post(assistant_url, data={"action": "select_faq", "selection": "other"})
         response = self.client.post(
             assistant_url,
@@ -356,6 +358,8 @@ class SeededIntegrationTestCase(TestCase):
         self.assertContains(widget_response, 'id="restart-page-button"', html=False)
         self.assertContains(widget_response, 'id="restart-section-button"', html=False)
         self.assertContains(widget_response, "Sections")
+        self.assertContains(widget_response, "Others")
+        self.assertNotContains(widget_response, "Open full FAQ page")
 
     def test_widget_other_issue_submission_records_pm_review_item(self):
         faq_super = SupportSuperCategory.objects.create(name="Widget Flow Tests", slug="widget-flow-tests")

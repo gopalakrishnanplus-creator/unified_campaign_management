@@ -96,7 +96,7 @@
                         {% endfor %}
                     </div>
                 {% elif stage in ['faq_menu', 'faq_answer'] %}
-                    <p class="text-secondary">Select the question that best matches the issue. If the answer does not help, return to the list and try another FAQ or open the full page FAQ view.</p>
+                    <p class="text-secondary">Select the question that best matches the issue. If none match, choose <strong>Other</strong>.</p>
                     <form method="post" class="vstack gap-3" id="assistant-faq-form">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="select_faq">
@@ -107,6 +107,10 @@
                                     <span>{{ faq.name }}</span>
                                 </label>
                             {% endfor %}
+                            <label class="list-group-item d-flex gap-3 align-items-start">
+                                <input class="form-check-input mt-1" type="radio" name="selection" value="other" {% if other_selected %}checked{% endif %}>
+                                <span>Other</span>
+                            </label>
                         </div>
                     </form>
 
@@ -133,15 +137,30 @@
                             <button class="btn btn-outline-primary" type="submit" name="resolution" value="unresolved">Not Resolved</button>
                         </form>
                     {% elif not faqs %}
-                        <div class="alert alert-warning rounded-4 mt-4 mb-0">No FAQ questions are configured for this combination yet. Open the page-wise FAQ dashboard or restart the assistant to choose another path.</div>
+                        <div class="alert alert-warning rounded-4 mt-4 mb-0">No FAQ questions are configured for this combination yet. Select Other to send the issue to the PM dashboard.</div>
                     {% endif %}
+                {% elif stage == 'other_issue' %}
+                    <p class="text-secondary">Describe the issue and upload one image file if it helps explain the problem. This goes to the PM dashboard for review.</p>
+                    <form method="post" enctype="multipart/form-data" class="vstack gap-3">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="submit_other_issue">
+                        {% for field in other_issue_form %}
+                            <div>
+                                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<div class="form-hint mt-1">{{ field.help_text }}</div>{% endif %}
+                                {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
+                            </div>
+                        {% endfor %}
+                        <button class="btn btn-primary" type="submit">Raise Query</button>
+                    </form>
                 {% elif stage == 'resolved' %}
                     <div class="alert alert-success rounded-4">
                         <p class="mb-0">The issue is marked as resolved. You can restart the assistant or choose another screen if you need help with something else.</p>
                     </div>
                 {% else %}
                     <div class="alert alert-warning rounded-4">
-                        <p class="mb-0">No matching FAQs are currently configured for this path. Restart the assistant or browse the page-wise FAQ dashboard.</p>
+                        <p class="mb-0">No matching FAQs are currently configured for this path. Use Other to record the issue for PM review.</p>
                     </div>
                 {% endif %}
             </div>
