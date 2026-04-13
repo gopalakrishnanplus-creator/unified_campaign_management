@@ -542,6 +542,8 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
             return "category"
         if context["resolved_item"]:
             return "resolved"
+        if context["other_selected"]:
+            return "other_issue"
         if context["selected_faq"]:
             return "faq_answer"
         return "faq_menu"
