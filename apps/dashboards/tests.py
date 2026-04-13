@@ -1,4 +1,6 @@
+from datetime import datetime
 from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -242,6 +244,31 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(delegate_response.status_code, 200)
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.current_assignee, backup_user)
+
+    def test_ticket_views_render_timestamps_in_india_time(self):
+        utc_zone = ZoneInfo("UTC")
+        note = TicketNote.objects.create(ticket=self.ticket, author=self.pm_user, body="Timezone rendering check.")
+        routing_event = self.ticket.routing_events.order_by("created_at").first()
+
+        Ticket.objects.filter(pk=self.ticket.pk).update(
+            created_at=datetime(2026, 1, 1, 6, 0, tzinfo=utc_zone),
+            external_ticket_number="CLT-IST-CHECK",
+            external_ticket_synced_at=datetime(2026, 1, 1, 9, 15, tzinfo=utc_zone),
+        )
+        TicketNote.objects.filter(pk=note.pk).update(created_at=datetime(2026, 1, 1, 7, 0, tzinfo=utc_zone))
+        self.ticket.routing_events.filter(pk=routing_event.pk).update(created_at=datetime(2026, 1, 1, 8, 0, tzinfo=utc_zone))
+
+        self.client.force_login(self.pm_user)
+        list_response = self.client.get(reverse("ticketing:list"))
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "01 Jan 2026 11:30")
+        self.assertNotContains(list_response, "01 Jan 2026 06:00")
+
+        detail_response = self.client.get(reverse("ticketing:detail", kwargs={"pk": self.ticket.pk}))
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(detail_response, "01 Jan 2026 12:30")
+        self.assertContains(detail_response, "01 Jan 2026 13:30")
+        self.assertContains(detail_response, "01 Jan 2026 14:45")
 
     def test_support_assistant_records_other_issue_for_pm_review(self):
         assistant_super = SupportSuperCategory.objects.create(name="Assistant Flow Tests", slug="assistant-flow-tests")
@@ -682,6 +709,42 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(created_ticket.title, "Viewer blank screen after verification")
         self.assertTrue(TicketNote.objects.filter(ticket=created_ticket, body__icontains="support widget").exists())
         self.assertTrue(TicketAttachment.objects.filter(note__ticket=created_ticket).exists())
+
+    @patch("apps.dashboards.services.requests.get")
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
+    def test_pm_support_issue_views_render_timestamps_in_india_time(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        utc_zone = ZoneInfo("UTC")
+        support_page = SupportPage.objects.create(name="Timezone Support Page", slug="timezone-support-page", source_system="In-clinic", source_flow="Timezone Flow")
+        support_super = SupportSuperCategory.objects.create(name="Timezone Section", slug="timezone-section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Timezone Screen", slug="timezone-screen")
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Doctor timezone user",
+            requester_email="doctor.timezone@example.com",
+            requester_number="+919898989898",
+            requester_company="Clinic A",
+            campaign=self.campaign,
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Timezone Flow",
+            subject="Other issue - Timezone",
+            free_text="The support timestamps should follow India time.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+        SupportRequest.objects.filter(pk=support_request.pk).update(created_at=datetime(2026, 1, 1, 6, 0, tzinfo=utc_zone))
+
+        self.client.force_login(self.pm_user)
+        dashboard_response = self.client.get(reverse("dashboards:home"))
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertContains(dashboard_response, "01 Jan 2026 11:30")
+        self.assertNotContains(dashboard_response, "01 Jan 2026 06:00")
+
+        raise_ticket_response = self.client.get(reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}))
+        self.assertEqual(raise_ticket_response.status_code, 200)
+        self.assertContains(raise_ticket_response, "01 Jan 2026 11:30")
 
 
 @override_settings(REPORTING_API_USE_LIVE=True)

@@ -11,6 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import User
+from config.timezones import format_india_datetime
 
 from .models import Department, Ticket, TicketAttachment
 
@@ -794,10 +795,11 @@ def normalize_value(value):
 
 def log_line(message, **context):
     safe_context = {key: value for key, value in context.items() if value not in (None, "", [], {}, ())}
+    timestamp = format_india_datetime(timezone.now(), "%d %b %Y %H:%M:%S")
     if not safe_context:
-        return f"[{timezone.now().strftime('%d %b %Y %H:%M:%S')}] {message}"
+        return f"[{timestamp}] {message}"
     context_blob = ", ".join(f"{key}={value}" for key, value in safe_context.items())
-    return f"[{timezone.now().strftime('%d %b %Y %H:%M:%S')}] {message} {context_blob}"
+    return f"[{timestamp}] {message} {context_blob}"
 
 
 def tokenize_department_value(value):

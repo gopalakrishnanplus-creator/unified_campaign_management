@@ -124,7 +124,7 @@
                         <td>{{ ticket.department.name }}</td>
                         <td>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td>
                         <td>{{ ticket.campaign.name if ticket.campaign else 'Unassigned' }}</td>
-                        <td>{{ ticket.created_at.strftime('%d %b %Y %H:%M') }}</td>
+                        <td>{{ ticket.created_at|india_datetime }}</td>
                     </tr>
                 {% else %}
                     <tr><td colspan="9" class="p-4 text-secondary">No tickets match the current filters.</td></tr>

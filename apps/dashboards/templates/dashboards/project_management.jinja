@@ -238,7 +238,7 @@
                 <tbody>
                     {% for row in support_data.other_issue_rows %}
                         <tr>
-                            <td>{{ row.request.created_at.strftime('%d %b %Y %H:%M') }}</td>
+                            <td>{{ row.request.created_at|india_datetime }}</td>
                             <td>
                                 {{ row.request.source_system or 'Not provided' }}
                                 <div class="text-secondary small">{{ row.request.user_type.replace('_', ' ').title() }}</div>
