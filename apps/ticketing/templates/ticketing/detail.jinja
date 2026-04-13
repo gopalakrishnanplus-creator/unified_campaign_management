@@ -42,7 +42,7 @@
                 {% if ticket.external_ticket_number %}
                     <div class="metric-row"><span>External ticket</span><strong>{{ ticket.external_ticket_number }}</strong></div>
                     <div class="metric-row"><span>External status</span><strong>{{ ticket.external_ticket_status or 'Synced' }}</strong></div>
-                    <div class="metric-row"><span>Last synced</span><strong>{{ ticket.external_ticket_synced_at.strftime('%d %b %Y %H:%M') if ticket.external_ticket_synced_at else 'Just now' }}</strong></div>
+                    <div class="metric-row"><span>Last synced</span><strong>{{ ticket.external_ticket_synced_at|india_datetime if ticket.external_ticket_synced_at else 'Just now' }}</strong></div>
                     {% if ticket.external_ticket_url %}
                         <a class="btn btn-outline-primary btn-sm mt-3" href="{{ ticket.external_ticket_url }}" target="_blank" rel="noreferrer">Open internal ticket</a>
                     {% endif %}
@@ -117,7 +117,7 @@
                         <div class="timeline-item">
                             <div class="d-flex justify-content-between mb-2">
                                 <strong>{{ note.author.full_name or note.author.email }}</strong>
-                                <span class="text-secondary small">{{ note.created_at.strftime('%d %b %Y %H:%M') }}</span>
+                                <span class="text-secondary small">{{ note.created_at|india_datetime }}</span>
                             </div>
                             <p class="mb-2">{{ note.body }}</p>
                             {% if note.attachments.all() %}
@@ -143,7 +143,7 @@
                         <div class="timeline-item">
                             <div class="d-flex justify-content-between mb-1">
                                 <strong>{{ event.get_action_display() }}</strong>
-                                <span class="text-secondary small">{{ event.created_at.strftime('%d %b %Y %H:%M') }}</span>
+                                <span class="text-secondary small">{{ event.created_at|india_datetime }}</span>
                             </div>
                             <p class="mb-0 text-secondary">{{ event.description }}</p>
                         </div>
