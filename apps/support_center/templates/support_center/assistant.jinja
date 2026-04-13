@@ -1,11 +1,11 @@
 {% extends "base.jinja" %}
 {% block title %}{{ page_title }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-4">
+<div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-3">
     <div>
         <p class="eyebrow mb-1">{{ role_title }}</p>
         <h1 class="mb-1">{{ page_title }}</h1>
-        <p class="text-secondary mb-0">Choose the matching FAQ question, review the answer, and either mark it resolved or return to the question list.</p>
+        <p class="text-secondary mb-0">Choose the matching question, review the answer, and keep going only if you still need help.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-secondary" href="{{ url('support_center:landing', user_type=user_type) }}">Browse full catalog</a>
@@ -17,10 +17,10 @@
     </div>
 </div>
 
-<div class="row g-4">
+<div class="row g-3">
     <div class="col-lg-7">
         <div class="card shadow-sm border-0 rounded-4 h-100">
-            <div class="card-body p-4 chat-shell">
+            <div class="card-body p-3 chat-shell">
                 {% for message in transcript %}
                     <div class="chat-message {{ 'chat-message-user' if message.speaker == 'user' else 'chat-message-bot' }}">
                         <div class="chat-bubble">
@@ -47,8 +47,8 @@
 
     <div class="col-lg-5">
         <div class="card shadow-sm border-0 rounded-4">
-            <div class="card-body p-4">
-                <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
                     <h2 class="h5 mb-0">Next step</h2>
                     {% if selected_system or selected_flow or selected_category or selected_faq or other_selected %}
                         <form method="post">
@@ -60,7 +60,7 @@
                 </div>
 
                 {% if stage == 'system' %}
-                    <p class="text-secondary">Choose the product or support system you need help with.</p>
+                    <p class="text-secondary small">Choose the product or support system you need help with.</p>
                     <div class="d-grid gap-2">
                         {% for system_name in systems %}
                             <form method="post">
@@ -72,7 +72,7 @@
                         {% endfor %}
                     </div>
                 {% elif stage == 'flow' %}
-                    <p class="text-secondary">Choose the flow that matches the screen or journey you are on.</p>
+                    <p class="text-secondary small">Choose the flow that matches the screen or journey you are on.</p>
                     <div class="d-grid gap-2">
                         {% for flow_name in flows %}
                             <form method="post">
@@ -84,7 +84,7 @@
                         {% endfor %}
                     </div>
                 {% elif stage == 'category' %}
-                    <p class="text-secondary">Choose the screen or section where the issue is happening.</p>
+                    <p class="text-secondary small">Choose the screen or section where the issue is happening.</p>
                     <div class="d-grid gap-2">
                         {% for category in categories %}
                             <form method="post">
@@ -96,7 +96,7 @@
                         {% endfor %}
                     </div>
                 {% elif stage in ['faq_menu', 'faq_answer'] %}
-                    <p class="text-secondary">Select the question that best matches the issue. If none match, choose <strong>Other</strong>.</p>
+                    <p class="text-secondary small">Select the question that best matches the issue. If none match, choose <strong>Other</strong>.</p>
                     <form method="post" class="vstack gap-3" id="assistant-faq-form">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="select_faq">
@@ -115,43 +115,59 @@
                     </form>
 
                     {% if selected_faq %}
-                        <div class="card bg-light-subtle border-0 rounded-4 mt-4">
-                            <div class="card-body">
-                                <p class="eyebrow mb-2">Selected question</p>
-                                <h3 class="h6 mb-2">{{ selected_faq.name }}</h3>
-                                <p class="mb-0">{{ selected_faq.solution_body or selected_faq.summary or 'No standardized answer has been configured yet.' }}</p>
-                                <div class="d-flex gap-2 flex-wrap mt-3">
-                                    {% if selected_faq.associated_pdf_url %}
-                                        <a class="btn btn-sm btn-outline-secondary" href="{{ selected_faq.associated_pdf_url }}" target="_blank">PDF</a>
-                                    {% endif %}
-                                    {% if selected_faq.associated_video_url %}
-                                        <a class="btn btn-sm btn-outline-secondary" href="{{ selected_faq.associated_video_url }}" target="_blank">Video</a>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                        <form method="post" class="d-flex gap-2 flex-wrap mt-4">
+                        <form method="post" class="d-flex gap-2 flex-wrap mt-3">
                             {{ csrf_input }}
                             <input type="hidden" name="action" value="faq_resolution">
                             <button class="btn btn-success" type="submit" name="resolution" value="resolved">Resolved</button>
                             <button class="btn btn-outline-primary" type="submit" name="resolution" value="unresolved">Not Resolved</button>
                         </form>
                     {% elif not faqs %}
-                        <div class="alert alert-warning rounded-4 mt-4 mb-0">No FAQ questions are configured for this combination yet. Select Other to send the issue to the PM dashboard.</div>
+                        <div class="alert alert-warning rounded-4 mt-3 mb-0">No FAQ questions are configured for this combination yet. Select Other to create a support ticket for review.</div>
                     {% endif %}
                 {% elif stage == 'other_issue' %}
-                    <p class="text-secondary">Describe the issue and upload one image file if it helps explain the problem. This goes to the PM dashboard for review.</p>
+                    <p class="text-secondary small">Describe the issue in your own words. We will send you a ticket ID and reply within {{ pm_queue_estimated_response_time }}.</p>
                     <form method="post" enctype="multipart/form-data" class="vstack gap-3">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="submit_other_issue">
-                        {% for field in other_issue_form %}
-                            <div>
-                                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                                {{ field }}
-                                {% if field.help_text %}<div class="form-hint mt-1">{{ field.help_text }}</div>{% endif %}
-                                {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join(', ') }}</div>{% endif %}
+                        <div>
+                            <label class="form-label" for="{{ other_issue_form.requester_name.id_for_label }}">{{ other_issue_form.requester_name.label }}</label>
+                            {{ other_issue_form.requester_name }}
+                            {% if other_issue_form.requester_name.errors %}<div class="text-danger small mt-1">{{ other_issue_form.requester_name.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ other_issue_form.requester_number.id_for_label }}">{{ other_issue_form.requester_number.label }}</label>
+                                {{ other_issue_form.requester_number }}
+                                {% if other_issue_form.requester_number.errors %}<div class="text-danger small mt-1">{{ other_issue_form.requester_number.errors|join(', ') }}</div>{% endif %}
                             </div>
-                        {% endfor %}
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ other_issue_form.requester_email.id_for_label }}">{{ other_issue_form.requester_email.label }}</label>
+                                {{ other_issue_form.requester_email }}
+                                {% if other_issue_form.requester_email.errors %}<div class="text-danger small mt-1">{{ other_issue_form.requester_email.errors|join(', ') }}</div>{% endif %}
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ other_issue_form.device_type.id_for_label }}">{{ other_issue_form.device_type.label }}</label>
+                                {{ other_issue_form.device_type }}
+                                {% if other_issue_form.device_type.errors %}<div class="text-danger small mt-1">{{ other_issue_form.device_type.errors|join(', ') }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ other_issue_form.device.id_for_label }}">{{ other_issue_form.device.label }}</label>
+                                {{ other_issue_form.device }}
+                                {% if other_issue_form.device.errors %}<div class="text-danger small mt-1">{{ other_issue_form.device.errors|join(', ') }}</div>{% endif %}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="form-label" for="{{ other_issue_form.free_text.id_for_label }}">{{ other_issue_form.free_text.label }}</label>
+                            {{ other_issue_form.free_text }}
+                            {% if other_issue_form.free_text.errors %}<div class="text-danger small mt-1">{{ other_issue_form.free_text.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div>
+                            <label class="form-label" for="{{ other_issue_form.uploaded_file.id_for_label }}">{{ other_issue_form.uploaded_file.label }}</label>
+                            {{ other_issue_form.uploaded_file }}
+                            {% if other_issue_form.uploaded_file.errors %}<div class="text-danger small mt-1">{{ other_issue_form.uploaded_file.errors|join(', ') }}</div>{% endif %}
+                        </div>
                         <button class="btn btn-primary" type="submit">Raise Query</button>
                     </form>
                 {% elif stage == 'resolved' %}

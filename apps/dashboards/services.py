@@ -122,6 +122,7 @@ def get_support_dashboard_data(campaign=None):
             "campaign",
             "department",
             "current_assignee",
+            "support_request",
             "ticket_category",
             "ticket_type_definition",
         )
@@ -315,8 +316,8 @@ def get_support_dashboard_data(campaign=None):
     ticket_distribution = build_ticket_distribution_data(tickets, period_days=30)
     other_issue_requests = (
         SupportRequest.objects.filter(status=SupportRequest.Status.PENDING_PM_REVIEW)
-        .select_related("campaign", "support_category__super_category", "ticket_link")
-        .order_by("-created_at")
+        .select_related("campaign", "support_page", "support_super_category", "support_category__super_category", "ticket_link")
+        .order_by("-is_escalated", "-created_at")
     )
     if campaign:
         other_issue_requests = other_issue_requests.filter(campaign=campaign)
@@ -330,6 +331,7 @@ def get_support_dashboard_data(campaign=None):
                 if support_request.uploaded_file
                 else False
             ),
+            "escalate_url": reverse("support_center:escalate_request", kwargs={"request_id": support_request.pk}),
             "raise_ticket_url": reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}),
         }
         for support_request in other_issue_requests

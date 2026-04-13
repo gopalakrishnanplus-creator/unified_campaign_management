@@ -4,7 +4,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
 {% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
     <div>
         <p class="eyebrow mb-1">Project Management Dashboard</p>
         <h1 class="mb-1">Ticket and support command center</h1>
@@ -16,7 +16,7 @@
     </div>
 </div>
 
-<section class="mb-5">
+<section class="mb-4">
     <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
         <div>
             <p class="eyebrow mb-1">Ticket Overview</p>
@@ -28,7 +28,7 @@
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
+    <div class="row g-2 mb-3">
         {% for card in support_data.overview_cards %}
             <div class="col-md-6 col-xl">
                 <a class="metric-card metric-card-link h-100 text-decoration-none" href="{{ card.url }}">
@@ -43,7 +43,7 @@
         {% endfor %}
     </div>
 
-    <div class="row g-4">
+    <div class="row g-3">
         <div class="col-lg-4">
             <div class="card shadow-sm border-0 rounded-4 h-100">
                 <div class="card-body">
@@ -111,8 +111,8 @@
     </div>
 </section>
 
-<section class="mb-5">
-    <div class="row g-4">
+<section class="mb-4">
+    <div class="row g-3">
         <div class="col-xl-8">
             <div class="card shadow-sm border-0 rounded-4 h-100">
                 <div class="card-body border-bottom">
@@ -130,20 +130,28 @@
                         <thead>
                             <tr>
                                 <th>Ticket</th>
+                                <th>Requester</th>
                                 <th>Category</th>
                                 <th>Priority</th>
                                 <th>Status</th>
                                 <th>Assignee</th>
-                                <th>Campaign</th>
                                 <th>Age</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for ticket in support_data.overview_tickets %}
-                                <tr class="{% if ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
+                                <tr class="{% if ticket.support_request and ticket.support_request.is_escalated %}ticket-row-escalated{% elif ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
                                     <td>
                                         <a class="fw-semibold text-decoration-none" href="{{ url('ticketing:detail', pk=ticket.pk) }}">{{ ticket.ticket_number }}</a>
                                         <div class="text-secondary small">{{ ticket.title }}</div>
+                                        {% if ticket.support_request and ticket.support_request.is_escalated %}
+                                            <div class="mt-1"><span class="status-code-pill status-danger">High Priority / Escalated</span></div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div>{{ ticket.requester_name }}</div>
+                                        <div class="text-secondary small">{{ ticket.requester_email }}</div>
+                                        <div class="text-secondary small">{{ ticket.requester_number or 'Phone not provided' }}</div>
                                     </td>
                                     <td>
                                         {{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }}
@@ -152,7 +160,6 @@
                                     <td><span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span></td>
                                     <td><span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span></td>
                                     <td>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td>
-                                    <td>{{ ticket.campaign.name if ticket.campaign else 'Unassigned' }}</td>
                                     <td>{{ ticket.ageing_days }} day{{ '' if ticket.ageing_days == 1 else 's' }}</td>
                                 </tr>
                             {% else %}
@@ -181,11 +188,16 @@
                                     <div class="insight-item-title">{{ ticket.ticket_number }} · {{ ticket.title }}</div>
                                     <div class="insight-item-subtitle">
                                         {{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }} ·
-                                        {{ ticket.department.name }}
+                                        {{ ticket.department.name }} ·
+                                        {{ ticket.requester_name }} ·
+                                        {{ ticket.requester_number or ticket.requester_email }}
                                     </div>
                                 </div>
                                 <div class="d-flex flex-column align-items-end gap-2">
                                     <span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span>
+                                    {% if ticket.support_request and ticket.support_request.is_escalated %}
+                                        <span class="status-code-pill status-danger">Escalated</span>
+                                    {% endif %}
                                     <span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span>
                                 </div>
                             </a>
@@ -208,7 +220,7 @@
     </div>
 </section>
 
-<section class="mb-5">
+<section class="mb-4">
     <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3" id="other-issue-review">
         <div>
             <p class="eyebrow mb-1">Unlisted Support Issues</p>
@@ -221,33 +233,47 @@
 
     <div class="card shadow-sm border-0 rounded-4">
         <div class="card-body border-bottom">
-            <p class="text-secondary mb-0">These issues came from the FAQ widgets or assistant when the user selected <strong>Other</strong>. Review the context and raise a synced ticket when escalation is required.</p>
+            <p class="text-secondary mb-0">These issues came from the FAQ widgets or assistant when the user selected <strong>Other</strong>. Review the context, escalate urgent items, and raise a synced ticket when needed.</p>
         </div>
         <div class="table-responsive table-scroll">
             <table class="table align-middle mb-0">
                 <thead>
                     <tr>
-                        <th>Created</th>
-                        <th>System</th>
-                        <th>Flow / Screen</th>
+                        <th>Queue Ticket</th>
+                        <th>Requester</th>
+                        <th>Context</th>
+                        <th>Device</th>
                         <th>Issue description</th>
                         <th>Uploaded file</th>
-                        <th></th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in support_data.other_issue_rows %}
-                        <tr>
-                            <td>{{ row.request.created_at|india_datetime }}</td>
+                        <tr class="{% if row.request.is_escalated %}ticket-row-escalated{% endif %}">
+                            <td>
+                                <div class="fw-semibold">{{ row.request.queue_ticket_number }}</div>
+                                <div class="text-secondary small">{{ row.request.created_at|india_datetime }}</div>
+                                {% if row.request.is_escalated %}
+                                    <div class="mt-1"><span class="status-code-pill status-danger">High Priority / Escalated</span></div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div>{{ row.request.requester_name or 'Not provided' }}</div>
+                                <div class="text-secondary small">{{ row.request.requester_email or 'Email not provided' }}</div>
+                                <div class="text-secondary small">{{ row.request.requester_number or 'Phone not provided' }}</div>
+                            </td>
                             <td>
                                 {{ row.request.source_system or 'Not provided' }}
                                 <div class="text-secondary small">{{ row.request.user_type.replace('_', ' ').title() }}</div>
-                            </td>
-                            <td>
-                                {{ row.request.source_flow or 'General support' }}
+                                <div class="text-secondary small">Flow: {{ row.request.source_flow or 'General support' }}</div>
                                 <div class="text-secondary small">Page: {{ row.request.page_label or 'Not specified' }}</div>
                                 <div class="text-secondary small">Section: {{ row.request.section_label or 'Not specified' }}</div>
                                 <div class="text-secondary small">Screen: {{ row.request.screen_label or 'Not specified' }}</div>
+                            </td>
+                            <td>
+                                <div>{{ row.request.get_device_type_display() if row.request.device_type else 'Not provided' }}</div>
+                                <div class="text-secondary small">{{ row.request.get_device_display() if row.request.device else 'Device not provided' }}</div>
                             </td>
                             <td>{{ row.request.free_text }}</td>
                             <td>
@@ -268,10 +294,20 @@
                                     <span class="text-secondary">No file</span>
                                 {% endif %}
                             </td>
-                            <td><a class="btn btn-sm btn-primary" href="{{ row.raise_ticket_url }}">Raise Ticket</a></td>
+                            <td>
+                                <div class="d-flex flex-column align-items-start gap-2">
+                                    {% if not row.request.is_escalated %}
+                                        <form method="post" action="{{ row.escalate_url }}">
+                                            {{ csrf_input }}
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">Escalate</button>
+                                        </form>
+                                    {% endif %}
+                                    <a class="btn btn-sm btn-primary" href="{{ row.raise_ticket_url }}">Raise Ticket</a>
+                                </div>
+                            </td>
                         </tr>
                     {% else %}
-                        <tr><td colspan="6" class="text-secondary">No unlisted support issues are waiting for review.</td></tr>
+                        <tr><td colspan="7" class="text-secondary">No unlisted support issues are waiting for review.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -279,7 +315,7 @@
     </div>
 </section>
 
-<section class="mb-5">
+<section class="mb-4">
     <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
         <div>
             <p class="eyebrow mb-1">Operational Details</p>
@@ -288,7 +324,7 @@
         <a class="btn btn-outline-secondary" href="{{ url('ticketing:distribution') }}">Open time-based drill-down</a>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-3">
         <div class="col-lg-4">
             <div class="card shadow-sm border-0 rounded-4 h-100">
                 <div class="card-body">

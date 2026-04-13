@@ -17,7 +17,15 @@ class SupportRequestForm(forms.ModelForm):
 class SupportOtherIssueForm(forms.ModelForm):
     class Meta:
         model = SupportRequest
-        fields = ["requester_name", "requester_number", "requester_email", "free_text", "uploaded_file"]
+        fields = [
+            "requester_name",
+            "requester_number",
+            "requester_email",
+            "device_type",
+            "device",
+            "free_text",
+            "uploaded_file",
+        ]
         widgets = {
             "requester_name": forms.TextInput(
                 attrs={
@@ -35,10 +43,12 @@ class SupportOtherIssueForm(forms.ModelForm):
                     "placeholder": "Enter your email address",
                 }
             ),
+            "device_type": forms.Select(),
+            "device": forms.Select(),
             "free_text": forms.Textarea(
                 attrs={
-                    "rows": 4,
-                    "placeholder": "Describe what happened and what the user was trying to do.",
+                    "rows": 3,
+                    "placeholder": "Describe what happened, what I was trying to do, and what I saw.",
                 }
             ),
             "uploaded_file": forms.ClearableFileInput(
@@ -53,8 +63,14 @@ class SupportOtherIssueForm(forms.ModelForm):
         self.fields["requester_name"].label = "Name"
         self.fields["requester_number"].label = "Phone Number"
         self.fields["requester_email"].label = "Email Address"
+        self.fields["device_type"].label = "Device Type"
+        self.fields["device"].label = "Device"
         self.fields["free_text"].label = "Describe the issue"
         self.fields["uploaded_file"].label = "Upload screenshot or image"
+        self.fields["device_type"].required = False
+        self.fields["device"].required = False
+        self.fields["device_type"].choices = [("", "Select device type"), *SupportRequest.DeviceType.choices]
+        self.fields["device"].choices = [("", "Select device"), *SupportRequest.Device.choices]
 
     def clean_requester_number(self):
         requester_number = (self.cleaned_data.get("requester_number") or "").strip()

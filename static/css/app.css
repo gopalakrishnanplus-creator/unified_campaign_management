@@ -8,6 +8,7 @@
     --warm: #f59e0b;
     --danger: #dc2626;
     --danger-soft: #fee2e2;
+    --escalation-soft: #ffe4b5;
     --warn-soft: #fef3c7;
     --success-soft: #dcfce7;
     --info-soft: #dbeafe;
@@ -21,6 +22,8 @@ body {
         radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 30%),
         var(--surface);
     color: var(--ink);
+    font-size: 0.95rem;
+    line-height: 1.45;
 }
 
 .navbar-brand {
@@ -42,7 +45,7 @@ body {
 }
 
 .metric-card {
-    padding: 1.25rem;
+    padding: 1rem;
     background: var(--surface-2);
     border-radius: 1.25rem;
     border: 1px solid rgba(15, 23, 42, 0.08);
@@ -64,11 +67,11 @@ body {
 
 .metric-label {
     color: var(--muted);
-    font-size: 0.9rem;
+    font-size: 0.82rem;
 }
 
 .metric-value {
-    font-size: 2rem;
+    font-size: 1.7rem;
     font-weight: 700;
     margin-top: 0.25rem;
 }
@@ -77,8 +80,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    padding: 0.75rem 0;
+    gap: 0.75rem;
+    padding: 0.55rem 0;
     border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 
@@ -89,7 +92,7 @@ body {
 .card-scroll,
 .timeline-scroll,
 .table-scroll {
-    max-height: 24rem;
+    max-height: 28rem;
     overflow: auto;
     padding-right: 0.25rem;
 }
@@ -103,11 +106,11 @@ body {
 
 .chart-panel {
     position: relative;
-    min-height: 18rem;
+    min-height: 15rem;
 }
 
 .chart-panel canvas {
-    max-height: 18rem;
+    max-height: 15rem;
 }
 
 .status-code-pill,
@@ -117,8 +120,8 @@ body {
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
+    padding: 0.22rem 0.6rem;
+    font-size: 0.74rem;
     font-weight: 700;
     border: 1px solid transparent;
 }
@@ -189,11 +192,13 @@ body {
     color: var(--muted);
 }
 
+.ticket-row-escalated td:first-child,
 .ticket-row-critical td:first-child,
 .ticket-row-high td:first-child {
     position: relative;
 }
 
+.ticket-row-escalated td:first-child::before,
 .ticket-row-critical td:first-child::before,
 .ticket-row-high td:first-child::before {
     content: "";
@@ -205,12 +210,20 @@ body {
     border-radius: 999px;
 }
 
+.ticket-row-escalated td:first-child::before {
+    background: #b45309;
+}
+
 .ticket-row-critical td:first-child::before {
     background: var(--danger);
 }
 
 .ticket-row-high td:first-child::before {
     background: #f59e0b;
+}
+
+.ticket-row-escalated {
+    background: rgba(255, 228, 181, 0.38);
 }
 
 .ticket-row-critical {
@@ -229,15 +242,15 @@ body {
 
 .insight-list {
     display: grid;
-    gap: 0.9rem;
+    gap: 0.7rem;
 }
 
 .insight-item {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1rem;
-    padding: 0.95rem 1rem;
+    gap: 0.75rem;
+    padding: 0.75rem 0.85rem;
     border-radius: 1rem;
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid rgba(15, 23, 42, 0.08);
@@ -249,7 +262,7 @@ body {
 
 .insight-item-subtitle {
     color: var(--muted);
-    font-size: 0.88rem;
+    font-size: 0.8rem;
 }
 
 .status-grid {
@@ -259,7 +272,7 @@ body {
 }
 
 .status-summary-card {
-    padding: 1.15rem;
+    padding: 0.95rem;
     border-radius: 1.1rem;
     border: 1px solid rgba(15, 23, 42, 0.08);
     background: rgba(255, 255, 255, 0.95);
@@ -274,15 +287,15 @@ body {
 
 .chart-legend-list {
     display: grid;
-    gap: 0.7rem;
+    gap: 0.55rem;
 }
 
 .chart-legend-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.9rem;
-    padding: 0.8rem 0.9rem;
+    gap: 0.75rem;
+    padding: 0.65rem 0.75rem;
     border-radius: 0.95rem;
     border: 1px solid rgba(15, 23, 42, 0.08);
     background: rgba(255, 255, 255, 0.92);
@@ -308,7 +321,7 @@ body {
 
 .form-hint {
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: 0.78rem;
 }
 
 .support-item-card {
@@ -334,7 +347,7 @@ body {
 
 .chat-shell {
     display: grid;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .chat-message {
@@ -350,11 +363,12 @@ body {
 }
 
 .chat-bubble {
-    max-width: 88%;
-    padding: 1rem 1.1rem;
+    max-width: 92%;
+    padding: 0.8rem 0.95rem;
     border-radius: 1.25rem;
     border: 1px solid rgba(15, 23, 42, 0.08);
     box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
+    font-size: 0.93rem;
 }
 
 .chat-message-bot .chat-bubble {
@@ -408,18 +422,18 @@ body {
 
 .timeline {
     display: grid;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .timeline-item {
-    padding: 1rem;
+    padding: 0.85rem;
     border-radius: 1rem;
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .table > :not(caption) > * > * {
-    padding: 0.9rem 0.75rem;
+    padding: 0.65rem 0.6rem;
 }
 
 .auth-shell {
@@ -432,9 +446,9 @@ input,
 select,
 textarea {
     width: 100%;
-    border-radius: 0.85rem !important;
+    border-radius: 0.75rem !important;
     border: 1px solid rgba(15, 23, 42, 0.14) !important;
-    padding: 0.75rem 0.95rem !important;
+    padding: 0.6rem 0.75rem !important;
     background: #fff;
 }
 

@@ -3,11 +3,15 @@
 {% block content %}
 <div class="col-lg-8 mx-auto">
         <div class="card shadow-sm border-0 rounded-4">
-            <div class="card-body p-5 text-center">
+            <div class="card-body p-4 p-lg-5 text-center">
                 <p class="eyebrow mb-1">Customer Support</p>
                 <h1 class="mb-3">Support request logged</h1>
                 {% if support_request.status == 'pending_pm_review' %}
-                    <p class="text-secondary">The unlisted issue has been recorded and sent to the PM dashboard for review. A ticket can be raised from there if escalation is needed.</p>
+                    <p class="text-secondary mb-3">Your issue is in our PM review queue. We will review it and get back to you within {{ pm_queue_estimated_response_time }}.</p>
+                    <div class="d-inline-flex flex-column gap-2 align-items-center rounded-4 border bg-light px-4 py-3 mb-4">
+                        <span class="text-secondary small">Ticket ID</span>
+                        <strong>{{ support_request.queue_ticket_number }}</strong>
+                    </div>
                 {% else %}
                     <p class="text-secondary">The request from {{ support_request.requester_email }} has been recorded and escalated through the ticketing system when applicable.</p>
                 {% endif %}

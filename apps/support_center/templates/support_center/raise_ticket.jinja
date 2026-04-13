@@ -1,13 +1,20 @@
 {% extends "base.jinja" %}
 {% block title %}Raise Ticket From Support Issue{% endblock %}
 {% block content %}
-<div class="row g-4">
+<div class="row g-3">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 rounded-4 h-100">
-            <div class="card-body p-4">
+            <div class="card-body p-3 p-lg-4">
                 <p class="eyebrow mb-1">PM Review</p>
-                <h1 class="h3 mb-3">Raise ticket from support issue</h1>
-                <p class="text-secondary mb-4">Review the issue captured from the support widget, add any missing internal ticket fields, and then create the synced ticket.</p>
+                <h1 class="h3 mb-2">Raise ticket from support issue</h1>
+                <p class="text-secondary mb-3">Review the queue ticket, complete the internal fields, and create the synced ticket.</p>
+
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <span class="status-code-pill status-secondary">{{ support_request.queue_ticket_number }}</span>
+                    {% if support_request.is_escalated %}
+                        <span class="status-code-pill status-danger">High Priority / Escalated</span>
+                    {% endif %}
+                </div>
 
                 <div class="metric-row">
                     <span>System</span>
@@ -33,13 +40,25 @@
                     <span>Submitted</span>
                     <strong>{{ support_request.created_at|india_datetime }}</strong>
                 </div>
+                <div class="metric-row">
+                    <span>Response target</span>
+                    <strong>{{ pm_queue_estimated_response_time }}</strong>
+                </div>
+                <div class="metric-row">
+                    <span>Device Type</span>
+                    <strong>{{ support_request.get_device_type_display() if support_request.device_type else 'Not provided' }}</strong>
+                </div>
+                <div class="metric-row">
+                    <span>Device</span>
+                    <strong>{{ support_request.get_device_display() if support_request.device else 'Not provided' }}</strong>
+                </div>
 
-                <div class="mt-4">
+                <div class="mt-3">
                     <h2 class="h6 mb-2">Issue description</h2>
                     <p class="text-secondary mb-0">{{ support_request.free_text }}</p>
                 </div>
 
-                <div class="mt-4">
+                <div class="mt-3">
                     <h2 class="h6 mb-2">Requester</h2>
                     <div class="text-secondary small">Name: {{ support_request.requester_name or 'Not provided' }}</div>
                     <div class="text-secondary small">Email: {{ support_request.requester_email or 'Not provided' }}</div>
@@ -48,7 +67,7 @@
                 </div>
 
                 {% if support_request.uploaded_file %}
-                    <div class="mt-4">
+                    <div class="mt-3">
                         <h2 class="h6 mb-2">Uploaded file</h2>
                         <p class="text-secondary mb-2">{{ uploaded_file_name }}</p>
                         <div class="d-flex gap-2 flex-wrap mb-3">
@@ -71,9 +90,14 @@
 
     <div class="col-lg-8">
         <div class="card shadow-sm border-0 rounded-4">
-            <div class="card-body p-4">
+            <div class="card-body p-3 p-lg-4">
                 {% if form.non_field_errors() %}
                     <div class="alert alert-danger rounded-4">{{ form.non_field_errors()|join(', ') }}</div>
+                {% endif %}
+                {% if support_request.is_escalated %}
+                    <div class="alert alert-danger rounded-4 py-2">
+                        This queue ticket is marked as High Priority. The priority field defaults to <strong>Critical</strong>.
+                    </div>
                 {% endif %}
                 <form method="post" id="raise-ticket-form">
                     {{ csrf_input }}
@@ -150,7 +174,7 @@
                         </div>
                     </div>
                     <div class="d-flex gap-2 flex-wrap mt-4">
-                        <button class="btn btn-primary" type="submit">Create synced ticket</button>
+                        <button class="btn btn-primary" type="submit">{{ 'Create high-priority ticket' if support_request.is_escalated else 'Create synced ticket' }}</button>
                         <a class="btn btn-outline-secondary" href="{{ url('dashboards:home') }}">Back to PM dashboard</a>
                     </div>
                 </form>

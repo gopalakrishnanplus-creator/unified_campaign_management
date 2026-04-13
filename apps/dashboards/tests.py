@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase
@@ -333,7 +334,10 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.source_system, "In-clinic")
         self.assertEqual(support_request.source_flow, "Assistant Flow")
         self.assertTrue(support_request.uploaded_file.name.endswith(".webp"))
+        self.assertTrue(support_request.queue_ticket_number.startswith("PMQ-"))
         self.assertFalse(Ticket.objects.filter(support_request=support_request).exists())
+        self.assertContains(response, support_request.queue_ticket_number)
+        self.assertContains(response, settings.PM_QUEUE_ESTIMATED_RESPONSE_TIME)
 
     def test_support_landing_shows_page_and_section_faqs_without_free_text_form(self):
         response = self.client.get(reverse("support_center:landing", kwargs={"user_type": "brand_manager"}))
@@ -426,6 +430,8 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload["success"])
+        self.assertTrue(payload["ticket_id"].startswith("PMQ-"))
+        self.assertEqual(payload["estimated_response_time"], settings.PM_QUEUE_ESTIMATED_RESPONSE_TIME)
 
         support_request = SupportRequest.objects.get(pk=payload["request_id"])
         self.assertEqual(support_request.status, SupportRequest.Status.PENDING_PM_REVIEW)
@@ -436,6 +442,57 @@ class SeededIntegrationTestCase(TestCase):
         self.assertIsNone(support_request.support_category)
         self.assertEqual(support_request.requester_number, "+911111111111")
         self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
+        self.assertEqual(support_request.queue_ticket_number, payload["ticket_id"])
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", SENDGRID_API_KEY="")
+    def test_widget_other_issue_submission_sends_queue_confirmation_email(self):
+        faq_super = SupportSuperCategory.objects.create(name="Email Widget Tests", slug="email-widget-tests")
+        faq_category = SupportCategory.objects.create(super_category=faq_super, name="Sharing Screen", slug="sharing-screen")
+        faq_page = SupportPage.objects.create(name="Doctor Sharing Page", slug="doctor-sharing-page", source_system="In-clinic", source_flow="Email Flow")
+        SupportItem.objects.create(
+            page=faq_page,
+            category=faq_category,
+            name="Email widget FAQ",
+            slug="email-widget-faq",
+            summary="Basic help text.",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="Use the standard widget answer.",
+            source_system="In-clinic",
+            source_flow="Email Flow",
+            is_visible_to_doctors=True,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_brand_managers=False,
+            is_visible_to_field_reps=False,
+            is_visible_to_patients=False,
+        )
+
+        response = self.client.post(
+            reverse(
+                "support_center:faq_page_other_issue",
+                kwargs={"user_type": "doctor", "page_slug": faq_page.slug},
+            ),
+            data={
+                "requester_name": "Doctor Email User",
+                "requester_email": "doctor.email@example.com",
+                "requester_number": "+918888888888",
+                "device_type": "android",
+                "device": "phone",
+                "free_text": "I am seeing a blank sharing screen.",
+                "uploaded_file": SimpleUploadedFile("share.png", b"image-bytes", content_type="image/png"),
+                "selected_section_slug": faq_super.slug,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        support_request = SupportRequest.objects.get(pk=payload["request_id"])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["doctor.email@example.com"])
+        self.assertIn(support_request.queue_ticket_number, mail.outbox[0].subject)
+        self.assertIn(support_request.queue_ticket_number, mail.outbox[0].body)
+        self.assertIn(settings.PM_QUEUE_ESTIMATED_RESPONSE_TIME, mail.outbox[0].body)
+        self.assertIn("Android", mail.outbox[0].alternatives[0][0])
+        self.assertIn("Phone", mail.outbox[0].alternatives[0][0])
 
     def test_widget_other_issue_uses_selected_faq_context_when_category_has_mixed_systems(self):
         faq_super = SupportSuperCategory.objects.create(name="Mixed Widget Tests", slug="mixed-widget-tests")
@@ -669,6 +726,9 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(dashboard_response.status_code, 200)
         self.assertContains(dashboard_response, "Unlisted Support Issues")
         self.assertContains(dashboard_response, "The viewer is opening a blank white screen after verification.")
+        self.assertContains(dashboard_response, support_request.queue_ticket_number)
+        self.assertContains(dashboard_response, "Doctor support user")
+        self.assertContains(dashboard_response, "+915555555555")
 
         raise_url = reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk})
         raise_page = self.client.get(raise_url)
@@ -1512,7 +1572,8 @@ class ExternalTicketSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Ticket management")
-        self.assertContains(response, "Manage in Inditech ticketing")
+        self.assertContains(response, "synced internal ticketing system")
+        self.assertNotContains(response, "Manage in Inditech ticketing")
         self.assertContains(response, "Closed Owner")
         self.assertNotContains(response, "Change status")
         self.assertNotContains(response, "Delegate ticket")
@@ -1520,6 +1581,59 @@ class ExternalTicketSyncTests(TestCase):
         ticket.refresh_from_db()
         self.assertEqual(ticket.status, Ticket.Status.COMPLETED)
         self.assertEqual(ticket.current_assignee.email, "closed.owner@inditech.co.in")
+
+    @patch("apps.dashboards.services.requests.get")
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
+    def test_pm_dashboard_prioritizes_escalated_queue_tickets(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        support_page = SupportPage.objects.create(name="Queue Order Page", slug="queue-order-page", source_system="In-clinic", source_flow="Queue Order")
+        support_super = SupportSuperCategory.objects.create(name="Queue Order Section", slug="queue-order-section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Queue Order Screen", slug="queue-order-screen")
+        escalated_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Escalated User",
+            requester_email="escalated@example.com",
+            requester_number="+917777777777",
+            device_type="android",
+            device="phone",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Queue Order",
+            subject="Other issue - escalated",
+            free_text="This should appear first.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+            is_escalated=True,
+        )
+        standard_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Standard User",
+            requester_email="standard@example.com",
+            requester_number="+916666666665",
+            device_type="ios",
+            device="tablet",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Queue Order",
+            subject="Other issue - standard",
+            free_text="This should appear second.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+
+        self.client.force_login(self.pm_user)
+        response = self.client.get(reverse("dashboards:home"))
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertLess(content.index(escalated_request.queue_ticket_number), content.index(standard_request.queue_ticket_number))
+        self.assertContains(response, "High Priority / Escalated")
+        self.assertContains(response, "Escalated User")
+        self.assertContains(response, "+917777777777")
+        self.assertContains(response, "Android")
+        self.assertContains(response, "Phone")
 
     @patch("apps.ticketing.external_ticketing.requests.request")
     def test_support_issue_raise_ticket_page_uses_synced_internal_directory_departments(self, mock_request):
