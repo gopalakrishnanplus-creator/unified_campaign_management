@@ -19,7 +19,7 @@
     </div>
 {% endif %}
 
-<div class="row g-3 mb-4">
+<div class="row g-2 mb-3">
     {% for label, value, css_class in [
         ('Low', priority_summary.low, 'priority-low'),
         ('Medium', priority_summary.medium, 'priority-medium'),
@@ -38,7 +38,7 @@
     {% endfor %}
 </div>
 
-<div class="card shadow-sm border-0 rounded-4 mb-4">
+<div class="card shadow-sm border-0 rounded-4 mb-3">
     <div class="card-body">
         <form class="row g-3" method="get">
             {% if active_scope %}
@@ -85,7 +85,7 @@
         <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
             <div>
                 <h2 class="h5 mb-1">Ticket queue</h2>
-                <p class="text-secondary mb-0">Priority and status colors make urgent work visible immediately.</p>
+                <p class="text-secondary mb-0">Priority and escalation labels keep urgent work visible immediately.</p>
             </div>
             <div class="small text-secondary">{{ paginator.count if paginator else tickets|length }} ticket{{ '' if (paginator.count if paginator else tickets|length) == 1 else 's' }} in current result set</div>
         </div>
@@ -95,39 +95,53 @@
             <thead>
                 <tr>
                     <th>Ticket</th>
-                    <th>Category</th>
-                    <th>Type</th>
+                    <th>Requester</th>
+                    <th>Category / Type</th>
                     <th>Priority</th>
                     <th>Status</th>
                     <th>Department</th>
                     <th>Current assignee</th>
-                    <th>Campaign</th>
                     <th>Raised</th>
                 </tr>
             </thead>
             <tbody>
                 {% for ticket in tickets %}
-                    <tr class="{% if ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
+                    <tr class="{% if ticket.support_request and ticket.support_request.is_escalated %}ticket-row-escalated{% elif ticket.priority == 'critical' %}ticket-row-critical{% elif ticket.priority == 'high' %}ticket-row-high{% endif %}">
                         <td>
                             <a class="fw-semibold text-decoration-none" href="{{ url('ticketing:detail', pk=ticket.pk) }}">{{ ticket.ticket_number }}</a>
                             <div class="text-secondary small">{{ ticket.title }}</div>
+                            {% if ticket.support_request and ticket.support_request.is_escalated %}
+                                <div class="mt-1"><span class="status-code-pill status-danger">High Priority / Escalated</span></div>
+                            {% endif %}
                         </td>
-                        <td>{{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }}</td>
                         <td>
-                            {{ ticket.ticket_type }}
+                            <div>{{ ticket.requester_name }}</div>
+                            <div class="text-secondary small">{{ ticket.requester_email }}</div>
+                            <div class="text-secondary small">{{ ticket.requester_number or 'Phone not provided' }}</div>
+                        </td>
+                        <td>
+                            {{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }}
+                            <div class="text-secondary small">{{ ticket.ticket_type }}</div>
                             {% if ticket.ticket_type_definition and ticket.ticket_type_definition.description %}
                                 <div class="text-secondary small">{{ ticket.ticket_type_definition.description }}</div>
                             {% endif %}
                         </td>
-                        <td><span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span></td>
+                        <td>
+                            <span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span>
+                            {% if ticket.support_request and ticket.support_request.is_escalated %}
+                                <div class="text-danger small mt-1">Escalated</div>
+                            {% endif %}
+                        </td>
                         <td><span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span></td>
-                        <td>{{ ticket.department.name }}</td>
+                        <td>
+                            {{ ticket.department.name }}
+                            <div class="text-secondary small">{{ ticket.campaign.name if ticket.campaign else 'Unassigned campaign' }}</div>
+                        </td>
                         <td>{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td>
-                        <td>{{ ticket.campaign.name if ticket.campaign else 'Unassigned' }}</td>
                         <td>{{ ticket.created_at|india_datetime }}</td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="9" class="p-4 text-secondary">No tickets match the current filters.</td></tr>
+                    <tr><td colspan="8" class="p-4 text-secondary">No tickets match the current filters.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

@@ -1,8 +1,8 @@
 import uuid
 
 from django.db import models
-from django.utils.text import slugify
 from django.core.validators import FileExtensionValidator
+from django.utils.text import slugify
 
 
 def support_request_upload_to(instance, filename):
@@ -140,16 +140,28 @@ class SupportItem(models.Model):
 
 
 class SupportRequest(models.Model):
+    class DeviceType(models.TextChoices):
+        ANDROID = "android", "Android"
+        IOS = "ios", "iOS"
+
+    class Device(models.TextChoices):
+        PHONE = "phone", "Phone"
+        PC = "pc", "PC"
+        TABLET = "tablet", "Tablet"
+
     class Status(models.TextChoices):
         PENDING_PM_REVIEW = "pending_pm_review", "Pending PM review"
         SOLUTION_PROVIDED = "solution_provided", "Solution provided"
         TICKET_CREATED = "ticket_created", "Ticket created"
 
+    queue_ticket_number = models.CharField(max_length=24, unique=True, editable=False, blank=True)
     user_type = models.CharField(max_length=24)
     requester_name = models.CharField(max_length=255)
     requester_email = models.EmailField()
     requester_number = models.CharField(max_length=32, blank=True)
     requester_company = models.CharField(max_length=255, blank=True)
+    device_type = models.CharField(max_length=16, choices=DeviceType.choices, blank=True)
+    device = models.CharField(max_length=16, choices=Device.choices, blank=True)
     campaign = models.ForeignKey("campaigns.Campaign", null=True, blank=True, on_delete=models.SET_NULL, related_name="support_requests")
     item = models.ForeignKey(SupportItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="requests")
     support_page = models.ForeignKey(
@@ -183,13 +195,23 @@ class SupportRequest(models.Model):
         validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "heic", "svg", "webp"])],
     )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.TICKET_CREATED)
+    is_escalated = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-is_escalated", "-created_at"]
 
     def __str__(self):
-        return f"{self.requester_name} / {self.subject}"
+        return f"{self.queue_ticket_number or 'PMQ-PENDING'} / {self.requester_name} / {self.subject}"
+
+    def save(self, *args, **kwargs):
+        if not self.queue_ticket_number:
+            while True:
+                queue_ticket_number = f"PMQ-{uuid.uuid4().hex[:8].upper()}"
+                if not type(self).objects.filter(queue_ticket_number=queue_ticket_number).exists():
+                    self.queue_ticket_number = queue_ticket_number
+                    break
+        super().save(*args, **kwargs)
 
     @property
     def super_category(self):
@@ -209,3 +231,7 @@ class SupportRequest(models.Model):
     @property
     def screen_label(self):
         return self.support_category.name if self.support_category_id else self.page_label
+
+    @property
+    def priority_label(self):
+        return "High Priority / Escalated" if self.is_escalated else "Standard"

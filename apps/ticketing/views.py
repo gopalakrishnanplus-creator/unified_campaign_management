@@ -63,6 +63,7 @@ def _scoped_ticket_queryset(request):
         "department",
         "direct_recipient",
         "current_assignee",
+        "support_request",
         "ticket_category",
         "ticket_type_definition",
     ).annotate(
@@ -243,6 +244,7 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
                 "direct_recipient",
                 "current_assignee",
                 "created_by",
+                "support_request",
                 "ticket_category",
                 "ticket_type_definition",
             ),

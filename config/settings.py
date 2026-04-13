@@ -270,6 +270,13 @@ except json.JSONDecodeError:
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@inditech.local")
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "").strip()
+SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", DEFAULT_FROM_EMAIL).strip() or DEFAULT_FROM_EMAIL
+SENDGRID_FROM_NAME = os.getenv("SENDGRID_FROM_NAME", "Inditech Support").strip() or "Inditech Support"
+SENDGRID_API_URL = os.getenv("SENDGRID_API_URL", "https://api.sendgrid.com/v3/mail/send").strip()
+PM_QUEUE_ESTIMATED_RESPONSE_TIME = (
+    os.getenv("PM_QUEUE_ESTIMATED_RESPONSE_TIME", "Within 2 business hours").strip() or "Within 2 business hours"
+)
 
 MESSAGE_TAGS = {
     20: "info",

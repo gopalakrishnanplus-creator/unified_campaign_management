@@ -1,0 +1,15 @@
+Hello {{ support_request.requester_name or "there" }},
+
+We received your support request and added it to our PM review queue.
+
+Ticket ID: {{ ticket_id }}
+Estimated response time: {{ estimated_response_time }}
+
+Issue summary:
+{{ support_request.free_text|default(support_request.subject, true) }}
+
+{% if device_type or device %}Device details:
+{% if device_type %}Device Type: {{ device_type }}
+{% endif %}{% if device %}Device: {{ device }}
+{% endif %}
+{% endif %}We will review this and get back to you as soon as possible.

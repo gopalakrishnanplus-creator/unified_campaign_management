@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;padding:24px;">
+        <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:24px;">
+            <p style="margin:0 0 12px;font-size:14px;color:#0f766e;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Inditech Support</p>
+            <h1 style="margin:0 0 12px;font-size:24px;">Your support request is in our PM queue</h1>
+            <p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Hello {{ support_request.requester_name or "there" }}, we received your issue and logged it for review.</p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;">
+                <p style="margin:0 0 8px;"><strong>Ticket ID:</strong> {{ ticket_id }}</p>
+                <p style="margin:0;"><strong>Estimated response time:</strong> {{ estimated_response_time }}</p>
+            </div>
+            <p style="margin:0 0 8px;font-weight:700;">Issue summary</p>
+            <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">{{ support_request.free_text|default(support_request.subject, true) }}</p>
+            {% if device_type or device %}
+                <p style="margin:0 0 8px;font-weight:700;">Device details</p>
+                <ul style="margin:0 0 16px;padding-left:18px;color:#334155;">
+                    {% if device_type %}<li>Device Type: {{ device_type }}</li>{% endif %}
+                    {% if device %}<li>Device: {{ device }}</li>{% endif %}
+                </ul>
+            {% endif %}
+            <p style="margin:0;font-size:15px;line-height:1.6;">We will review this and get back to you as soon as possible.</p>
+        </div>
+    </div>
+</body>
+</html>

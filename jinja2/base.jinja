@@ -32,9 +32,9 @@
         </div>
     </nav>
     <main class="pb-5">
-        <div class="container py-4">
+        <div class="container py-3">
             {% if messages %}
-                <div class="mb-4">
+                <div class="mb-3">
                     {% for message in messages %}
                         <div class="alert alert-{{ message.tags or 'info' }}">{{ message }}</div>
                     {% endfor %}

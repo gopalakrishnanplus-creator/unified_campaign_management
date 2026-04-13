@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_http_methods
-from django.views.generic import DetailView, TemplateView
+from django.views.generic import DetailView, TemplateView, View
 
 from apps.ticketing.forms import TicketCreateForm
 from apps.ticketing.external_ticketing import (
@@ -29,6 +29,7 @@ from .forms import SupportOtherIssueForm, SupportRequestForm
 from .models import SupportItem, SupportPage, SupportRequest
 from .services import (
     GENERAL_SUPPORT_FLOW,
+    build_pm_queue_success_message,
     build_support_request_ticket_initial,
     create_other_support_request,
     get_available_categories,
@@ -39,6 +40,7 @@ from .services import (
     get_faq_page_overview,
     get_faq_super_category,
     get_faq_super_category_overview,
+    get_pm_queue_estimated_response_time,
     resolve_support_request_context,
     submit_support_request,
 )
@@ -584,7 +586,10 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 {
                     "speaker": "bot",
                     "title": "Support Bot",
-                    "body": "Describe the unlisted issue and attach a screenshot or image if available. This will be sent for PM review.",
+                    "body": (
+                        "Describe the unlisted issue in your own words and attach a screenshot if it helps. "
+                        f"We will log a queue ticket and reply in about {get_pm_queue_estimated_response_time()}."
+                    ),
                 }
             )
         elif stage == "resolved" and context["resolved_item"]:
@@ -617,6 +622,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 "role_title": self.config["title"],
                 "page_title": f"{self.config['title']} assistant",
                 "general_support_flow": GENERAL_SUPPORT_FLOW,
+                "pm_queue_estimated_response_time": get_pm_queue_estimated_response_time(),
                 "transcript": self._build_transcript(assistant_context, stage),
                 "other_issue_form": kwargs.get("other_issue_form") or SupportOtherIssueForm(),
             }
@@ -748,7 +754,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 request_user=request.user,
             )
             self._clear_state()
-            messages.success(request, "Issue recorded. It is now available in the PM dashboard for review and ticket creation.")
+            messages.success(request, build_pm_queue_success_message(support_request))
             return redirect("support_center:success", user_type=self.user_type, request_id=support_request.pk)
 
         return redirect("support_center:assistant", user_type=self.user_type)
@@ -804,7 +810,23 @@ class SupportSuccessView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["support_request"] = get_object_or_404(SupportRequest, pk=kwargs["request_id"])
+        context["pm_queue_estimated_response_time"] = get_pm_queue_estimated_response_time()
         return context
+
+
+class SupportRequestEscalateView(ProjectManagerAccessMixin, View):
+    def post(self, request, *args, **kwargs):
+        support_request = get_object_or_404(SupportRequest, pk=kwargs["request_id"])
+        if support_request.is_escalated:
+            messages.info(request, f"{support_request.queue_ticket_number} is already marked as High Priority.")
+        else:
+            support_request.is_escalated = True
+            support_request.save(update_fields=["is_escalated"])
+            messages.success(
+                request,
+                f"{support_request.queue_ticket_number} marked as High Priority and moved to the top of the PM queue.",
+            )
+        return redirect(f"{reverse('dashboards:home')}#other-issue-review")
 
 
 class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
@@ -840,6 +862,8 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
     def _build_initial(self):
         initial = build_support_request_ticket_initial(self.support_request)
         initial.setdefault("status", "not_started")
+        if self.support_request.is_escalated:
+            initial["priority"] = "critical"
         if not initial.get("requester_number") and self.request.user.phone_number:
             initial["requester_number"] = self.request.user.phone_number
         return initial
@@ -880,6 +904,7 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
                 "support_request": self.support_request,
                 "uploaded_file_name": uploaded_file_name,
                 "uploaded_file_is_image": uploaded_file_is_image,
+                "pm_queue_estimated_response_time": get_pm_queue_estimated_response_time(),
                 "form": form,
                 "ticket_types_payload": [
                     {"id": ticket_type.id, "category_id": ticket_type.category_id, "name": ticket_type.name}
@@ -988,7 +1013,9 @@ def support_faq_other_issue(request, user_type, super_slug, category_slug):
         {
             "success": True,
             "request_id": support_request.pk,
-            "message": "Issue recorded. It is now available in the PM dashboard for review.",
+            "ticket_id": support_request.queue_ticket_number,
+            "estimated_response_time": get_pm_queue_estimated_response_time(),
+            "message": build_pm_queue_success_message(support_request),
         }
     )
 
@@ -1053,7 +1080,9 @@ def support_faq_page_other_issue(request, user_type, page_slug):
         {
             "success": True,
             "request_id": support_request.pk,
-            "message": "Issue recorded. It is now available in the PM dashboard for review.",
+            "ticket_id": support_request.queue_ticket_number,
+            "estimated_response_time": get_pm_queue_estimated_response_time(),
+            "message": build_pm_queue_success_message(support_request),
         }
     )
 

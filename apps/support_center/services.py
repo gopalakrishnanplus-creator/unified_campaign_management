@@ -1,7 +1,11 @@
 from collections import OrderedDict
+import logging
 
+import requests
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
 from django.db.models import Q
+from django.template.loader import render_to_string
 from django.utils.text import Truncator
 
 from apps.ticketing.models import Department, Ticket
@@ -23,6 +27,7 @@ SOURCE_SYSTEM_TO_TICKET_SOURCE = {
     "Red Flag Alert": Ticket.SourceSystem.RED_FLAG_ALERT,
     "Patient Education": Ticket.SourceSystem.PATIENT_EDUCATION,
 }
+logger = logging.getLogger(__name__)
 
 
 def get_visible_support_items(user_type):
@@ -244,6 +249,98 @@ def _fallback_requester_identity(user_type, request_user):
     }
 
 
+def get_pm_queue_estimated_response_time():
+    return settings.PM_QUEUE_ESTIMATED_RESPONSE_TIME
+
+
+def build_pm_queue_success_message(support_request):
+    return (
+        f"Support ticket {support_request.queue_ticket_number} received. "
+        f"Estimated response time: {get_pm_queue_estimated_response_time()}."
+    )
+
+
+def _pm_queue_email_context(support_request):
+    return {
+        "support_request": support_request,
+        "ticket_id": support_request.queue_ticket_number,
+        "estimated_response_time": get_pm_queue_estimated_response_time(),
+        "device_type": support_request.get_device_type_display() if support_request.device_type else "",
+        "device": support_request.get_device_display() if support_request.device else "",
+    }
+
+
+def _send_email_via_sendgrid(*, to_email, to_name, subject, text_body, html_body):
+    response = requests.post(
+        settings.SENDGRID_API_URL,
+        headers={
+            "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "personalizations": [
+                {
+                    "to": [{"email": to_email, "name": to_name or to_email}],
+                    "subject": subject,
+                }
+            ],
+            "from": {
+                "email": settings.SENDGRID_FROM_EMAIL,
+                "name": settings.SENDGRID_FROM_NAME,
+            },
+            "content": [
+                {"type": "text/plain", "value": text_body},
+                {"type": "text/html", "value": html_body},
+            ],
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+
+
+def _send_email_via_django(*, to_email, subject, text_body, html_body):
+    message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[to_email],
+    )
+    message.attach_alternative(html_body, "text/html")
+    message.send(fail_silently=False)
+
+
+def send_pm_queue_confirmation_email(support_request):
+    if not support_request.requester_email:
+        return
+
+    context = _pm_queue_email_context(support_request)
+    subject = f"Support ticket {support_request.queue_ticket_number} received"
+    text_body = render_to_string("support_center/emails/pm_queue_confirmation.txt", context)
+    html_body = render_to_string("support_center/emails/pm_queue_confirmation.html", context)
+
+    try:
+        if settings.SENDGRID_API_KEY:
+            _send_email_via_sendgrid(
+                to_email=support_request.requester_email,
+                to_name=support_request.requester_name,
+                subject=subject,
+                text_body=text_body,
+                html_body=html_body,
+            )
+        else:
+            _send_email_via_django(
+                to_email=support_request.requester_email,
+                subject=subject,
+                text_body=text_body,
+                html_body=html_body,
+            )
+    except Exception:
+        logger.exception(
+            "PM queue confirmation email failed for support request %s",
+            support_request.queue_ticket_number,
+        )
+
+
 def create_other_support_request(*, user_type, page, super_category, category, system_name, flow_name, form, request_user):
     support_request = form.save(commit=False)
     requester = _fallback_requester_identity(user_type, request_user)
@@ -261,6 +358,7 @@ def create_other_support_request(*, user_type, page, super_category, category, s
     support_request.subject = f"Other issue - {(page.name if page else category.name)}"
     support_request.status = SupportRequest.Status.PENDING_PM_REVIEW
     support_request.save()
+    send_pm_queue_confirmation_email(support_request)
     return support_request
 
 
@@ -284,6 +382,8 @@ def build_support_request_ticket_initial(support_request):
         support_request.free_text.strip(),
         "",
         "Support request context",
+        f"PM queue ticket ID: {support_request.queue_ticket_number or 'Not available'}",
+        f"PM queue priority: {support_request.priority_label}",
         f"System: {support_request.source_system or 'Not provided'}",
         f"Flow: {support_request.source_flow or GENERAL_SUPPORT_FLOW}",
         f"Page: {support_request.page_label or 'Not specified'}",
@@ -294,6 +394,8 @@ def build_support_request_ticket_initial(support_request):
         f"Requester email: {support_request.requester_email or 'Not provided'}",
         f"Requester phone: {support_request.requester_number or 'Not provided'}",
         f"Requester company: {support_request.requester_company or 'Not provided'}",
+        f"Device type: {support_request.get_device_type_display() if support_request.device_type else 'Not provided'}",
+        f"Device: {support_request.get_device_display() if support_request.device else 'Not provided'}",
     ]
     if support_request.uploaded_file:
         description_lines.append(f"Uploaded file: {support_request.uploaded_file.name.split('/')[-1]}")
@@ -310,7 +412,7 @@ def build_support_request_ticket_initial(support_request):
         "description": "\n".join(line for line in description_lines if line is not None),
         "ticket_category": classification["ticket_category"],
         "ticket_type_definition": classification["ticket_type_definition"],
-        "priority": classification["priority"],
+        "priority": Ticket.Priority.CRITICAL if support_request.is_escalated else classification["priority"],
         "campaign": support_request.campaign,
         "user_type": support_request.user_type,
         "source_system": SOURCE_SYSTEM_TO_TICKET_SOURCE.get(
