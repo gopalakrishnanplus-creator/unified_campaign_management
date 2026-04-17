@@ -9,6 +9,7 @@ Call:
 - `/support/api/doctor/faq-links/`
 - `/support/api/clinic_staff/faq-links/`
 - `/support/api/brand_manager/faq-links/`
+- `/support/api/publisher/faq-links/`
 - `/support/api/field_rep/faq-links/`
 - `/support/api/patient/faq-links/`
 

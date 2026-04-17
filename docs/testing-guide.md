@@ -22,6 +22,7 @@ Check that each page loads without an exception:
 - `/support/doctor/`
 - `/support/clinic_staff/`
 - `/support/brand_manager/`
+- `/support/publisher/`
 - `/support/field_rep/`
 - `/support/patient/`
 - `/accounts/login/?next=/app/`
@@ -130,12 +131,13 @@ Expected result:
 Open:
 
 - `/support/api/brand_manager/faq-links/`
+- `/support/api/publisher/faq-links/`
 - one returned `api_url` from that payload
 - one returned `embed_url` from that payload in a browser tab
 
 Expected result:
 
-- the links API returns JSON with one entry per super-category and category combination
+- the links API returns JSON with one entry per page
 - every entry includes `page_url`, `widget_url`, `embed_url`, and `api_url`
 - the combination API returns only the FAQ questions for that specific combination
 - the embed URL loads without an `X-Frame-Options` block so it can be placed in another system as a bottom-right iframe

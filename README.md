@@ -2,7 +2,7 @@
 
 Local Django implementation of the campaign management system described in the provided diagrams and PDFs. The project includes:
 
-- Customer support landing pages for doctors, clinic staff, brand managers, and field reps
+- Customer support landing pages for doctors, clinic staff, brand managers, publishers, field reps, and patients
 - FAQ support pages grouped by super category, with page-specific FAQ chat widgets for each super-category and category combination
 - A ticketing system with department routing, delegation, status control, notes, and attachments
 - A sequential support assistant that walks through FAQs first and escalates into ticket cases when needed
@@ -41,12 +41,18 @@ The project was initialized in this workspace with Python `3.9.6` and is configu
    ```bash
    python manage.py seed_demo_data
    ```
-7. Import support FAQs and ticket cases from PDF sheets when needed:
+7. Import support FAQs and ticket cases from the bundled PDF sheets when needed:
    ```bash
    python manage.py import_support_pdfs --replace \
-     "/Users/inditech-tech/Desktop/Inclinic-FAQs - Google Sheets.pdf" \
-     "/Users/inditech-tech/Desktop/PE-FAQs - Google Sheets.pdf" \
-     "/Users/inditech-tech/Desktop/RFA-FAQs - Google Sheets.pdf"
+     "static/support-pdfs/in-clinic-flow1-doctor-faqs.pdf" \
+     "static/support-pdfs/in-clinic-flow2-field-rep-faqs.pdf" \
+     "static/support-pdfs/patient-education-flow1-doctor-faqs.pdf" \
+     "static/support-pdfs/patient-education-flow2-patient-faqs.pdf" \
+     "static/support-pdfs/red-flag-alert-flow1-doctor-faqs.pdf" \
+     "static/support-pdfs/red-flag-alert-flow2-field-rep-faqs.pdf" \
+     "static/support-pdfs/red-flag-alert-flow3-patient-faqs.pdf" \
+     "static/support-pdfs/red-flag-alert-flow4-publisher-faqs.pdf" \
+     "static/support-pdfs/red-flag-alert-flow5-brand-manager-faqs.pdf"
    ```
 8. Seed the baseline non-PDF support widgets when you need the full static widget catalog from `docs/support-widget-links.csv`:
    ```bash
@@ -127,6 +133,7 @@ SQLite is used by default locally so the project runs immediately without Docker
 - `/support/doctor/`
 - `/support/clinic_staff/`
 - `/support/brand_manager/`
+- `/support/publisher/`
 - `/support/field_rep/`
 - `/support/patient/`
 - `/support/<role>/faq/<super_slug>/` FAQ page for one super category

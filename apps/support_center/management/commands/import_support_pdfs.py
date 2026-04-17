@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import pdfplumber
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils.text import slugify
@@ -22,6 +23,8 @@ ROLE_LABELS = {
     "Doctor": "doctor",
     "FieldRep": "field_rep",
     "Patient": "patient",
+    "Publisher": "publisher",
+    "BrandManager": "brand_manager",
 }
 
 DEPARTMENT_SPECS = {
@@ -56,6 +59,7 @@ class ParsedSheet:
     audience: str
     knowledge_type: str
     source_document: str
+    associated_pdf_url: str
     source_page: int
     rows: list
 
@@ -125,13 +129,15 @@ class Command(BaseCommand):
                     "source_flow": sheet.flow_name,
                     "source_document": sheet.source_document,
                     "source_page": sheet.source_page,
+                    "associated_pdf_url": sheet.associated_pdf_url,
                     "knowledge_type": sheet.knowledge_type,
                     "ticket_required": ticket_required,
                     "display_order": counters["item"],
                     "is_active": True,
                     "is_visible_to_doctors": sheet.audience == "doctor",
                     "is_visible_to_clinic_staff": False,
-                    "is_visible_to_brand_managers": False,
+                    "is_visible_to_brand_managers": sheet.audience == "brand_manager",
+                    "is_visible_to_publishers": sheet.audience == "publisher",
                     "is_visible_to_field_reps": sheet.audience == "field_rep",
                     "is_visible_to_patients": sheet.audience == "patient",
                 }
@@ -172,6 +178,7 @@ class Command(BaseCommand):
 
     def parse_pdf(self, pdf_path):
         parsed_sheets = []
+        associated_pdf_url = self.build_associated_pdf_url(pdf_path)
         with pdfplumber.open(pdf_path) as pdf:
             for page_number, page in enumerate(pdf.pages, 1):
                 text_lines = [line.strip() for line in (page.extract_text() or "").splitlines() if line.strip()]
@@ -238,6 +245,7 @@ class Command(BaseCommand):
                         audience=metadata["audience"],
                         knowledge_type=knowledge_type,
                         source_document=pdf_path.name,
+                        associated_pdf_url=associated_pdf_url,
                         source_page=page_number,
                         rows=rows,
                     )
@@ -309,6 +317,13 @@ class Command(BaseCommand):
         flow = slugify(sheet.flow_name)
         kind = slugify(sheet.knowledge_type)
         return f"{flow}-{kind}-{base}"[:255]
+
+    def build_associated_pdf_url(self, pdf_path):
+        bundled_pdf_path = Path(settings.BASE_DIR) / "static" / "support-pdfs" / pdf_path.name
+        if not bundled_pdf_path.exists():
+            return ""
+        static_url = settings.STATIC_URL.rstrip("/") or "/static"
+        return f"{static_url}/support-pdfs/{pdf_path.name}"
 
     def resolve_department(self, label, departments):
         if not label or label.upper() == "NA":

@@ -113,6 +113,7 @@ class SupportItem(models.Model):
     is_visible_to_doctors = models.BooleanField(default=True)
     is_visible_to_clinic_staff = models.BooleanField(default=True)
     is_visible_to_brand_managers = models.BooleanField(default=True)
+    is_visible_to_publishers = models.BooleanField(default=False)
     is_visible_to_field_reps = models.BooleanField(default=True)
     is_visible_to_patients = models.BooleanField(default=False)
 
@@ -133,6 +134,7 @@ class SupportItem(models.Model):
             "doctor": self.is_visible_to_doctors,
             "clinic_staff": self.is_visible_to_clinic_staff,
             "brand_manager": self.is_visible_to_brand_managers,
+            "publisher": self.is_visible_to_publishers,
             "field_rep": self.is_visible_to_field_reps,
             "patient": self.is_visible_to_patients,
         }

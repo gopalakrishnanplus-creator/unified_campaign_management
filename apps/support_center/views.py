@@ -50,6 +50,7 @@ ROLE_CONFIG = {
     "doctor": {"title": "Doctor Support", "page_title": "Doctor support landing page"},
     "clinic_staff": {"title": "Clinic Staff Support", "page_title": "Clinic staff support landing page"},
     "brand_manager": {"title": "Brand Manager Support", "page_title": "Brand manager support landing page"},
+    "publisher": {"title": "Publisher Support", "page_title": "Publisher support landing page"},
     "field_rep": {"title": "Field Rep Support", "page_title": "Field representative support landing page"},
     "patient": {"title": "Patient Support", "page_title": "Patient support landing page"},
 }
