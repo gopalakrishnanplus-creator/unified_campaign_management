@@ -81,13 +81,15 @@ python manage.py check
 python manage.py seed_support_baseline
 
 FLOW_SUPPORT_PDFS=(
-  "$APP_DIR/Inclinic-FAQsDoctorFlow.pdf"
-  "$APP_DIR/Inclinic-FAQsFieldRepFlow.pdf"
-  "$APP_DIR/PE-FAQsDoctorFlow.pdf"
-  "$APP_DIR/PE-FAQsPatientFlow.pdf"
-  "$APP_DIR/RFA-FAQsDoctorFlow.pdf"
-  "$APP_DIR/RFA-FAQsFieldRepFlow.pdf"
-  "$APP_DIR/RFA-FAQsPatientFlow.pdf"
+  "$APP_DIR/static/support-pdfs/in-clinic-flow1-doctor-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/in-clinic-flow2-field-rep-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/patient-education-flow1-doctor-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/patient-education-flow2-patient-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/red-flag-alert-flow1-doctor-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/red-flag-alert-flow2-field-rep-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/red-flag-alert-flow3-patient-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/red-flag-alert-flow4-publisher-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/red-flag-alert-flow5-brand-manager-faqs.pdf"
 )
 
 LEGACY_SUPPORT_PDFS=(
@@ -102,7 +104,7 @@ SUPPORT_PDFS=()
 if all_files_exist "${FLOW_SUPPORT_PDFS[@]}"; then
   SUPPORT_MODE="flow"
   SUPPORT_PDFS=("${FLOW_SUPPORT_PDFS[@]}")
-  echo "Using flow-wise support PDFs from repo root."
+  echo "Using flow-wise support PDFs from static/support-pdfs."
 elif all_files_exist "${LEGACY_SUPPORT_PDFS[@]}"; then
   SUPPORT_MODE="legacy"
   SUPPORT_PDFS=("${LEGACY_SUPPORT_PDFS[@]}")
