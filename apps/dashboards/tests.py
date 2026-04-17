@@ -1,3 +1,4 @@
+from pathlib import Path
 from datetime import datetime
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
@@ -35,6 +36,7 @@ class SeededIntegrationTestCase(TestCase):
             reverse("support_center:landing", kwargs={"user_type": "doctor"}),
             reverse("support_center:landing", kwargs={"user_type": "clinic_staff"}),
             reverse("support_center:landing", kwargs={"user_type": "brand_manager"}),
+            reverse("support_center:landing", kwargs={"user_type": "publisher"}),
             reverse("support_center:landing", kwargs={"user_type": "field_rep"}),
             reverse("support_center:landing", kwargs={"user_type": "patient"}),
             "/accounts/login/?next=/app/",
@@ -1072,6 +1074,42 @@ class SupportBaselineCommandTests(TestCase):
         self.assertTrue(get_faq_combination("clinic_staff", "campaign-operations", "sharing-activation"))
         self.assertTrue(get_faq_combination("brand_manager", "access-login", "authentication"))
         self.assertTrue(get_faq_combination("field_rep", "access-login", "authentication"))
+
+
+class SupportPdfImportCommandTests(TestCase):
+    def test_import_support_pdfs_loads_new_rfa_publisher_and_brand_manager_flows(self):
+        base_dir = Path(settings.BASE_DIR)
+        publisher_pdf = base_dir / "static" / "support-pdfs" / "red-flag-alert-flow4-publisher-faqs.pdf"
+        brand_manager_pdf = base_dir / "static" / "support-pdfs" / "red-flag-alert-flow5-brand-manager-faqs.pdf"
+
+        call_command("import_support_pdfs", "--replace", str(publisher_pdf), str(brand_manager_pdf))
+
+        publisher_items = SupportItem.objects.filter(
+            source_system="Red Flag Alert",
+            source_flow="Flow4 / Publisher",
+            is_visible_to_publishers=True,
+        )
+        brand_manager_items = SupportItem.objects.filter(
+            source_system="Red Flag Alert",
+            source_flow="Flow5 / BrandManager",
+            is_visible_to_brand_managers=True,
+        )
+
+        self.assertTrue(publisher_items.exists())
+        self.assertTrue(brand_manager_items.exists())
+        self.assertEqual(
+            publisher_items.first().associated_pdf_url,
+            "/static/support-pdfs/red-flag-alert-flow4-publisher-faqs.pdf",
+        )
+        self.assertEqual(
+            brand_manager_items.first().associated_pdf_url,
+            "/static/support-pdfs/red-flag-alert-flow5-brand-manager-faqs.pdf",
+        )
+
+        response = self.client.get(reverse("support_center:faq_links_api", kwargs={"user_type": "publisher"}))
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["role_title"], "Publisher Support")
 
 
 class TicketingDropdownSeedCommandTests(TestCase):

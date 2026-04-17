@@ -18,6 +18,7 @@ ROLE_VISIBILITY_FIELD = {
     "doctor": "is_visible_to_doctors",
     "clinic_staff": "is_visible_to_clinic_staff",
     "brand_manager": "is_visible_to_brand_managers",
+    "publisher": "is_visible_to_publishers",
     "field_rep": "is_visible_to_field_reps",
     "patient": "is_visible_to_patients",
 }

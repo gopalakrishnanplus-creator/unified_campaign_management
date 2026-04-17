@@ -11,6 +11,7 @@ ROLE_CONFIG = {
     "doctor": "Doctor Support",
     "clinic_staff": "Clinic Staff Support",
     "brand_manager": "Brand Manager Support",
+    "publisher": "Publisher Support",
     "field_rep": "Field Rep Support",
     "patient": "Patient Support",
 }
