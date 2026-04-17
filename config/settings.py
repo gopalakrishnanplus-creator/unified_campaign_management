@@ -32,6 +32,15 @@ def safe_load_env_file(path: Path, *, override: bool = False) -> bool:
 safe_load_env_file(LOCAL_ENV_PATH)
 safe_load_env_file(SECRETS_ENV_PATH, override=True)
 
+
+def parse_csv_env_list(raw_value: str):
+    values = []
+    for part in (raw_value or "").replace("\n", ",").replace(";", ",").split(","):
+        cleaned = part.strip()
+        if cleaned:
+            values.append(cleaned)
+    return values
+
 TEMPLATES_DIR = BASE_DIR / "templates"
 JINJA_DIR = BASE_DIR / "jinja2"
 STATIC_DIR = BASE_DIR / "static"
@@ -211,6 +220,7 @@ ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = False
 ACCOUNT_LOGOUT_ON_GET = True
 ACCOUNT_ADAPTER = "apps.accounts.adapters.AccountAdapter"
+SOCIALACCOUNT_ADAPTER = "apps.accounts.adapters.SocialAccountAdapter"
 
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
@@ -232,7 +242,14 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
-PROJECT_MANAGER_EMAIL = os.getenv("PROJECT_MANAGER_EMAIL", "campaignpm@inditech.co.in")
+PROJECT_MANAGER_EMAIL = os.getenv("PROJECT_MANAGER_EMAIL", "campaignpm@inditech.co.in").strip() or "campaignpm@inditech.co.in"
+PROJECT_MANAGER_EMAILS = tuple(
+    dict.fromkeys(
+        email.lower()
+        for email in [PROJECT_MANAGER_EMAIL, *parse_csv_env_list(os.getenv("PROJECT_MANAGER_EMAILS", ""))]
+        if email
+    )
+)
 ENABLE_DEV_LOGIN = os.getenv("ENABLE_DEV_LOGIN", "true").lower() == "true"
 EXTERNAL_TICKETING_SYNC_ENABLED = os.getenv(
     "EXTERNAL_TICKETING_SYNC_ENABLED",

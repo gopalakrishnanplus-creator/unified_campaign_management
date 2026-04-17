@@ -1,8 +1,9 @@
-from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone as dj_timezone
+
+from .access import email_has_project_manager_access
 
 
 class UserManager(BaseUserManager):
@@ -78,4 +79,4 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def is_project_manager(self):
-        return self.role == self.Role.PROJECT_MANAGER or self.email.lower() == settings.PROJECT_MANAGER_EMAIL.lower()
+        return self.role == self.Role.PROJECT_MANAGER or email_has_project_manager_access(self.email)

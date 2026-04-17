@@ -972,6 +972,7 @@ DJANGO_SECRET_KEY=change-me
 DEBUG=true
 TIME_ZONE=Asia/Kolkata
 PROJECT_MANAGER_EMAIL=campaignpm@inditech.co.in
+PROJECT_MANAGER_EMAILS=campaignpm@inditech.co.in,pm2@inditech.co.in,pm3@inditech.co.in
 ENABLE_DEV_LOGIN=true
 
 DB_ENGINE=sqlite
@@ -1003,6 +1004,7 @@ WORDPRESS_CERTIFICATE_COURSE_IDS=8693,9204
 | `DEBUG` | No | `true` by default |
 | `TIME_ZONE` | No | `Asia/Kolkata` |
 | `PROJECT_MANAGER_EMAIL` | No | `campaignpm@inditech.co.in` |
+| `PROJECT_MANAGER_EMAILS` | No | Optional comma-separated allowlist for additional PM Google accounts |
 | `ENABLE_DEV_LOGIN` | No | `true` |
 | `DB_ENGINE` | No | `sqlite`; set to `mysql` for MySQL |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | MySQL only | Used only when `DB_ENGINE=mysql` |
