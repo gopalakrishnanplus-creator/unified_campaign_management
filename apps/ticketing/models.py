@@ -62,6 +62,7 @@ class Ticket(models.Model):
         DOCTOR = "doctor", "Doctor"
         CLINIC_STAFF = "clinic_staff", "Clinic staff"
         BRAND_MANAGER = "brand_manager", "Brand manager"
+        PUBLISHER = "publisher", "Publisher"
         FIELD_REP = "field_rep", "Field rep"
         PATIENT = "patient", "Patient"
         INTERNAL = "internal", "Internal"

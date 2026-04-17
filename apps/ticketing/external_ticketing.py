@@ -62,6 +62,7 @@ USER_TYPE_MAP = {
     Ticket.UserType.DOCTOR: "client",
     Ticket.UserType.CLINIC_STAFF: "client",
     Ticket.UserType.BRAND_MANAGER: "client",
+    Ticket.UserType.PUBLISHER: "client",
     Ticket.UserType.FIELD_REP: "client",
     Ticket.UserType.PATIENT: "client",
 }

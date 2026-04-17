@@ -28,7 +28,7 @@ It combines role-specific support experiences, ticket routing, campaign metadata
 The system provides one operational surface for:
 
 1. Campaign setup visibility through campaign, clinic, doctor, and field-rep records
-2. Role-based support landing pages for doctors, clinic staff, brand managers, field reps, and patients
+2. Role-based support landing pages for doctors, clinic staff, brand managers, publishers, field reps, and patients
 3. Page-wise and combination-wise FAQ delivery through web pages, embeddable widgets, and JSON APIs
 4. A guided support assistant that walks users from system selection to FAQ resolution or escalation
 5. Ticket creation, routing, delegation, status management, notes, attachments, and optional external sync
@@ -43,7 +43,7 @@ The codebase addresses a fragmented operational problem: campaign support, conte
 
 | Feature | Description |
 | --- | --- |
-| Role-based support hubs | Public support landing pages for `doctor`, `clinic_staff`, `brand_manager`, `field_rep`, and `patient` |
+| Role-based support hubs | Public support landing pages for `doctor`, `clinic_staff`, `brand_manager`, `publisher`, `field_rep`, and `patient` |
 | FAQ page and widget delivery | Support content can be browsed as full pages or embedded as iframe-safe widgets |
 | Guided assistant | Session-backed FAQ assistant lets users choose system, flow, category, FAQ, and unresolved issue escalation |
 | Ticket lifecycle management | Tickets support automatic classification, department routing, delegation, return-to-sender, notes, attachments, and status updates |
@@ -60,6 +60,7 @@ The codebase addresses a fragmented operational problem: campaign support, conte
 | Doctors | Access support pages, FAQs, widgets, assistant flows, and issue escalation |
 | Clinic staff | Access support pages and issue escalation specific to clinic workflows |
 | Brand managers | Access support pages plus PM-facing analytics through authenticated dashboards |
+| Publishers | Access publisher-facing support pages and FAQ flows for RFA campaign management |
 | Field reps | Access support pages tied to campaign activation and sharing issues |
 | Patients | Access patient-safe support pages and widget flows |
 | Project managers | Use dashboards, campaign views, PM review queue, ticketing workspace, and reporting dashboards |
@@ -255,7 +256,7 @@ graph TD
 | `scripts/bootstrap_local.sh` | Convenience local bootstrap script |
 | `scripts/start_local.sh` | Convenience local run script |
 | `scripts/deploy_ec2.sh` | EC2 deployment and post-deploy data import script |
-| `*.pdf` at repo root | Source FAQ spreadsheets exported as PDFs and consumed by `import_support_pdfs` |
+| `static/support-pdfs/*.pdf` | Bundled FAQ spreadsheets consumed by `import_support_pdfs` and support-link exports |
 
 ### Key Modules and Files
 
@@ -1052,25 +1053,27 @@ The manual steps above are the source of truth. The bootstrap script is a conven
 | `python manage.py seed_demo_data` | Seeds campaigns, users, departments, support catalog, tickets, and reporting snapshots |
 | `python manage.py seed_support_baseline` | Seeds a small baseline support catalog for widget links |
 | `python manage.py seed_ticketing_dropdowns` | Seeds departments, campaigns, ticket categories, and ticket types for the ticket form |
-| `python manage.py import_support_pdfs --replace <pdf...>` | Imports FAQ and ticket-case rows from exported PDF sheets |
+| `python manage.py import_support_pdfs --replace <pdf...>` | Imports FAQ and ticket-case rows from the bundled PDF sheets |
 | `python manage.py export_support_widget_links --base-url <url>` | Exports page-wise widget/API link catalogs to `docs/` |
 | `python manage.py sync_internal_ticket_directory` | Pulls department and manager mappings from the internal ticketing API |
 
 ### Support PDF Import Workflow
 
-The support catalog can be generated from the PDF spreadsheets committed at the repository root.
+The support catalog can be generated from the bundled PDF spreadsheets in `static/support-pdfs/`.
 
 Example:
 
 ```bash
 python manage.py import_support_pdfs --replace \
-  Inclinic-FAQsDoctorFlow.pdf \
-  Inclinic-FAQsFieldRepFlow.pdf \
-  PE-FAQsDoctorFlow.pdf \
-  PE-FAQsPatientFlow.pdf \
-  RFA-FAQsDoctorFlow.pdf \
-  RFA-FAQsFieldRepFlow.pdf \
-  RFA-FAQsPatientFlow.pdf
+  static/support-pdfs/in-clinic-flow1-doctor-faqs.pdf \
+  static/support-pdfs/in-clinic-flow2-field-rep-faqs.pdf \
+  static/support-pdfs/patient-education-flow1-doctor-faqs.pdf \
+  static/support-pdfs/patient-education-flow2-patient-faqs.pdf \
+  static/support-pdfs/red-flag-alert-flow1-doctor-faqs.pdf \
+  static/support-pdfs/red-flag-alert-flow2-field-rep-faqs.pdf \
+  static/support-pdfs/red-flag-alert-flow3-patient-faqs.pdf \
+  static/support-pdfs/red-flag-alert-flow4-publisher-faqs.pdf \
+  static/support-pdfs/red-flag-alert-flow5-brand-manager-faqs.pdf
 ```
 
 The importer:
