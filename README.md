@@ -74,8 +74,9 @@ The codebase addresses a fragmented operational problem: campaign support, conte
 4. If the issue is unresolved, the system creates either:
    - an immediate `Ticket`, or
    - a `SupportRequest` pending project-manager review, depending on the support item and submission path.
-5. Project managers monitor `/app/` and `/app/performance/` for ticket health, campaign performance, source availability, and unresolved widget submissions.
-6. Routed tickets are worked in `/ticketing/`, optionally mirrored to the external ticketing platform.
+5. PM-queue submissions receive a queue ticket ID and estimated response time immediately, and can also trigger a confirmation email.
+6. Project managers monitor `/app/` and `/app/performance/` for ticket health, campaign performance, source availability, and unresolved widget submissions.
+7. Routed tickets are worked in `/ticketing/`, optionally mirrored to the external ticketing platform.
 
 ## System Architecture
 
@@ -89,6 +90,7 @@ graph LR
         Doctor[Doctor]
         Clinic[Clinic Staff]
         Brand[Brand Manager]
+        Publisher[Publisher]
         Rep[Field Rep]
         Patient[Patient]
         PM[Project Manager]
@@ -114,6 +116,7 @@ graph LR
     Doctor --> Router
     Clinic --> Router
     Brand --> Router
+    Publisher --> Router
     Rep --> Router
     Patient --> Router
     PM --> Router
@@ -152,7 +155,7 @@ graph LR
 | Component | Role in the system |
 | --- | --- |
 | `config` | Global settings, URL routing, Jinja environment, environment loading, auth context |
-| `apps.accounts` | Custom email-based user model, project-manager role handling, dev login, allauth adapter |
+| `apps.accounts` | Custom email-based user model, project-manager allowlist handling, dev login, allauth adapter |
 | `apps.campaigns` | Campaign metadata, clinic hierarchy, doctor records, enrollments, and field-rep assignments |
 | `apps.support_center` | Public support pages, FAQ APIs, widgets, assistant flow, support requests, PM escalation |
 | `apps.ticketing` | Ticket taxonomy, ticket CRUD flows, routing events, notes, attachments, delegation, external sync |
@@ -168,7 +171,7 @@ graph LR
 | Validation | Django forms in `support_center` and `ticketing` | Validates request payloads and file uploads |
 | Domain logic | Service modules under `apps/*/services.py` | Keeps views thin and reusable |
 | Persistence | Django models and ORM | SQLite by default, MySQL supported |
-| Integration | `requests` calls in reporting and external ticketing services | Supports graceful fallback on live-feed failures |
+| Integration | `requests` calls in reporting, external ticketing, and SendGrid-backed support notifications | Supports graceful fallback on live-feed failures and queue-confirmation email delivery |
 | Operations | Management commands and deploy scripts | Seed data, import PDFs, export widget links, deploy to EC2 |
 
 ### Data Flow
@@ -181,6 +184,7 @@ graph LR
    - Jinja-rendered HTML, or
    - JSON for support/reporting APIs.
 6. Ticket creation can trigger an `on_commit` external sync into the internal ticketing system.
+7. PM-review support requests can also trigger a confirmation email via SendGrid or Django email.
 
 ### Component Interaction Diagram
 
@@ -298,19 +302,19 @@ graph TD
 
 | Area | Main views | Responsibilities |
 | --- | --- | --- |
-| Home and dashboards | `HomeView`, `ProjectManagementDashboardView`, `CampaignPerformanceDashboardView`, `MyWorkRedirectView` | Public home, PM dashboards, campaign selection, role-aware redirect |
+| Home and dashboards | `HomeView`, `ProjectManagementDashboardView`, `CampaignPerformanceDashboardView`, `MyWorkRedirectView` | Public home, PM dashboards, and role-aware redirect |
 | Accounts | `DevelopmentLoginView`, `AccountHealthView` | Dev login shortcut and lightweight account heartbeat |
 | Campaigns | `CampaignListView`, `CampaignDetailView` | Authenticated campaign browsing and drill-down |
-| Support center | `SupportLandingView`, `SupportFaqPageView`, `SupportFaqWidgetView`, `SupportAssistantView`, `SupportRequestRaiseTicketView` | Public support entry, FAQ pages, widgets, assistant, PM escalation |
-| Ticketing | `TicketListView`, `TicketCreateView`, `TicketDetailView`, `TicketDistributionView` | Ticket workspace, ticket creation, workflow actions, distribution analytics |
+| Support center | `SupportLandingView`, `SupportFaqPageView`, `SupportFaqWidgetView`, `SupportAssistantView`, `SupportRequestEscalateView`, `SupportRequestRaiseTicketView` | Public support entry, FAQ pages, widgets, assistant, PM queue escalation, PM ticket conversion |
+| Ticketing | `TicketListView`, `TicketCreateView`, `TicketEscalateView`, `TicketDetailView`, `TicketDistributionView` | Ticket workspace, ticket creation, high-priority escalation, workflow actions, distribution analytics |
 | Reporting | `ReportingContractsView`, `reporting_contracts_api`, `subsystem_feed` | Human-readable and JSON reporting contracts plus feed access |
 
 ### Services
 
 | Service module | Primary responsibilities |
 | --- | --- |
-| `apps.support_center.services` | FAQ visibility filtering, page/group aggregation, assistant options, support-request creation, ticket escalation from support |
-| `apps.ticketing.services` | Ticket taxonomy seeding, classification, ticket creation, delegation, return, status change, distribution summaries |
+| `apps.support_center.services` | FAQ visibility filtering, page/group aggregation, assistant options, support-request creation, PM queue confirmation email, and ticket escalation from support |
+| `apps.ticketing.services` | Ticket taxonomy seeding, classification, ticket creation, delegation, escalation, return, status change, distribution summaries |
 | `apps.ticketing.external_ticketing` | Department-directory sync, external ticket creation, attachment sync, payload building, department matching |
 | `apps.reporting.services` | Live reporting fetches, local snapshot serialization, campaign alias filtering, adoption metrics, external growth aggregation |
 | `apps.dashboards.services` | Support dashboard cards, status breakdowns, quality metrics, external source health, performance section assembly |
@@ -330,7 +334,7 @@ graph TD
 | Form | Used by | Validation highlights |
 | --- | --- | --- |
 | `SupportRequestForm` | Public support landing and support-item detail | Collects requester identity, campaign, subject, and free text |
-| `SupportOtherIssueForm` | Widgets and assistant unresolved-issue submissions | Requires phone number, limits uploads to image formats under 8 MB |
+| `SupportOtherIssueForm` | Widgets and assistant unresolved-issue submissions | Requires phone number, collects optional device metadata, limits uploads to image formats under 8 MB |
 | `TicketCreateForm` | PM ticket creation and PM escalation form | Requires category, ticket type or new type, requester phone number, and active department |
 | `TicketDelegationForm` | Ticket detail | Limits assignee choices to active users and optionally same department |
 | `TicketStatusForm` | Ticket detail | Restricts updates to declared ticket statuses |
@@ -340,7 +344,8 @@ graph TD
 
 | File | Purpose |
 | --- | --- |
-| `apps/accounts/adapters.py` | Forces email-only sign-up behavior and auto-promotes the configured PM user |
+| `apps/accounts/adapters.py` | Forces email-only sign-up behavior and syncs PM role/state during account creation and social login |
+| `apps/accounts/access.py` | Resolves the project-manager email allowlist and promotes matching users to PM access |
 | `config/context_processors.py` | Tells templates whether Google OAuth is available |
 | `config/jinja2.py` | Registers `static()` and named URL helpers for Jinja templates |
 | `apps/reporting/contracts.py` | Defines the expected reporting payload contract used by the contract view and API |
@@ -403,7 +408,7 @@ Important runtime details:
 | `SupportPage` | Page-wise support grouping used by landing pages and widgets | `name`, `slug`, `source_system`, `source_flow` |
 | `SupportCategory` | Category within a super-category | `super_category`, `name`, `slug`, `display_order` |
 | `SupportItem` | FAQ or ticket-case content node | `page`, `category`, `knowledge_type`, `response_mode`, `solution_body`, `ticket_department`, visibility flags |
-| `SupportRequest` | Captured user issue, either directly ticketed or queued for PM review | requester fields, campaign, support context, free text, upload, status |
+| `SupportRequest` | Captured user issue, either directly ticketed or queued for PM review | `queue_ticket_number`, requester fields, device metadata, campaign, support context, upload, `status`, `is_escalated` |
 
 #### Ticketing
 
@@ -412,7 +417,7 @@ Important runtime details:
 | `Department` | Ticket routing target | `name`, `code`, `support_email`, `default_recipient`, external directory fields |
 | `TicketCategory` | Top-level taxonomy bucket | `name`, `slug`, `description`, `display_order` |
 | `TicketTypeDefinition` | Typed classification under a category | `category`, `name`, `slug`, `default_priority`, `default_department`, `default_source_system` |
-| `Ticket` | Core work item | `ticket_number`, `title`, `description`, `status`, `priority`, `department`, assignees, requester identity, external sync fields |
+| `Ticket` | Core work item | `ticket_number`, `title`, `description`, `status`, `priority`, `is_escalated`, `department`, `direct_recipient`, `current_assignee`, requester identity, external sync fields, `support_request` |
 | `TicketRoutingEvent` | Immutable routing/activity history | `ticket`, `action`, `actor`, `from_user`, `to_user`, `description` |
 | `TicketNote` | Human-authored collaboration note | `ticket`, `author`, `body`, `created_at` |
 | `TicketAttachment` | File attached to a note | `note`, `file`, `created_at` |
@@ -424,8 +429,8 @@ Important runtime details:
 | `RedFlagSnapshot` | Local fallback for Red Flag Alert metrics | counts for fills, flags, reports, scans, reminders |
 | `PatientEducationSnapshot` | Local fallback for Patient Education metrics | views, completions, shares, scans, banner clicks |
 | `InClinicSnapshot` | Local fallback for In-clinic metrics | field rep, doctor, shares, opens, PDF/video activity |
-| `AdoptionSnapshot` | Local fallback for adoption metrics | `system_type`, doctors/clinics added, clinics with shares |
-| `ExternalGrowthSnapshot` | Local fallback for webinar and certificate completion metrics | webinar attendees and certificate completion counts |
+| `AdoptionSnapshot` | Local fallback for adoption metrics | `system_type`, `doctors_added`, `clinics_added`, `clinics_with_shares` |
+| `ExternalGrowthSnapshot` | Local fallback for webinar and certificate completion metrics | `webinar_attendees`, `certificate_completed`, onboarding-split certificate totals |
 
 ### Key Relationships and Constraints
 
@@ -440,6 +445,7 @@ Important runtime details:
 | `SupportPage.slug` unique | `support_center.SupportPage` |
 | `SupportCategory(super_category, slug)` unique together | `support_center.SupportCategory` |
 | `SupportItem(category, slug)` unique together | `support_center.SupportItem` |
+| `SupportRequest.queue_ticket_number` unique | `support_center.SupportRequest` |
 | `Department.code`, `Department.support_email`, and `Department.external_directory_id` unique | `ticketing.Department` |
 | `Ticket.ticket_number` unique | `ticketing.Ticket` |
 | `Ticket.support_request` optional one-to-one | `ticketing.Ticket` to `support_center.SupportRequest` |
@@ -500,7 +506,7 @@ erDiagram
 ### 1. Role-Based Support Landing Pages
 
 **Purpose**  
-Provide public, audience-specific support entry points for doctors, clinic staff, brand managers, field reps, and patients.
+Provide public, audience-specific support entry points for doctors, clinic staff, brand managers, publishers, field reps, and patients.
 
 **User flow**
 
@@ -535,7 +541,7 @@ Expose support content both as human-readable pages and as iframe-safe widgets f
 1. `_build_page_payload()` and `_build_combination_payload()` produce normalized JSON structures.
 2. Widget views are `xframe_options_exempt`.
 3. Support JSON endpoints return permissive CORS headers through `_cors_json()`.
-4. Unresolved widget issue endpoints are CSRF-exempt and store `SupportRequest` records with explicit system/flow context.
+4. Unresolved widget issue endpoints are CSRF-exempt, return queue ticket IDs plus estimated response times, and store `SupportRequest` records with explicit system/flow context.
 
 **Data interactions**  
 Reads `SupportPage`, `SupportCategory`, `SupportItem`; writes `SupportRequest`.
@@ -560,6 +566,7 @@ Offer a step-by-step support experience that narrows by system, flow, category, 
 1. `SupportAssistantView` stores progress in the session key `support-assistant:<user_type>`.
 2. `get_available_systems()`, `get_available_flows()`, and `get_available_categories()` drive the assistant menu.
 3. `create_other_support_request()` persists unresolved issues without creating a ticket immediately.
+4. `send_pm_queue_confirmation_email()` sends a confirmation through SendGrid when configured, otherwise through Django email.
 
 **Data interactions**  
 Reads visible support catalog records and writes `SupportRequest`.
@@ -578,12 +585,14 @@ Provide the authenticated work queue for support agents and project managers.
 2. They filter, sort, or search tickets.
 3. From the detail page they change status, delegate, return, add notes, and upload attachments.
 4. PMs can also create tickets manually from `/ticketing/new/`.
+5. PMs can mark a ticket as High Priority through `/ticketing/<id>/escalate/`.
 
 **Backend logic**
 
 1. `_scoped_ticket_queryset()` restricts non-PM users to tickets they are involved with.
 2. `create_ticket()` resolves taxonomy, creates the ticket, writes an initial routing event, and schedules external sync.
-3. `delegate_ticket()`, `return_ticket_to_sender()`, and `change_ticket_status()` record immutable `TicketRoutingEvent` entries.
+3. `delegate_ticket()`, `escalate_ticket()`, `return_ticket_to_sender()`, and `change_ticket_status()` record immutable `TicketRoutingEvent` entries.
+4. Mirrored external tickets remain viewable locally, but assignment and status changes are locked to the external system.
 
 **Data interactions**  
 Reads and writes `Ticket`, `TicketCategory`, `TicketTypeDefinition`, `TicketRoutingEvent`, `TicketNote`, `TicketAttachment`, `Department`, `User`.
@@ -600,15 +609,19 @@ Turn unresolved widget or assistant submissions into a project-manager review qu
 
 1. A user submits `Other issue` from a widget or assistant.
 2. The request is stored with `status = pending_pm_review`.
-3. PM sees the request on `/app/`.
-4. PM opens `/support/requests/<id>/raise-ticket/`.
-5. PM confirms or edits classification and creates the real ticket.
+3. The requester receives a queue ticket ID, estimated response time, and optional confirmation email.
+4. PM sees the request on `/app/`.
+5. PM can mark it High Priority at `/support/requests/<id>/escalate/`.
+6. PM opens `/support/requests/<id>/raise-ticket/`.
+7. PM confirms or edits classification and creates the real ticket.
 
 **Backend logic**
 
 1. `create_other_support_request()` stores the unresolved issue and context.
-2. `build_support_request_ticket_initial()` pre-populates the PM ticket form using the request metadata.
-3. `SupportRequestRaiseTicketView` attaches the original uploaded image to the created ticket as a note attachment.
+2. `send_pm_queue_confirmation_email()` uses SendGrid when configured and falls back to Django email otherwise.
+3. `SupportRequestEscalateView` marks the queue item as High Priority and reorders it to the top of the PM queue.
+4. `build_support_request_ticket_initial()` pre-populates the PM ticket form using the request metadata.
+5. `SupportRequestRaiseTicketView` attaches the original uploaded image to the created ticket as a note attachment.
 
 **Data interactions**  
 Reads `SupportRequest`; writes `Ticket`, `TicketNote`, `TicketAttachment`.
@@ -624,7 +637,7 @@ Give project managers a single page for support health, campaign metrics, pendin
 **User flow**
 
 1. PM logs in and opens `/app/` or `/app/performance/`.
-2. The dashboard optionally filters by campaign slug in the query string.
+2. The dashboard renders global support, reporting, and health metrics for the current environment.
 3. The page shows support KPIs, ticket charts, reporting metrics, adoption stats, external growth metrics, and URL health checks.
 
 **Backend logic**
@@ -634,7 +647,7 @@ Give project managers a single page for support health, campaign metrics, pendin
 3. `get_system_status_dashboard_data()` probes internal and external URLs and groups them by severity.
 
 **Data interactions**  
-Reads `Ticket`, `SupportRequest`, `Campaign`, and reporting snapshots; optionally calls live external APIs.
+Reads `Ticket`, `SupportRequest`, `Campaign`, and reporting snapshots; optionally calls live external APIs. Service helpers support campaign-scoped aggregation, but the default dashboard views render overall PM dashboards.
 
 **Components involved**  
 `apps/dashboards/views.py`, `apps/dashboards/services.py`, `apps/reporting/services.py`
@@ -672,14 +685,16 @@ Mirror local tickets into the internal ticketing platform and keep department ro
 1. PM or support workflow creates a local ticket.
 2. If sync is enabled, the ticket is queued for on-commit external creation.
 3. Notes with attachments can sync attachment updates into the external ticket.
-4. A management command can refresh department-manager mappings manually.
+4. Ticket list and detail views can also pull the latest external status back into the local record.
+5. A management command can refresh department-manager mappings manually.
 
 **Backend logic**
 
 1. `sync_external_directory()` fetches department and system-directory lookups and upserts local `Department` records plus manager users.
 2. `sync_external_ticket()` creates or reuses an external ticket by reference.
-3. `sync_external_ticket_attachments()` mirrors later note attachments.
-4. Fuzzy department matching bridges local and external naming differences.
+3. `sync_external_ticket_state()` and `sync_external_ticket_states()` refresh local snapshots of mirrored tickets.
+4. `sync_external_ticket_attachments()` mirrors later note attachments.
+5. Fuzzy department matching bridges local and external naming differences.
 
 **Data interactions**  
 Reads and writes `Department`, `User`, `Ticket`, `TicketAttachment`; calls external ticketing endpoints.
@@ -725,14 +740,15 @@ The repository exposes two kinds of HTTP interfaces:
 | `/` | `GET` | Public | Public home page with campaign list | None | HTML |
 | `/accounts/dev-login/` | `GET` | Public when enabled | Local PM sign-in shortcut | None | Redirect to `/app/` |
 | `/accounts/health/` | `GET` | Login required | Updates `last_seen_at` and returns user to PM dashboard | None | Redirect |
-| `/app/` | `GET` | PM or superuser | Project-management dashboard | Optional `campaign=<slug>` | HTML |
-| `/app/performance/` | `GET` | PM or superuser | Campaign performance dashboard | Optional `campaign=<slug>` | HTML |
+| `/app/` | `GET` | PM or superuser | Project-management dashboard | None | HTML |
+| `/app/performance/` | `GET` | PM or superuser | Campaign performance dashboard | None | HTML |
 | `/app/my-work/` | `GET` | Login required | Redirects PMs to `/app/` and others to `/ticketing/` | None | Redirect |
 | `/campaigns/` | `GET` | Login required | Campaign list with annotations | None | HTML |
 | `/campaigns/<slug>/` | `GET` | Login required | Campaign detail | Campaign slug | HTML |
-| `/ticketing/` | `GET` | Login required | Ticket list | Query, status, priority, category, type, campaign, period, scope, sort | HTML |
+| `/ticketing/` | `GET` | Login required | Ticket list | Query, status, priority, category, type, period, scope, sort | HTML |
 | `/ticketing/distribution/` | `GET` | Login required | Ticket distribution dashboard | Category, type, source system, period | HTML |
 | `/ticketing/new/` | `GET`, `POST` | Login required | Create ticket manually | `TicketCreateForm` fields | Form page or redirect to detail |
+| `/ticketing/<int:pk>/escalate/` | `POST` | PM or superuser | Mark a ticket as High Priority | Optional `next` redirect target | Redirect |
 | `/ticketing/<int:pk>/` | `GET`, `POST` | Login required and ticket-visible | View ticket and perform workflow actions | `action=status|delegate|return|note` plus subform fields | HTML or redirect |
 | `/support/<user_type>/` | `GET`, `POST` | Public | Role-specific support landing page and free-text support submission | `SupportRequestForm` fields | HTML or redirect to success |
 | `/support/<user_type>/faq/page/<page_slug>/` | `GET` | Public | Full page-wise FAQ page | Page slug and optional `system` or `flow` query params | HTML |
@@ -742,6 +758,7 @@ The repository exposes two kinds of HTTP interfaces:
 | `/support/<user_type>/assistant/` | `GET`, `POST` | Public | Guided support assistant | Session-backed step forms and unresolved issue form | HTML or redirect |
 | `/support/<user_type>/<super_slug>/<category_slug>/<item_slug>/` | `GET`, `POST` | Public | Item detail page and direct support-item escalation | `SupportRequestForm` fields | HTML or redirect |
 | `/support/<user_type>/request/<int:request_id>/success/` | `GET` | Public | Confirmation page after support submission | Request ID | HTML |
+| `/support/requests/<int:request_id>/escalate/` | `POST` | PM or superuser | Mark a PM-queue support request as High Priority | None | Redirect |
 | `/support/requests/<int:request_id>/raise-ticket/` | `GET`, `POST` | PM or superuser | Convert PM-reviewed support issue into a ticket | `TicketCreateForm` fields | HTML or redirect |
 | `/reporting/contracts/` | `GET` | Login required | Human-readable reporting contract view | None | HTML |
 
@@ -754,8 +771,8 @@ Additional authentication routes are mounted through `django-allauth` under `/ac
 | `/support/api/<user_type>/faq-links/` | `GET`, `OPTIONS` | Public | Returns all page-wise support links for a role | Optional context is inferred from each page | JSON with `count` and `results[]` |
 | `/support/api/<user_type>/pages/<page_slug>/` | `GET`, `OPTIONS` | Public | Returns page-wise support payload | Optional `system` and `flow` query params | JSON with page metadata, sections, FAQ list, URLs |
 | `/support/api/<user_type>/<super_slug>/<category_slug>/` | `GET`, `OPTIONS` | Public | Returns specific super-category/category FAQ payload | Optional `system` and `flow` query params | JSON with super-category, category, FAQs, URLs |
-| `/support/<user_type>/faq/page/<page_slug>/other/` | `POST` | Public | Creates PM-review `SupportRequest` from a page widget | Multipart form: requester info, issue text, upload, optional `selected_faq_id`, `selected_section_slug`, context values | JSON `{ success, request_id, message }` |
-| `/support/<user_type>/faq/<super_slug>/<category_slug>/other/` | `POST` | Public | Creates PM-review `SupportRequest` from a combination widget | Multipart form: requester info, issue text, upload, optional `selected_faq_id`, context values | JSON `{ success, request_id, message }` |
+| `/support/<user_type>/faq/page/<page_slug>/other/` | `POST` | Public | Creates PM-review `SupportRequest` from a page widget | Multipart form: requester info, device metadata, issue text, upload, optional `selected_faq_id`, `selected_section_slug`, context values | JSON `{ success, request_id, ticket_id, estimated_response_time, message }` |
+| `/support/<user_type>/faq/<super_slug>/<category_slug>/other/` | `POST` | Public | Creates PM-review `SupportRequest` from a combination widget | Multipart form: requester info, device metadata, issue text, upload, optional `selected_faq_id`, context values | JSON `{ success, request_id, ticket_id, estimated_response_time, message }` |
 | `/reporting/api/contracts/` | `GET` | Public | Returns reporting contract definitions | None | JSON contract map |
 | `/reporting/api/<subsystem>/` | `GET` | Public | Returns reporting payload for `red_flag_alert`, `in_clinic`, `patient_education`, `adoption`, or `external_growth` | Optional `campaign=<slug>` | JSON payload with `results`, `source`, `count`, `notices` |
 
@@ -783,6 +800,8 @@ Used by widgets and assistant unresolved-issue submissions.
 | `requester_name` | string | Required |
 | `requester_number` | string | Required |
 | `requester_email` | email | Required |
+| `device_type` | enum | Optional |
+| `device` | enum | Optional |
 | `free_text` | multiline text | Required |
 | `uploaded_file` | image upload | Optional, max 8 MB, image formats only |
 
@@ -815,18 +834,23 @@ Used by widgets and assistant unresolved-issue submissions.
 | `return` | none | Returns ticket to `created_by` and logs event |
 | `note` | `body`, `attachments[]` | Adds note and optional attachments |
 
+High-priority escalation is handled by `POST /ticketing/<int:pk>/escalate/` rather than a ticket-detail form action.
+
 ### Service Entry Points
 
 | Function | Module | Purpose |
 | --- | --- | --- |
 | `submit_support_request()` | `apps.support_center.services` | Converts a support submission into a `SupportRequest` and, when applicable, an immediate ticket |
 | `create_other_support_request()` | `apps.support_center.services` | Stores unresolved assistant/widget issue for PM review |
+| `send_pm_queue_confirmation_email()` | `apps.support_center.services` | Sends PM-queue acknowledgements through SendGrid or Django email |
 | `build_support_request_ticket_initial()` | `apps.support_center.services` | Pre-populates the PM escalation form from a `SupportRequest` |
 | `create_ticket()` | `apps.ticketing.services` | Classifies, creates, and optionally queues external sync for a ticket |
+| `escalate_ticket()` | `apps.ticketing.services` | Marks a ticket as High Priority and logs the routing event |
 | `resolve_ticket_classification()` | `apps.ticketing.services` | Applies taxonomy rules or creates dynamic ticket types |
 | `build_ticket_distribution_data()` | `apps.ticketing.services` | Builds dashboard-ready volume-by-day series |
 | `sync_external_directory()` | `apps.ticketing.external_ticketing` | Pulls department and manager mappings from the external platform |
 | `sync_external_ticket()` | `apps.ticketing.external_ticketing` | Mirrors a local ticket into the external platform |
+| `sync_external_ticket_state()` / `sync_external_ticket_states()` | `apps.ticketing.external_ticketing` | Refresh local status snapshots for mirrored external tickets |
 | `get_subsystem_payload()` | `apps.reporting.services` | Returns live or local reporting data by subsystem |
 | `build_live_performance_sections()` | `apps.reporting.services` | Produces the PM performance dashboard payload |
 | `get_support_dashboard_data()` | `apps.dashboards.services` | Aggregates support and ticket metrics for `/app/` |
@@ -839,6 +863,7 @@ Used by widgets and assistant unresolved-issue submissions.
 | Internal ticketing platform | `apps.ticketing.external_ticketing` | `/client-tickets/api/lookups/system-directory/`, `/lookups/departments/`, `/lookups/ticket-types/`, `/tickets/`, `/tickets/by-external-reference/`, `/tickets/<ticket_number>/inditech-update/` |
 | Live reporting feeds | `apps.reporting.services` | `REPORTING_API_RED_FLAG_ALERT_URL`, `REPORTING_API_IN_CLINIC_URL`, `REPORTING_API_PATIENT_EDUCATION_URL` |
 | WordPress helper | `apps.reporting.services` | `WORDPRESS_HELPER_URL` with `ld_api=webinar_registrations` and `ld_api=course_breakdown` |
+| SendGrid / Django email backend | `apps.support_center.services` | PM-queue confirmation emails for unresolved widget and assistant submissions |
 
 ## Application Flow
 
@@ -848,8 +873,9 @@ Used by widgets and assistant unresolved-issue submissions.
 2. The widget payload comes from `/support/api/<role>/pages/<page_slug>/` or `/support/api/<role>/<super>/<category>/`.
 3. If the FAQ does not solve the problem, the widget posts to an `other/` endpoint.
 4. The app stores a `SupportRequest` with `status = pending_pm_review`.
-5. The PM sees it on `/app/`, opens the raise-ticket screen, and creates the actual `Ticket`.
-6. The uploaded image becomes a `TicketAttachment`.
+5. The requester receives a PM queue ticket ID, estimated response time, and optional confirmation email.
+6. The PM sees it on `/app/`, can mark it High Priority, opens the raise-ticket screen, and creates the actual `Ticket`.
+7. The uploaded image becomes a `TicketAttachment`.
 
 ```mermaid
 sequenceDiagram
@@ -858,6 +884,7 @@ sequenceDiagram
     participant V as support_center.views
     participant S as support_center.services
     participant DB as Database
+    participant Mail as Email backend
     participant PM as PM Dashboard
     participant T as ticketing.services
     participant ET as External Ticketing
@@ -866,6 +893,7 @@ sequenceDiagram
     W->>V: POST /support/.../other/
     V->>S: create_other_support_request(...)
     S->>DB: Save SupportRequest(pending_pm_review)
+    S-->>Mail: Send queue confirmation if configured
     DB-->>PM: Request appears in /app/
     PM->>V: POST /support/requests/<id>/raise-ticket/
     V->>T: create_ticket(...)
@@ -905,7 +933,7 @@ sequenceDiagram
 
 1. PM opens `/app/performance/`.
 2. `build_live_performance_sections()` requests live reporting payloads for all three subsystems.
-3. If a live request fails or cannot map the selected campaign identifier, the system falls back to local snapshot tables and adds a notice.
+3. If a live request fails, or if a campaign-scoped service call cannot map an external campaign identifier, the system falls back to local snapshot tables and adds a notice.
 4. WordPress webinar and course-completion data is combined into external growth metrics.
 
 ```mermaid
@@ -918,9 +946,9 @@ sequenceDiagram
     participant WP as WordPress Helper
     participant DB as Snapshot Tables
 
-    PM->>View: GET /app/performance/?campaign=<slug>
-    View->>Dash: get_performance_dashboard_data(campaign)
-    Dash->>Rep: build_live_performance_sections(campaign)
+    PM->>View: GET /app/performance/
+    View->>Dash: get_performance_dashboard_data()
+    Dash->>Rep: build_live_performance_sections()
     Rep->>Live: Fetch subsystem feeds
     alt live feed available
         Live-->>Rep: JSON payloads
@@ -983,6 +1011,7 @@ GOOGLE_CLIENT_SECRET=
 EXTERNAL_TICKETING_SYNC_ENABLED=false
 EXTERNAL_TICKETING_BASE_URL=https://support.inditech.co.in
 EXTERNAL_TICKETING_API_TOKEN=
+EXTERNAL_TICKETING_PULL_SYNC_MAX_AGE_SECONDS=60
 EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK=
 
 REPORTING_API_USE_LIVE=false
@@ -994,6 +1023,12 @@ WORDPRESS_HELPER_URL=https://esapa.one/
 WORDPRESS_HELPER_SECRET=
 WORDPRESS_GROWTH_WEBINAR_FILTERS=SAPA Growth Clinics
 WORDPRESS_CERTIFICATE_COURSE_IDS=8693,9204
+
+DEFAULT_FROM_EMAIL=noreply@inditech.local
+SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=noreply@inditech.local
+SENDGRID_FROM_NAME=Inditech Support
+PM_QUEUE_ESTIMATED_RESPONSE_TIME=Within 2 business hours
 ```
 
 ### Environment Variables
@@ -1014,6 +1049,7 @@ WORDPRESS_CERTIFICATE_COURSE_IDS=8693,9204
 | `EXTERNAL_TICKETING_API_TOKEN` | Usually yes if sync enabled | Added as `X-Client-Ticket-Token` |
 | `EXTERNAL_TICKETING_SOURCE_SYSTEM` | No | `campaign_management` |
 | `EXTERNAL_TICKETING_TIMEOUT` | No | `10` seconds |
+| `EXTERNAL_TICKETING_PULL_SYNC_MAX_AGE_SECONDS` | No | `60`; controls how often mirrored ticket state is re-fetched |
 | `EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK` | Optional | Used when requester phone cannot be resolved |
 | `REPORTING_API_USE_LIVE` | No | `true` |
 | `REPORTING_API_TIMEOUT` | No | `5` seconds |
@@ -1025,6 +1061,12 @@ WORDPRESS_CERTIFICATE_COURSE_IDS=8693,9204
 | `WORDPRESS_HELPER_TIMEOUT` | No | `20` seconds |
 | `WORDPRESS_GROWTH_WEBINAR_FILTERS` | No | `SAPA Growth Clinics` |
 | `WORDPRESS_CERTIFICATE_COURSE_IDS` | No | `8693,9204` |
+| `DEFAULT_FROM_EMAIL` | No | `noreply@inditech.local` |
+| `SENDGRID_API_KEY` | Optional | When present, PM queue confirmation emails are sent through SendGrid |
+| `SENDGRID_FROM_EMAIL` | No | Falls back to `DEFAULT_FROM_EMAIL` |
+| `SENDGRID_FROM_NAME` | No | Defaults to `Inditech Support` |
+| `SENDGRID_API_URL` | No | Defaults to SendGrid mail-send endpoint |
+| `PM_QUEUE_ESTIMATED_RESPONSE_TIME` | No | Displayed in widget/assistant success messages and email confirmations |
 | `STATUS_MONITOR_EXTRA_TARGETS_JSON` | Optional | JSON list of extra URL health-check targets |
 | `SECRETS_ENV_PATH` | Optional | Defaults to `/var/www/secrets/.env` |
 
@@ -1142,7 +1184,7 @@ Current test coverage is concentrated in `apps/dashboards/tests.py`, which exerc
 7. External ticket-sync behavior
 8. Seed commands
 
-The other app-level `tests.py` files are placeholders.
+`apps/accounts/tests.py` adds focused coverage for the PM email allowlist and role-promotion behavior. The remaining app-level `tests.py` files are placeholders.
 
 ### Deployment
 
@@ -1171,7 +1213,7 @@ The deployment flow:
 | Primary apps | `accounts`, `campaigns`, `support_center`, `ticketing`, `reporting`, `dashboards` |
 | Main persistence | SQLite locally, MySQL optionally in production |
 | Core workflow | Support discovery -> support request or direct ticket -> PM dashboard -> ticket execution -> external sync |
-| External dependencies | Internal ticketing API, three reporting APIs, WordPress helper API |
+| External dependencies | Internal ticketing API, three reporting APIs, WordPress helper API, optional SendGrid email delivery |
 | Important patterns | Metadata-driven support catalog, keyword-driven ticket classification, live-data fallback |
 
 ### Core Modules
@@ -1183,7 +1225,7 @@ The deployment flow:
 | `apps/reporting` | Canonical performance-data adapter; live data can fail and fall back locally |
 | `apps/dashboards` | Aggregation layer for PM dashboards; often the best place to understand cross-module behavior |
 | `apps/campaigns` | Campaign and enrollment metadata used by dashboards and support context |
-| `apps/accounts` | Custom auth model; PM role is email-aware and can be auto-created |
+| `apps/accounts` | Custom auth model; PM role is email-allowlist-aware and can be auto-created for local development |
 
 ### Key Services
 
