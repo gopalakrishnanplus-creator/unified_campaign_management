@@ -188,7 +188,11 @@ class SeededIntegrationTestCase(TestCase):
         self.assertLess(content.index("Critical Tickets"), content.index("Full Ticket Queue"))
 
     @patch("apps.dashboards.services.requests.get")
-    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=False,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        SENDGRID_API_KEY="",
+    )
     def test_project_manager_can_escalate_ticket_from_dashboard_queue(self, mock_get):
         mock_get.return_value = Mock(status_code=200)
         standard_ticket = Ticket.objects.create(
@@ -216,7 +220,7 @@ class SeededIntegrationTestCase(TestCase):
             ticket_type="Functional",
             user_type=Ticket.UserType.INTERNAL,
             source_system=Ticket.SourceSystem.PROJECT_MANAGER,
-            priority=Ticket.Priority.HIGH,
+            priority=Ticket.Priority.CRITICAL,
             status=Ticket.Status.NOT_STARTED,
             department=self.ticket.department,
             campaign=self.campaign,
@@ -243,8 +247,58 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(escalated_ticket.priority, Ticket.Priority.CRITICAL)
         self.assertContains(response, f"{escalated_ticket.ticket_number} marked as High Priority and moved to the top of the queue.")
         self.assertContains(response, "High Priority / Escalated")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            mail.outbox[0].to,
+            [self.ticket.department.support_email, self.ticket.department.default_recipient.email],
+        )
+        self.assertIn(escalated_ticket.ticket_number, mail.outbox[0].subject)
+        self.assertIn("already critical ticket", mail.outbox[0].alternatives[0][0])
+        self.assertIn(self.ticket.department.name, mail.outbox[0].body)
         content = response.content.decode()
         self.assertLess(content.index(escalated_ticket.ticket_number), content.index(standard_ticket.ticket_number))
+
+    @patch("apps.dashboards.services.requests.get")
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=False,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        SENDGRID_API_KEY="",
+    )
+    def test_project_manager_cannot_escalate_non_critical_ticket(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        ticket = Ticket.objects.create(
+            title="High priority issue",
+            description="This should stay high until PM marks it critical first.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.ticket.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.ticket.department.default_recipient,
+            current_assignee=self.ticket.department.default_recipient,
+            requester_name="High Priority User",
+            requester_email="high-priority@example.com",
+            requester_number="+919900000010",
+            requester_company="Inditech",
+        )
+
+        self.client.force_login(self.pm_user)
+        response = self.client.post(
+            reverse("ticketing:escalate", kwargs={"pk": ticket.pk}),
+            data={"next": f"{reverse('dashboards:home')}#critical-ticket-review"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertFalse(ticket.is_escalated)
+        self.assertEqual(ticket.priority, Ticket.Priority.HIGH)
+        self.assertContains(response, f"{ticket.ticket_number} can only be escalated after it is marked Critical.")
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_reporting_api_endpoints_return_data(self):
         self.client.force_login(self.pm_user)
@@ -1753,6 +1807,44 @@ class ExternalTicketSyncTests(TestCase):
         self.assertContains(response, "+917777777777")
         self.assertContains(response, "Android")
         self.assertContains(response, "Phone")
+        self.assertNotContains(
+            response,
+            reverse("support_center:escalate_request", kwargs={"request_id": escalated_request.pk}),
+            html=False,
+        )
+        self.assertNotContains(
+            response,
+            reverse("support_center:escalate_request", kwargs={"request_id": standard_request.pk}),
+            html=False,
+        )
+
+    @patch("apps.dashboards.services.requests.get")
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
+    def test_other_issue_queue_endpoint_requires_ticket_before_escalation(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Queue User",
+            requester_email="queue-user@example.com",
+            requester_number="+917700000000",
+            subject="Other issue - queue",
+            free_text="Please review this queue request.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+
+        self.client.force_login(self.pm_user)
+        response = self.client.post(
+            reverse("support_center:escalate_request", kwargs={"request_id": support_request.pk}),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        support_request.refresh_from_db()
+        self.assertFalse(support_request.is_escalated)
+        self.assertContains(
+            response,
+            f"{support_request.queue_ticket_number} cannot be escalated from Other Issues. Raise a ticket and mark it Critical first.",
+        )
 
     @patch("apps.ticketing.external_ticketing.requests.request")
     def test_support_issue_raise_ticket_page_uses_synced_internal_directory_departments(self, mock_request):

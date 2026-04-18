@@ -189,12 +189,6 @@
                             </td>
                             <td>
                                 <div class="d-flex flex-column align-items-start gap-2">
-                                    {% if not row.request.is_escalated %}
-                                        <form method="post" action="{{ row.escalate_url }}">
-                                            {{ csrf_input }}
-                                            <button class="btn btn-sm btn-outline-danger" type="submit">Escalate</button>
-                                        </form>
-                                    {% endif %}
                                     <a class="btn btn-sm btn-primary" href="{{ row.raise_ticket_url }}">Raise Ticket</a>
                                 </div>
                             </td>
@@ -240,7 +234,7 @@
                             <span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span>
                             <span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span>
                             <div class="insight-actions">
-                                {% if not ticket.is_high_priority_escalated %}
+                                {% if ticket.priority == 'critical' and not ticket.is_high_priority_escalated %}
                                     <form method="post" action="{{ url('ticketing:escalate', pk=ticket.pk) }}">
                                         {{ csrf_input }}
                                         <input type="hidden" name="next" value="{{ url('dashboards:home') }}#critical-ticket-review">

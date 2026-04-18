@@ -1,0 +1,21 @@
+Ticket {{ ticket.ticket_number }} has been escalated by {{ actor.full_name or actor.email }}.
+
+This ticket is already marked Critical and now needs immediate department attention.
+
+Ticket details
+- Title: {{ ticket.title }}
+- Department: {{ ticket.department.name }}
+- Department email: {{ ticket.department.support_email }}
+- Current assignee: {{ ticket.current_assignee.full_name or ticket.current_assignee.email }}
+- Direct recipient: {{ ticket.direct_recipient.full_name or ticket.direct_recipient.email }}
+- Status: {{ ticket.get_status_display() }}
+- Priority: {{ ticket.get_priority_display() }}
+- Requester: {{ ticket.requester_name }} / {{ ticket.requester_email }} / {{ ticket.requester_number or 'Phone not provided' }}
+- Source system: {{ ticket.get_source_system_display() }}
+- User type: {{ ticket.get_user_type_display() }}
+{% if ticket.support_request %}
+- PM queue ticket: {{ ticket.support_request.queue_ticket_number }}
+{% endif %}
+
+Description
+{{ ticket.description }}

@@ -13,7 +13,7 @@
     <div class="d-flex gap-2 flex-wrap">
         <span class="priority-pill {{ ticket.priority_badge_class }}">{{ ticket.get_priority_display() }}</span>
         <span class="status-pill {{ ticket.status_badge_class }}">{{ ticket.get_status_display() }}</span>
-        {% if (request.user.is_project_manager or request.user.is_superuser) and not ticket.is_high_priority_escalated %}
+        {% if (request.user.is_project_manager or request.user.is_superuser) and ticket.priority == 'critical' and not ticket.is_high_priority_escalated %}
             <form method="post" action="{{ url('ticketing:escalate', pk=ticket.pk) }}">
                 {{ csrf_input }}
                 <input type="hidden" name="next" value="{{ url('ticketing:detail', pk=ticket.pk) }}">

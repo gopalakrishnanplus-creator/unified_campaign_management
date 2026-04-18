@@ -341,7 +341,6 @@ def get_support_dashboard_data(campaign=None):
                 if support_request.uploaded_file
                 else False
             ),
-            "escalate_url": reverse("support_center:escalate_request", kwargs={"request_id": support_request.pk}),
             "raise_ticket_url": reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}),
         }
         for support_request in other_issue_requests

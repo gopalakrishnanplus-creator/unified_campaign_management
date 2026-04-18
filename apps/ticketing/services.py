@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from .models import Ticket, TicketCategory, TicketRoutingEvent, TicketTypeDefinition
+from .notifications import send_ticket_escalation_email
 
 
 TICKET_TAXONOMY = [
@@ -475,13 +476,13 @@ def delegate_ticket(ticket, actor, assignee):
 
 @transaction.atomic
 def escalate_ticket(ticket, actor):
+    if ticket.priority != Ticket.Priority.CRITICAL:
+        raise ValueError("Only critical tickets can be escalated.")
+
     update_fields = ["updated_at"]
     if not ticket.is_escalated:
         ticket.is_escalated = True
         update_fields.append("is_escalated")
-    if ticket.priority != Ticket.Priority.CRITICAL:
-        ticket.priority = Ticket.Priority.CRITICAL
-        update_fields.append("priority")
     if len(update_fields) > 1:
         ticket.save(update_fields=update_fields)
 
@@ -497,6 +498,7 @@ def escalate_ticket(ticket, actor):
         to_user=ticket.current_assignee,
         description="Marked as High Priority and moved to the top of the PM queue.",
     )
+    send_ticket_escalation_email(ticket, actor)
     return ticket
 
 
