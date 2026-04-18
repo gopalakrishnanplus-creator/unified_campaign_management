@@ -249,6 +249,9 @@ class TicketEscalateView(LoginRequiredMixin, View):
         if ticket.is_high_priority_escalated and ticket.priority == Ticket.Priority.CRITICAL:
             messages.info(request, f"{ticket.ticket_number} is already marked as High Priority.")
             return redirect(next_url)
+        if ticket.priority != Ticket.Priority.CRITICAL:
+            messages.warning(request, f"{ticket.ticket_number} can only be escalated after it is marked Critical.")
+            return redirect(next_url)
 
         escalate_ticket(ticket, request.user)
         messages.success(request, f"{ticket.ticket_number} marked as High Priority and moved to the top of the queue.")

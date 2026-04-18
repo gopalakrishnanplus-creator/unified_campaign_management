@@ -818,15 +818,10 @@ class SupportSuccessView(TemplateView):
 class SupportRequestEscalateView(ProjectManagerAccessMixin, View):
     def post(self, request, *args, **kwargs):
         support_request = get_object_or_404(SupportRequest, pk=kwargs["request_id"])
-        if support_request.is_escalated:
-            messages.info(request, f"{support_request.queue_ticket_number} is already marked as High Priority.")
-        else:
-            support_request.is_escalated = True
-            support_request.save(update_fields=["is_escalated"])
-            messages.success(
-                request,
-                f"{support_request.queue_ticket_number} marked as High Priority and moved to the top of the PM queue.",
-            )
+        messages.info(
+            request,
+            f"{support_request.queue_ticket_number} cannot be escalated from Other Issues. Raise a ticket and mark it Critical first.",
+        )
         return redirect(f"{reverse('dashboards:home')}#other-issue-review")
 
 

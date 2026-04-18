@@ -1,0 +1,24 @@
+<div style="font-family:Arial,sans-serif;color:#1f2933;line-height:1.5;">
+    <h1 style="margin:0 0 12px;font-size:24px;">Ticket {{ ticket.ticket_number }} has been escalated</h1>
+    <p style="margin:0 0 16px;">
+        {{ actor.full_name or actor.email }} marked this already critical ticket as <strong>High Priority / Escalated</strong>.
+        Please review it immediately.
+    </p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr><td style="padding:6px 0;font-weight:700;">Title</td><td style="padding:6px 0;">{{ ticket.title }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Department</td><td style="padding:6px 0;">{{ ticket.department.name }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Department email</td><td style="padding:6px 0;">{{ ticket.department.support_email }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Current assignee</td><td style="padding:6px 0;">{{ ticket.current_assignee.full_name or ticket.current_assignee.email }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Direct recipient</td><td style="padding:6px 0;">{{ ticket.direct_recipient.full_name or ticket.direct_recipient.email }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Status</td><td style="padding:6px 0;">{{ ticket.get_status_display() }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Priority</td><td style="padding:6px 0;">{{ ticket.get_priority_display() }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Requester</td><td style="padding:6px 0;">{{ ticket.requester_name }} / {{ ticket.requester_email }} / {{ ticket.requester_number or 'Phone not provided' }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">Source system</td><td style="padding:6px 0;">{{ ticket.get_source_system_display() }}</td></tr>
+        <tr><td style="padding:6px 0;font-weight:700;">User type</td><td style="padding:6px 0;">{{ ticket.get_user_type_display() }}</td></tr>
+        {% if ticket.support_request %}
+            <tr><td style="padding:6px 0;font-weight:700;">PM queue ticket</td><td style="padding:6px 0;">{{ ticket.support_request.queue_ticket_number }}</td></tr>
+        {% endif %}
+    </table>
+    <p style="margin:0 0 8px;font-weight:700;">Description</p>
+    <p style="margin:0;white-space:pre-wrap;">{{ ticket.description }}</p>
+</div>
