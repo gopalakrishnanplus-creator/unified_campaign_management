@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory
+from .models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory, SupportWidgetEvent
 
 
 class SupportCategoryInline(admin.TabularInline):
@@ -40,6 +40,13 @@ class SupportItemAdmin(admin.ModelAdmin):
 
 @admin.register(SupportRequest)
 class SupportRequestAdmin(admin.ModelAdmin):
-    list_display = ("requester_name", "requester_email", "requester_number", "user_type", "campaign", "status", "created_at")
-    list_filter = ("user_type", "status", "campaign")
+    list_display = ("requester_name", "requester_email", "requester_number", "user_type", "origin_channel", "campaign", "status", "created_at")
+    list_filter = ("user_type", "origin_channel", "status", "campaign")
     search_fields = ("requester_name", "requester_email", "requester_number", "subject", "free_text")
+
+
+@admin.register(SupportWidgetEvent)
+class SupportWidgetEventAdmin(admin.ModelAdmin):
+    list_display = ("event_type", "source_system", "source_flow", "user_type", "support_page", "support_category", "created_at")
+    list_filter = ("event_type", "source_system", "user_type")
+    search_fields = ("source_system", "source_flow", "user_type", "support_page__name", "support_category__name")
