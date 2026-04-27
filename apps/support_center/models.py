@@ -142,6 +142,11 @@ class SupportItem(models.Model):
 
 
 class SupportRequest(models.Model):
+    class OriginChannel(models.TextChoices):
+        DIRECT = "direct", "Direct"
+        ASSISTANT = "assistant", "Assistant"
+        WIDGET = "widget", "Widget"
+
     class DeviceType(models.TextChoices):
         ANDROID = "android", "Android"
         IOS = "ios", "iOS"
@@ -189,6 +194,7 @@ class SupportRequest(models.Model):
     )
     source_system = models.CharField(max_length=120, blank=True)
     source_flow = models.CharField(max_length=120, blank=True)
+    origin_channel = models.CharField(max_length=24, choices=OriginChannel.choices, default=OriginChannel.DIRECT)
     subject = models.CharField(max_length=255)
     free_text = models.TextField(blank=True)
     uploaded_file = models.FileField(
@@ -198,6 +204,7 @@ class SupportRequest(models.Model):
     )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.TICKET_CREATED)
     is_escalated = models.BooleanField(default=False)
+    pm_ticket_raised_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -237,3 +244,49 @@ class SupportRequest(models.Model):
     @property
     def priority_label(self):
         return "High Priority / Escalated" if self.is_escalated else "Standard"
+
+
+class SupportWidgetEvent(models.Model):
+    class EventType(models.TextChoices):
+        OPENED = "opened", "Opened"
+        RESOLVED = "resolved", "Resolved"
+
+    user_type = models.CharField(max_length=24)
+    support_page = models.ForeignKey(
+        SupportPage,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="widget_events",
+    )
+    support_super_category = models.ForeignKey(
+        SupportSuperCategory,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="widget_events",
+    )
+    support_category = models.ForeignKey(
+        SupportCategory,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="widget_events",
+    )
+    support_request = models.ForeignKey(
+        SupportRequest,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="widget_events",
+    )
+    source_system = models.CharField(max_length=120, blank=True)
+    source_flow = models.CharField(max_length=120, blank=True)
+    event_type = models.CharField(max_length=24, choices=EventType.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_event_type_display()} / {self.source_system or 'Unknown system'} / {self.user_type}"

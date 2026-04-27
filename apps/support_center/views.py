@@ -8,6 +8,7 @@ from django.core.files import File
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -26,10 +27,11 @@ from apps.ticketing.models import Department, TicketAttachment, TicketNote, Tick
 from apps.ticketing.services import create_ticket
 
 from .forms import SupportOtherIssueForm, SupportRequestForm
-from .models import SupportItem, SupportPage, SupportRequest
+from .models import SupportItem, SupportPage, SupportRequest, SupportWidgetEvent
 from .services import (
     GENERAL_SUPPORT_FLOW,
     build_pm_queue_success_message,
+    create_support_widget_event,
     build_support_request_ticket_initial,
     create_other_support_request,
     get_available_categories,
@@ -218,6 +220,13 @@ def _build_combination_payload(request, user_type, super_slug, category_slug):
             ),
             context_params,
         ),
+        "event_url": _with_context_query(
+            reverse(
+                "support_center:faq_widget_event",
+                kwargs={"user_type": user_type, "super_slug": super_slug, "category_slug": category_slug},
+            ),
+            context_params,
+        ),
         **urls,
         "faqs": [
             {
@@ -262,6 +271,10 @@ def _build_page_payload(request, user_type, page_slug):
         # attempt a mixed-content POST when Django is behind a proxy.
         "other_issue_url": _with_context_query(
             reverse("support_center:faq_page_other_issue", kwargs={"user_type": user_type, "page_slug": page.slug}),
+            context_params,
+        ),
+        "event_url": _with_context_query(
+            reverse("support_center:faq_page_widget_event", kwargs={"user_type": user_type, "page_slug": page.slug}),
             context_params,
         ),
         **urls,
@@ -431,11 +444,23 @@ class SupportFaqWidgetView(SupportAudienceMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        combination = get_faq_combination(self.user_type, kwargs["super_slug"], kwargs["category_slug"])
+        if not combination:
+            raise Http404("FAQ combination not found.")
         payload = _build_combination_payload(
             self.request,
             self.user_type,
             kwargs["super_slug"],
             kwargs["category_slug"],
+        )
+        create_support_widget_event(
+            event_type=SupportWidgetEvent.EventType.OPENED,
+            user_type=self.user_type,
+            page=next((item.page for item in combination["faq_items"] if item.page_id), None),
+            super_category=combination["super_category"],
+            category=combination["category"],
+            system_name=payload["source_system"],
+            flow_name=payload["source_flow"],
         )
         context.update(
             {
@@ -457,6 +482,14 @@ class SupportFaqPageWidgetView(SupportAudienceMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         payload = _build_page_payload(self.request, self.user_type, kwargs["page_slug"])
+        page = get_object_or_404(SupportPage, slug=kwargs["page_slug"])
+        create_support_widget_event(
+            event_type=SupportWidgetEvent.EventType.OPENED,
+            user_type=self.user_type,
+            page=page,
+            system_name=payload["source_system"],
+            flow_name=payload["source_flow"],
+        )
         context.update(
             {
                 "user_type": self.user_type,
@@ -753,6 +786,7 @@ class SupportAssistantView(SupportAudienceMixin, TemplateView):
                 flow_name=request_context["flow_name"],
                 form=form,
                 request_user=request.user,
+                origin_channel=SupportRequest.OriginChannel.ASSISTANT,
             )
             self._clear_state()
             messages.success(request, build_pm_queue_success_message(support_request))
@@ -944,7 +978,8 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
         if attachment and external_ticketing_enabled() and should_sync_external_ticket(ticket):
             sync_external_ticket(ticket.pk)
         self.support_request.status = SupportRequest.Status.TICKET_CREATED
-        self.support_request.save(update_fields=["status"])
+        self.support_request.pm_ticket_raised_at = timezone.now()
+        self.support_request.save(update_fields=["status", "pm_ticket_raised_at"])
         ticket.refresh_from_db()
 
         if ticket.external_ticket_number:
@@ -960,6 +995,62 @@ class SupportRequestRaiseTicketView(ProjectManagerAccessMixin, TemplateView):
         else:
             messages.success(request, f"Ticket {ticket.ticket_number} created.")
         return redirect("ticketing:detail", pk=ticket.pk)
+
+
+def _record_widget_resolution_event(*, user_type, page=None, super_category=None, category=None, selected_faq=None, request):
+    requested_context = _requested_support_context(request)
+    referrer_context = _infer_support_context_from_referrer(request.POST.get("context_referrer"))
+    request_context = resolve_support_request_context(
+        selected_faq=selected_faq,
+        selected_system=(
+            request.POST.get("source_system")
+            or requested_context["system_name"]
+            or referrer_context["system_name"]
+            or (page.source_system if page else "")
+        ),
+        selected_flow=(
+            request.POST.get("source_flow")
+            or requested_context["flow_name"]
+            or referrer_context["flow_name"]
+            or (page.source_flow if page else "")
+        ),
+    )
+    create_support_widget_event(
+        event_type=SupportWidgetEvent.EventType.RESOLVED,
+        user_type=user_type,
+        page=page or (selected_faq.page if selected_faq and selected_faq.page_id else None),
+        super_category=super_category,
+        category=category or (selected_faq.category if selected_faq else None),
+        system_name=request_context["system_name"],
+        flow_name=request_context["flow_name"],
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def support_faq_widget_event(request, user_type, super_slug, category_slug):
+    if user_type not in ROLE_CONFIG:
+        raise Http404("Unsupported support audience.")
+    combination = get_faq_combination(user_type, super_slug, category_slug)
+    if not combination:
+        raise Http404("FAQ combination not found.")
+    if request.POST.get("event_type") != SupportWidgetEvent.EventType.RESOLVED:
+        return JsonResponse({"success": False, "error": "Unsupported widget event."}, status=400)
+
+    selected_faq = None
+    selected_faq_id = request.POST.get("selected_faq_id")
+    if selected_faq_id:
+        selected_faq = next((item for item in combination["faq_items"] if str(item.pk) == str(selected_faq_id)), None)
+
+    _record_widget_resolution_event(
+        user_type=user_type,
+        page=selected_faq.page if selected_faq and selected_faq.page_id else next((item.page for item in combination["faq_items"] if item.page_id), None),
+        super_category=combination["super_category"],
+        category=combination["category"],
+        selected_faq=selected_faq,
+        request=request,
+    )
+    return JsonResponse({"success": True})
 
 
 @csrf_exempt
@@ -1005,6 +1096,7 @@ def support_faq_other_issue(request, user_type, super_slug, category_slug):
         flow_name=request_context["flow_name"],
         form=form,
         request_user=request.user,
+        origin_channel=SupportRequest.OriginChannel.WIDGET,
     )
     return JsonResponse(
         {
@@ -1015,6 +1107,44 @@ def support_faq_other_issue(request, user_type, super_slug, category_slug):
             "message": build_pm_queue_success_message(support_request),
         }
     )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def support_faq_page_widget_event(request, user_type, page_slug):
+    if user_type not in ROLE_CONFIG:
+        raise Http404("Unsupported support audience.")
+    page_block = get_faq_page(user_type, page_slug)
+    if not page_block:
+        raise Http404("FAQ page not found.")
+    if request.POST.get("event_type") != SupportWidgetEvent.EventType.RESOLVED:
+        return JsonResponse({"success": False, "error": "Unsupported widget event."}, status=400)
+
+    selected_section = None
+    selected_section_slug = request.POST.get("selected_section_slug")
+    if selected_section_slug:
+        selected_section = next(
+            (section for section in page_block["sections"] if section["super_category"].slug == str(selected_section_slug)),
+            None,
+        )
+    selected_faq = None
+    selected_faq_id = request.POST.get("selected_faq_id")
+    if selected_faq_id:
+        for section in page_block["sections"]:
+            selected_faq = next((item for item in section["faq_items"] if str(item.pk) == str(selected_faq_id)), None)
+            if selected_faq:
+                selected_section = section
+                break
+
+    _record_widget_resolution_event(
+        user_type=user_type,
+        page=page_block["page"],
+        super_category=selected_section["super_category"] if selected_section else None,
+        category=selected_faq.category if selected_faq else None,
+        selected_faq=selected_faq,
+        request=request,
+    )
+    return JsonResponse({"success": True})
 
 
 @csrf_exempt
@@ -1072,6 +1202,7 @@ def support_faq_page_other_issue(request, user_type, page_slug):
         flow_name=request_context["flow_name"],
         form=form,
         request_user=request.user,
+        origin_channel=SupportRequest.OriginChannel.WIDGET,
     )
     return JsonResponse(
         {

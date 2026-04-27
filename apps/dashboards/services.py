@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
-from apps.support_center.models import SupportRequest
+from apps.support_center.models import SupportItem, SupportRequest, SupportWidgetEvent
 from apps.ticketing.models import Ticket
 from apps.ticketing.external_ticketing import sync_external_ticket_states
 from apps.ticketing.services import build_ticket_distribution_data
@@ -120,6 +120,87 @@ def _compress_category_rows(category_rows, campaign):
         }
     )
     return visible_rows
+
+
+SYSTEM_ACTIVITY_ORDER = [
+    "Customer support",
+    "Campaign performance",
+    "In-clinic",
+    "Red Flag Alert",
+    "Patient Education",
+]
+
+
+def _system_sort_key(system_name):
+    if system_name in SYSTEM_ACTIVITY_ORDER:
+        return (0, SYSTEM_ACTIVITY_ORDER.index(system_name), system_name)
+    return (1, system_name.lower())
+
+
+def _build_support_widget_activity_rows():
+    system_names = {
+        system_name
+        for system_name in SupportItem.objects.exclude(source_system="").values_list("source_system", flat=True)
+    }
+    system_names.update(
+        system_name
+        for system_name in SupportRequest.objects.exclude(source_system="").values_list("source_system", flat=True)
+    )
+    system_names.update(
+        system_name
+        for system_name in SupportWidgetEvent.objects.exclude(source_system="").values_list("source_system", flat=True)
+    )
+    ordered_systems = sorted(system_names, key=_system_sort_key)
+
+    opened_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED)
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+    resolved_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED)
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+    widget_ticket_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportRequest.objects.filter(origin_channel=SupportRequest.OriginChannel.WIDGET)
+        .exclude(source_system="")
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+    pm_raised_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportRequest.objects.filter(
+            origin_channel=SupportRequest.OriginChannel.WIDGET,
+            pm_ticket_raised_at__isnull=False,
+        )
+        .exclude(source_system="")
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+
+    rows = []
+    for system_name in ordered_systems:
+        rows.append(
+            {
+                "system": system_name,
+                "widget_open_count": opened_counts.get(system_name, 0),
+                "resolved_count": resolved_counts.get(system_name, 0),
+                "send_ticket_count": widget_ticket_counts.get(system_name, 0),
+                "pm_raised_ticket_count": pm_raised_counts.get(system_name, 0),
+            }
+        )
+
+    totals = {
+        "widget_open_count": sum(row["widget_open_count"] for row in rows),
+        "resolved_count": sum(row["resolved_count"] for row in rows),
+        "send_ticket_count": sum(row["send_ticket_count"] for row in rows),
+        "pm_raised_ticket_count": sum(row["pm_raised_ticket_count"] for row in rows),
+    }
+    return rows, totals
 
 
 def get_support_dashboard_data(campaign=None):
@@ -345,6 +426,7 @@ def get_support_dashboard_data(campaign=None):
         }
         for support_request in other_issue_requests
     ]
+    widget_activity_rows, widget_activity_totals = _build_support_widget_activity_rows()
 
     return {
         "overview_cards": overview_cards,
@@ -386,6 +468,8 @@ def get_support_dashboard_data(campaign=None):
             "critical_tickets": critical_count,
             "other_issue_requests": len(other_issue_rows),
         },
+        "widget_activity_rows": widget_activity_rows,
+        "widget_activity_totals": widget_activity_totals,
     }
 
 
