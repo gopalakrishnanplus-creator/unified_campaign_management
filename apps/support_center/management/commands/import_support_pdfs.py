@@ -25,6 +25,31 @@ ROLE_LABELS = {
     "Patient": "patient",
     "Publisher": "publisher",
     "BrandManager": "brand_manager",
+    "Student": "student",
+    "Expert": "expert",
+}
+
+SAPLAICME_TITLE_METADATA = {
+    "expertwebinarflowfaqs": {
+        "flow_name": "Expert Webinar Flow",
+        "audience": "expert",
+        "knowledge_type": SupportItem.KnowledgeType.FAQ,
+    },
+    "studentaicmeflowfaqs": {
+        "flow_name": "Student AI-CME Flow",
+        "audience": "student",
+        "knowledge_type": SupportItem.KnowledgeType.FAQ,
+    },
+    "studentlectureflowfaqs": {
+        "flow_name": "Student Lecture Flow",
+        "audience": "student",
+        "knowledge_type": SupportItem.KnowledgeType.FAQ,
+    },
+    "studentwebinarflowfaqs": {
+        "flow_name": "Student Webinar Flow",
+        "audience": "student",
+        "knowledge_type": SupportItem.KnowledgeType.FAQ,
+    },
 }
 
 DEPARTMENT_SPECS = {
@@ -140,6 +165,8 @@ class Command(BaseCommand):
                     "is_visible_to_publishers": sheet.audience == "publisher",
                     "is_visible_to_field_reps": sheet.audience == "field_rep",
                     "is_visible_to_patients": sheet.audience == "patient",
+                    "is_visible_to_students": sheet.audience == "student",
+                    "is_visible_to_experts": sheet.audience == "expert",
                 }
                 counters["item"] += 1
                 if item:
@@ -253,6 +280,16 @@ class Command(BaseCommand):
         return parsed_sheets
 
     def parse_title(self, title_line):
+        compact_title = re.sub(r"[\s_-]+", "", title_line).lower()
+        saplaicme_metadata = SAPLAICME_TITLE_METADATA.get(compact_title) or SAPLAICME_TITLE_METADATA.get(
+            compact_title.removeprefix("saplaicme")
+        )
+        if saplaicme_metadata:
+            return {
+                "system_name": "SAPLAICME",
+                **saplaicme_metadata,
+            }
+
         match = re.match(r"^(?P<system>[A-Za-z-]+)\s+(?P<flow>Flow\d+_[A-Za-z]+)_(?P<kind>FAQS|TicketCases)$", title_line)
         if not match:
             return None

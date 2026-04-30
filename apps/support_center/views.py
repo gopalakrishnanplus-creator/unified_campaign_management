@@ -55,6 +55,8 @@ ROLE_CONFIG = {
     "publisher": {"title": "Publisher Support", "page_title": "Publisher support landing page"},
     "field_rep": {"title": "Field Rep Support", "page_title": "Field representative support landing page"},
     "patient": {"title": "Patient Support", "page_title": "Patient support landing page"},
+    "student": {"title": "Student Support", "page_title": "Student support landing page"},
+    "expert": {"title": "Expert Support", "page_title": "Expert support landing page"},
 }
 CONTEXT_QUERY_KEYS = ("system", "source_system", "context_system", "flow", "source_flow", "context_flow")
 

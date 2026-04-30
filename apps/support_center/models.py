@@ -116,6 +116,8 @@ class SupportItem(models.Model):
     is_visible_to_publishers = models.BooleanField(default=False)
     is_visible_to_field_reps = models.BooleanField(default=True)
     is_visible_to_patients = models.BooleanField(default=False)
+    is_visible_to_students = models.BooleanField(default=False)
+    is_visible_to_experts = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["display_order", "name"]
@@ -137,6 +139,8 @@ class SupportItem(models.Model):
             "publisher": self.is_visible_to_publishers,
             "field_rep": self.is_visible_to_field_reps,
             "patient": self.is_visible_to_patients,
+            "student": self.is_visible_to_students,
+            "expert": self.is_visible_to_experts,
         }
         return mapping.get(user_type, False)
 

@@ -65,6 +65,8 @@ class Ticket(models.Model):
         PUBLISHER = "publisher", "Publisher"
         FIELD_REP = "field_rep", "Field rep"
         PATIENT = "patient", "Patient"
+        STUDENT = "student", "Student"
+        EXPERT = "expert", "Expert"
         INTERNAL = "internal", "Internal"
 
     class SourceSystem(models.TextChoices):

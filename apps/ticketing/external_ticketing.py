@@ -65,6 +65,8 @@ USER_TYPE_MAP = {
     Ticket.UserType.PUBLISHER: "client",
     Ticket.UserType.FIELD_REP: "client",
     Ticket.UserType.PATIENT: "client",
+    Ticket.UserType.STUDENT: "client",
+    Ticket.UserType.EXPERT: "client",
 }
 
 TOKEN_SYNONYMS = {

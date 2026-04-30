@@ -10,12 +10,13 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.dashboards.services import get_support_dashboard_data
 from apps.reporting.services import build_live_performance_sections
-from apps.support_center.services import get_faq_combination
+from apps.support_center.services import get_faq_combination, get_faq_page
 from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory, SupportWidgetEvent
 from apps.ticketing.models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketTypeDefinition
 from apps.ticketing.external_ticketing import sync_external_directory
@@ -40,6 +41,8 @@ class SeededIntegrationTestCase(TestCase):
             reverse("support_center:landing", kwargs={"user_type": "publisher"}),
             reverse("support_center:landing", kwargs={"user_type": "field_rep"}),
             reverse("support_center:landing", kwargs={"user_type": "patient"}),
+            reverse("support_center:landing", kwargs={"user_type": "student"}),
+            reverse("support_center:landing", kwargs={"user_type": "expert"}),
             "/accounts/login/?next=/app/",
         ]
         for path in paths:
@@ -1279,6 +1282,94 @@ class SupportPdfImportCommandTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["role_title"], "Publisher Support")
+
+    @patch("apps.dashboards.services.sync_external_ticket_states")
+    def test_import_support_pdfs_loads_saplaicme_student_and_expert_flows_with_widget_tracking(self, mock_sync_external_ticket_states):
+        base_dir = Path(settings.BASE_DIR)
+        saplaicme_pdfs = [
+            base_dir / "static" / "support-pdfs" / "saplaicme-expert-webinar-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "saplaicme-student-ai-cme-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "saplaicme-student-lecture-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "saplaicme-student-webinar-flow-faqs.pdf",
+        ]
+
+        call_command("import_support_pdfs", "--replace", *[str(pdf_path) for pdf_path in saplaicme_pdfs])
+
+        student_page = SupportPage.objects.get(slug="saplaicme-student-ai-cme-flow-role-selector-page")
+        expert_page = SupportPage.objects.get(slug="saplaicme-expert-webinar-flow-role-selector-page")
+        student_item = SupportItem.objects.filter(
+            page=student_page,
+            source_system="SAPLAICME",
+            source_flow="Student AI-CME Flow",
+            is_visible_to_students=True,
+        ).first()
+        expert_item = SupportItem.objects.filter(
+            page=expert_page,
+            source_system="SAPLAICME",
+            source_flow="Expert Webinar Flow",
+            is_visible_to_experts=True,
+        ).first()
+
+        self.assertIsNotNone(student_item)
+        self.assertIsNotNone(expert_item)
+        self.assertTrue(get_faq_page("student", student_page.slug))
+        self.assertTrue(get_faq_page("expert", expert_page.slug))
+        self.assertEqual(student_item.associated_pdf_url, "/static/support-pdfs/saplaicme-student-ai-cme-flow-faqs.pdf")
+
+        student_links_response = self.client.get(reverse("support_center:faq_links_api", kwargs={"user_type": "student"}))
+        expert_links_response = self.client.get(reverse("support_center:faq_links_api", kwargs={"user_type": "expert"}))
+        self.assertEqual(student_links_response.status_code, 200)
+        self.assertEqual(expert_links_response.status_code, 200)
+        self.assertEqual(student_links_response.json()["role_title"], "Student Support")
+        self.assertEqual(expert_links_response.json()["role_title"], "Expert Support")
+
+        widget_url = reverse(
+            "support_center:faq_page_widget",
+            kwargs={"user_type": "student", "page_slug": student_page.slug},
+        )
+        widget_response = self.client.get(f"{widget_url}?embed=1")
+        self.assertEqual(widget_response.status_code, 200)
+
+        event_response = self.client.post(
+            reverse(
+                "support_center:faq_page_widget_event",
+                kwargs={"user_type": "student", "page_slug": student_page.slug},
+            ),
+            data={
+                "event_type": "resolved",
+                "selected_faq_id": student_item.pk,
+                "source_system": "SAPLAICME",
+                "source_flow": "Student AI-CME Flow",
+            },
+        )
+        self.assertEqual(event_response.status_code, 200)
+
+        other_issue_response = self.client.post(
+            reverse(
+                "support_center:faq_page_other_issue",
+                kwargs={"user_type": "student", "page_slug": student_page.slug},
+            ),
+            data={
+                "requester_name": "Student SAPLAICME User",
+                "requester_email": "student.saplaicme@example.com",
+                "requester_number": "+915555111111",
+                "free_text": "The SAPLAICME AI-CME page needs help.",
+                "selected_faq_id": student_item.pk,
+                "source_system": "SAPLAICME",
+                "source_flow": "Student AI-CME Flow",
+            },
+        )
+        self.assertEqual(other_issue_response.status_code, 200)
+        support_request = SupportRequest.objects.get(pk=other_issue_response.json()["request_id"])
+        support_request.pm_ticket_raised_at = timezone.now()
+        support_request.save(update_fields=["pm_ticket_raised_at"])
+
+        dashboard_data = get_support_dashboard_data()
+        saplaicme_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "SAPLAICME")
+        self.assertEqual(saplaicme_row["widget_open_count"], 1)
+        self.assertEqual(saplaicme_row["resolved_count"], 1)
+        self.assertEqual(saplaicme_row["send_ticket_count"], 1)
+        self.assertEqual(saplaicme_row["pm_raised_ticket_count"], 1)
 
 
 class TicketingDropdownSeedCommandTests(TestCase):
