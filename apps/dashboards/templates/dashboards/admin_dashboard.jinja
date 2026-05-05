@@ -107,6 +107,12 @@
         .widget-table { min-width: 780px; }
         .pm-table { min-width: 1040px; }
         .ticket-table { min-width: 1080px; }
+        .stacked-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: flex-start;
+        }
         th {
             position: sticky;
             top: 61px;
@@ -302,13 +308,18 @@
             <div>
                 <p class="eyebrow">Bulk cleanup</p>
                 <h2>Clear dashboard activity</h2>
-                <p class="small">Bulk deletes clear operational records only. FAQ catalog pages and answers are not deleted.</p>
+                <p class="small">Reset event counts clears only open/resolved analytics. Delete widget catalog removes FAQ page and answer counts.</p>
             </div>
             <div class="section-actions">
                 <form method="post" onsubmit="return confirm('Reset ALL widget open/resolved event counts?');">
                     {{ csrf_input }}
                     <input type="hidden" name="action" value="reset_all_widget_counts">
-                    <button class="secondary" type="submit">Reset all counts</button>
+                    <button class="secondary" type="submit">Reset event counts</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Delete ALL support widget FAQ pages and answers? This removes the Pages and FAQs counts until the catalog is imported again.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="delete_all_support_widgets">
+                    <button class="danger-outline" type="submit">Delete widget catalog</button>
                 </form>
                 <form method="post" onsubmit="return confirm('Delete ALL PM queue records? Linked tickets will be deleted from internal ticketing first.');">
                     {{ csrf_input }}
@@ -332,13 +343,18 @@
             <div class="section-header">
                 <div>
                     <h2>System-wise support widget counts</h2>
-                    <p>Counts are derived from FAQ pages, FAQ items, widget open/resolved events, PM queue records, and tickets.</p>
+                    <p>Pages/FAQs are widget catalog counts. Opened/Resolved are event counts. Use Delete widgets to remove catalog counts for a system.</p>
                 </div>
                 <div class="section-actions">
                     <form method="post" onsubmit="return confirm('Reset ALL widget open/resolved event counts?');">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="reset_all_widget_counts">
-                        <button class="secondary" type="submit">Reset all widget counts</button>
+                        <button class="secondary" type="submit">Reset all event counts</button>
+                    </form>
+                    <form method="post" onsubmit="return confirm('Delete ALL support widget FAQ pages and answers? This removes the Pages and FAQs counts until the catalog is imported again.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delete_all_support_widgets">
+                        <button class="danger-outline" type="submit">Delete all widgets</button>
                     </form>
                 </div>
             </div>
@@ -353,7 +369,7 @@
                             <th>Resolved</th>
                             <th>PM Queue</th>
                             <th>Tickets</th>
-                            <th>Reset Events</th>
+                            <th>Widget Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -367,12 +383,20 @@
                                 <td>{{ row.pm_queue_count }}</td>
                                 <td>{{ row.ticket_count }}</td>
                                 <td>
-                                    <form method="post" onsubmit="return confirm('Reset widget open/resolved event counts for {{ row.system }}?');">
-                                        {{ csrf_input }}
-                                        <input type="hidden" name="action" value="reset_widget_counts">
-                                        <input type="hidden" name="system" value="{{ row.system }}">
-                                        <button class="secondary" type="submit">Reset widget events</button>
-                                    </form>
+                                    <div class="stacked-actions">
+                                        <form method="post" onsubmit="return confirm('Reset widget open/resolved event counts for {{ row.system }}? Page and FAQ counts will remain.');">
+                                            {{ csrf_input }}
+                                            <input type="hidden" name="action" value="reset_widget_counts">
+                                            <input type="hidden" name="system" value="{{ row.system }}">
+                                            <button class="secondary" type="submit">Reset events</button>
+                                        </form>
+                                        <form method="post" onsubmit="return confirm('Delete support widget FAQ pages and answers for {{ row.system }}? This removes the Pages and FAQs counts until the catalog is imported again.');">
+                                            {{ csrf_input }}
+                                            <input type="hidden" name="action" value="delete_support_widgets">
+                                            <input type="hidden" name="system" value="{{ row.system }}">
+                                            <button class="danger-outline" type="submit">Delete widgets</button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         {% else %}

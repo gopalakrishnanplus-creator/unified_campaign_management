@@ -2195,7 +2195,7 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(SupportWidgetEvent.objects.filter(source_system="In-clinic").exists())
         self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
-        self.assertContains(response, "Reset 1 widget event record")
+        self.assertContains(response, "Reset 1 widget open/resolved event record")
 
     def test_support_admin_dashboard_bulk_resets_all_widget_counts(self):
         SupportWidgetEvent.objects.create(
@@ -2220,7 +2220,95 @@ class ExternalTicketSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(SupportWidgetEvent.objects.exists())
-        self.assertContains(response, "Reset all widget event counts")
+        self.assertContains(response, "Reset all widget open/resolved event counts")
+
+    def test_support_admin_dashboard_deletes_support_widget_catalog_by_system(self):
+        inclinic_page = SupportPage.objects.create(name="In-clinic Page", source_system="In-clinic", source_flow="Doctor Flow")
+        pe_page = SupportPage.objects.create(name="PE Page", source_system="Patient Education", source_flow="Doctor Flow")
+        support_super = SupportSuperCategory.objects.create(name="Widget Delete Section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Widget Delete Screen")
+        inclinic_item = SupportItem.objects.create(
+            page=inclinic_page,
+            category=support_category,
+            name="In-clinic delete FAQ",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        pe_item = SupportItem.objects.create(
+            page=pe_page,
+            category=support_category,
+            name="PE keep FAQ",
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=inclinic_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=pe_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_support_widgets", "system": "In-clinic"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportPage.objects.filter(pk=inclinic_page.pk).exists())
+        self.assertFalse(SupportItem.objects.filter(pk=inclinic_item.pk).exists())
+        self.assertFalse(SupportWidgetEvent.objects.filter(source_system="In-clinic").exists())
+        self.assertTrue(SupportPage.objects.filter(pk=pe_page.pk).exists())
+        self.assertTrue(SupportItem.objects.filter(pk=pe_item.pk).exists())
+        self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
+        self.assertContains(response, "Deleted support widgets for In-clinic")
+
+    def test_support_admin_dashboard_bulk_deletes_support_widget_catalog(self):
+        support_page = SupportPage.objects.create(name="Bulk Widget Page", source_system="In-clinic", source_flow="Doctor Flow")
+        support_super = SupportSuperCategory.objects.create(name="Bulk Widget Section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Bulk Widget Screen")
+        SupportItem.objects.create(
+            page=support_page,
+            category=support_category,
+            name="Bulk widget FAQ",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_all_support_widgets"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportPage.objects.exists())
+        self.assertFalse(SupportItem.objects.exists())
+        self.assertFalse(SupportWidgetEvent.objects.exists())
+        self.assertContains(response, "Deleted all support widgets")
 
     @override_settings(
         EXTERNAL_TICKETING_SYNC_ENABLED=True,

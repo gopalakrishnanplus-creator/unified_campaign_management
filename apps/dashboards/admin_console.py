@@ -171,6 +171,44 @@ def delete_widget_events_for_system(system_name):
     return deleted_count
 
 
+def ids_for_support_system(model, system_name):
+    return [
+        record_id
+        for record_id, source_system, source_flow in model.objects.values_list("pk", "source_system", "source_flow")
+        if canonical_support_system(source_system, source_flow) == system_name
+    ]
+
+
+def delete_support_widgets_for_system(system_name):
+    event_count = delete_widget_events_for_system(system_name)
+    item_ids = ids_for_support_system(SupportItem, system_name)
+    page_ids = ids_for_support_system(SupportPage, system_name)
+    item_count = len(item_ids)
+    page_count = len(page_ids)
+    if item_ids:
+        SupportItem.objects.filter(pk__in=item_ids).delete()
+    if page_ids:
+        SupportPage.objects.filter(pk__in=page_ids).delete()
+    return {
+        "event_count": event_count,
+        "item_count": item_count,
+        "page_count": page_count,
+    }
+
+
+def delete_all_support_widgets():
+    event_count, _ = SupportWidgetEvent.objects.all().delete()
+    item_count = SupportItem.objects.count()
+    page_count = SupportPage.objects.count()
+    SupportItem.objects.all().delete()
+    SupportPage.objects.all().delete()
+    return {
+        "event_count": event_count,
+        "item_count": item_count,
+        "page_count": page_count,
+    }
+
+
 class AdminDashboardAuthMixin:
     def dispatch(self, request, *args, **kwargs):
         if not admin_dashboard_authenticated(request):
@@ -220,6 +258,8 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         handlers = {
             "reset_widget_counts": self.handle_reset_widget_counts,
             "reset_all_widget_counts": self.handle_reset_all_widget_counts,
+            "delete_support_widgets": self.handle_delete_support_widgets,
+            "delete_all_support_widgets": self.handle_delete_all_support_widgets,
             "update_pm_request": self.handle_update_pm_request,
             "delete_pm_request": self.handle_delete_pm_request,
             "delete_selected_pm_requests": self.handle_delete_selected_pm_requests,
@@ -242,12 +282,42 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             messages.error(request, "Choose a system before resetting widget counts.")
             return redirect("support_admin_dashboard")
         deleted_count = delete_widget_events_for_system(system_name)
-        messages.success(request, f"Reset {deleted_count} widget event record(s) for {system_name}.")
+        messages.success(
+            request,
+            f"Reset {deleted_count} widget open/resolved event record(s) for {system_name}. "
+            "Page and FAQ catalog counts are kept; use Delete widgets to remove those counts.",
+        )
         return redirect("support_admin_dashboard")
 
     def handle_reset_all_widget_counts(self, request):
         deleted_count, _ = SupportWidgetEvent.objects.all().delete()
-        messages.success(request, f"Reset all widget event counts by deleting {deleted_count} event record(s).")
+        messages.success(
+            request,
+            f"Reset all widget open/resolved event counts by deleting {deleted_count} event record(s). "
+            "Page and FAQ catalog counts are kept; use Delete all widgets to remove those counts.",
+        )
+        return redirect("support_admin_dashboard")
+
+    def handle_delete_support_widgets(self, request):
+        system_name = (request.POST.get("system") or "").strip()
+        if not system_name:
+            messages.error(request, "Choose a system before deleting support widgets.")
+            return redirect("support_admin_dashboard")
+        result = delete_support_widgets_for_system(system_name)
+        messages.success(
+            request,
+            f"Deleted support widgets for {system_name}: {result['page_count']} page(s), "
+            f"{result['item_count']} FAQ item(s), and {result['event_count']} event record(s).",
+        )
+        return redirect("support_admin_dashboard")
+
+    def handle_delete_all_support_widgets(self, request):
+        result = delete_all_support_widgets()
+        messages.success(
+            request,
+            f"Deleted all support widgets: {result['page_count']} page(s), "
+            f"{result['item_count']} FAQ item(s), and {result['event_count']} event record(s).",
+        )
         return redirect("support_admin_dashboard")
 
     def handle_update_pm_request(self, request):
