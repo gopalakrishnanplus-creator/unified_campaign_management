@@ -1284,28 +1284,28 @@ class SupportPdfImportCommandTests(TestCase):
         self.assertEqual(response.json()["role_title"], "Publisher Support")
 
     @patch("apps.dashboards.services.sync_external_ticket_states")
-    def test_import_support_pdfs_loads_saplaicme_student_and_expert_flows_with_widget_tracking(self, mock_sync_external_ticket_states):
+    def test_import_support_pdfs_loads_sapl_and_aicme_flows_with_separate_widget_tracking(self, mock_sync_external_ticket_states):
         base_dir = Path(settings.BASE_DIR)
-        saplaicme_pdfs = [
-            base_dir / "static" / "support-pdfs" / "saplaicme-expert-webinar-flow-faqs.pdf",
-            base_dir / "static" / "support-pdfs" / "saplaicme-student-ai-cme-flow-faqs.pdf",
-            base_dir / "static" / "support-pdfs" / "saplaicme-student-lecture-flow-faqs.pdf",
-            base_dir / "static" / "support-pdfs" / "saplaicme-student-webinar-flow-faqs.pdf",
+        sapl_aicme_pdfs = [
+            base_dir / "static" / "support-pdfs" / "sapl-expert-webinar-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "aicme-student-ai-cme-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "sapl-student-lecture-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "sapl-student-webinar-flow-faqs.pdf",
         ]
 
-        call_command("import_support_pdfs", "--replace", *[str(pdf_path) for pdf_path in saplaicme_pdfs])
+        call_command("import_support_pdfs", "--replace", *[str(pdf_path) for pdf_path in sapl_aicme_pdfs])
 
-        student_page = SupportPage.objects.get(slug="saplaicme-student-ai-cme-flow-role-selector-page")
-        expert_page = SupportPage.objects.get(slug="saplaicme-expert-webinar-flow-role-selector-page")
+        student_page = SupportPage.objects.get(slug="aicme-student-ai-cme-flow-role-selector-page")
+        expert_page = SupportPage.objects.get(slug="sapl-expert-webinar-flow-role-selector-page")
         student_item = SupportItem.objects.filter(
             page=student_page,
-            source_system="SAPLAICME",
+            source_system="AICME",
             source_flow="Student AI-CME Flow",
             is_visible_to_students=True,
         ).first()
         expert_item = SupportItem.objects.filter(
             page=expert_page,
-            source_system="SAPLAICME",
+            source_system="SAPL",
             source_flow="Expert Webinar Flow",
             is_visible_to_experts=True,
         ).first()
@@ -1314,7 +1314,7 @@ class SupportPdfImportCommandTests(TestCase):
         self.assertIsNotNone(expert_item)
         self.assertTrue(get_faq_page("student", student_page.slug))
         self.assertTrue(get_faq_page("expert", expert_page.slug))
-        self.assertEqual(student_item.associated_pdf_url, "/static/support-pdfs/saplaicme-student-ai-cme-flow-faqs.pdf")
+        self.assertEqual(student_item.associated_pdf_url, "/static/support-pdfs/aicme-student-ai-cme-flow-faqs.pdf")
 
         student_links_response = self.client.get(reverse("support_center:faq_links_api", kwargs={"user_type": "student"}))
         expert_links_response = self.client.get(reverse("support_center:faq_links_api", kwargs={"user_type": "expert"}))
@@ -1338,11 +1338,29 @@ class SupportPdfImportCommandTests(TestCase):
             data={
                 "event_type": "resolved",
                 "selected_faq_id": student_item.pk,
-                "source_system": "SAPLAICME",
+                "source_system": "AICME",
                 "source_flow": "Student AI-CME Flow",
             },
         )
         self.assertEqual(event_response.status_code, 200)
+
+        expert_widget_response = self.client.get(
+            f"{reverse('support_center:faq_page_widget', kwargs={'user_type': 'expert', 'page_slug': expert_page.slug})}?embed=1"
+        )
+        self.assertEqual(expert_widget_response.status_code, 200)
+
+        SupportWidgetEvent.objects.create(
+            event_type=SupportWidgetEvent.EventType.OPENED,
+            user_type="student",
+            source_system="SAPLAICME",
+            source_flow="Student AI-CME Flow",
+        )
+        SupportWidgetEvent.objects.create(
+            event_type=SupportWidgetEvent.EventType.OPENED,
+            user_type="expert",
+            source_system="SAPLAICME",
+            source_flow="Expert Webinar Flow",
+        )
 
         other_issue_response = self.client.post(
             reverse(
@@ -1350,12 +1368,12 @@ class SupportPdfImportCommandTests(TestCase):
                 kwargs={"user_type": "student", "page_slug": student_page.slug},
             ),
             data={
-                "requester_name": "Student SAPLAICME User",
-                "requester_email": "student.saplaicme@example.com",
+                "requester_name": "Student AICME User",
+                "requester_email": "student.aicme@example.com",
                 "requester_number": "+915555111111",
-                "free_text": "The SAPLAICME AI-CME page needs help.",
+                "free_text": "The AICME page needs help.",
                 "selected_faq_id": student_item.pk,
-                "source_system": "SAPLAICME",
+                "source_system": "AICME",
                 "source_flow": "Student AI-CME Flow",
             },
         )
@@ -1365,11 +1383,16 @@ class SupportPdfImportCommandTests(TestCase):
         support_request.save(update_fields=["pm_ticket_raised_at"])
 
         dashboard_data = get_support_dashboard_data()
-        saplaicme_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "SAPLAICME")
-        self.assertEqual(saplaicme_row["widget_open_count"], 1)
-        self.assertEqual(saplaicme_row["resolved_count"], 1)
-        self.assertEqual(saplaicme_row["send_ticket_count"], 1)
-        self.assertEqual(saplaicme_row["pm_raised_ticket_count"], 1)
+        aicme_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "AICME")
+        sapl_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "SAPL")
+        self.assertEqual(aicme_row["widget_open_count"], 2)
+        self.assertEqual(aicme_row["resolved_count"], 1)
+        self.assertEqual(aicme_row["send_ticket_count"], 1)
+        self.assertEqual(aicme_row["pm_raised_ticket_count"], 1)
+        self.assertEqual(sapl_row["widget_open_count"], 2)
+        self.assertEqual(sapl_row["resolved_count"], 0)
+        self.assertEqual(sapl_row["send_ticket_count"], 0)
+        self.assertEqual(sapl_row["pm_raised_ticket_count"], 0)
 
 
 class TicketingDropdownSeedCommandTests(TestCase):

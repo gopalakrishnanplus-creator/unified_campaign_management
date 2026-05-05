@@ -128,7 +128,18 @@ SYSTEM_ACTIVITY_ORDER = [
     "In-clinic",
     "Red Flag Alert",
     "Patient Education",
+    "SAPL",
+    "AICME",
 ]
+
+
+def _canonical_support_system(system_name, flow_name=""):
+    if system_name != "SAPLAICME":
+        return system_name
+    normalized_flow = (flow_name or "").replace("-", "").replace("_", "").replace(" ", "").lower()
+    if "aicme" in normalized_flow:
+        return "AICME"
+    return "SAPL"
 
 
 def _system_sort_key(system_name):
@@ -137,50 +148,35 @@ def _system_sort_key(system_name):
     return (1, system_name.lower())
 
 
-def _build_support_widget_activity_rows():
-    system_names = {
-        system_name
-        for system_name in SupportItem.objects.exclude(source_system="").values_list("source_system", flat=True)
+def _support_activity_system_names(queryset):
+    return {
+        _canonical_support_system(system_name, flow_name)
+        for system_name, flow_name in queryset.exclude(source_system="").values_list("source_system", "source_flow")
     }
-    system_names.update(
-        system_name
-        for system_name in SupportRequest.objects.exclude(source_system="").values_list("source_system", flat=True)
-    )
-    system_names.update(
-        system_name
-        for system_name in SupportWidgetEvent.objects.exclude(source_system="").values_list("source_system", flat=True)
-    )
+
+
+def _support_activity_counts(queryset):
+    counts = defaultdict(int)
+    for system_name, flow_name in queryset.exclude(source_system="").values_list("source_system", "source_flow"):
+        counts[_canonical_support_system(system_name, flow_name)] += 1
+    return counts
+
+
+def _build_support_widget_activity_rows():
+    system_names = _support_activity_system_names(SupportItem.objects.all())
+    system_names.update(_support_activity_system_names(SupportRequest.objects.all()))
+    system_names.update(_support_activity_system_names(SupportWidgetEvent.objects.all()))
     ordered_systems = sorted(system_names, key=_system_sort_key)
 
-    opened_counts = {
-        row["source_system"]: row["total"]
-        for row in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED)
-        .values("source_system")
-        .annotate(total=Count("id"))
-    }
-    resolved_counts = {
-        row["source_system"]: row["total"]
-        for row in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED)
-        .values("source_system")
-        .annotate(total=Count("id"))
-    }
-    widget_ticket_counts = {
-        row["source_system"]: row["total"]
-        for row in SupportRequest.objects.filter(origin_channel=SupportRequest.OriginChannel.WIDGET)
-        .exclude(source_system="")
-        .values("source_system")
-        .annotate(total=Count("id"))
-    }
-    pm_raised_counts = {
-        row["source_system"]: row["total"]
-        for row in SupportRequest.objects.filter(
+    opened_counts = _support_activity_counts(SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED))
+    resolved_counts = _support_activity_counts(SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED))
+    widget_ticket_counts = _support_activity_counts(SupportRequest.objects.filter(origin_channel=SupportRequest.OriginChannel.WIDGET))
+    pm_raised_counts = _support_activity_counts(
+        SupportRequest.objects.filter(
             origin_channel=SupportRequest.OriginChannel.WIDGET,
             pm_ticket_raised_at__isnull=False,
         )
-        .exclude(source_system="")
-        .values("source_system")
-        .annotate(total=Count("id"))
-    }
+    )
 
     rows = []
     for system_name in ordered_systems:

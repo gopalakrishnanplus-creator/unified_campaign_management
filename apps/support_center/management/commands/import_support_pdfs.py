@@ -29,23 +29,27 @@ ROLE_LABELS = {
     "Expert": "expert",
 }
 
-SAPLAICME_TITLE_METADATA = {
+SAPL_AICME_TITLE_METADATA = {
     "expertwebinarflowfaqs": {
+        "system_name": "SAPL",
         "flow_name": "Expert Webinar Flow",
         "audience": "expert",
         "knowledge_type": SupportItem.KnowledgeType.FAQ,
     },
     "studentaicmeflowfaqs": {
+        "system_name": "AICME",
         "flow_name": "Student AI-CME Flow",
         "audience": "student",
         "knowledge_type": SupportItem.KnowledgeType.FAQ,
     },
     "studentlectureflowfaqs": {
+        "system_name": "SAPL",
         "flow_name": "Student Lecture Flow",
         "audience": "student",
         "knowledge_type": SupportItem.KnowledgeType.FAQ,
     },
     "studentwebinarflowfaqs": {
+        "system_name": "SAPL",
         "flow_name": "Student Webinar Flow",
         "audience": "student",
         "knowledge_type": SupportItem.KnowledgeType.FAQ,
@@ -113,13 +117,16 @@ class Command(BaseCommand):
             parsed = self.parse_pdf(pdf_path)
             sheets.extend(parsed)
             systems_in_batch.update(sheet.system_name for sheet in parsed)
+        systems_to_replace = set(systems_in_batch)
+        if {"AICME", "SAPL"}.issubset(systems_in_batch):
+            systems_to_replace.add("SAPLAICME")
 
         departments = self.ensure_departments()
         default_faq_department = departments["Product"]
 
-        if options["replace"] and systems_in_batch:
-            deleted, _ = SupportItem.objects.filter(source_system__in=systems_in_batch).delete()
-            self.stdout.write(f"Deleted {deleted} existing support items for systems: {', '.join(sorted(systems_in_batch))}")
+        if options["replace"] and systems_to_replace:
+            deleted, _ = SupportItem.objects.filter(source_system__in=systems_to_replace).delete()
+            self.stdout.write(f"Deleted {deleted} existing support items for systems: {', '.join(sorted(systems_to_replace))}")
 
         counters = {"super": 0, "category": 0, "item": 0}
         for sheet in sheets:
@@ -281,14 +288,11 @@ class Command(BaseCommand):
 
     def parse_title(self, title_line):
         compact_title = re.sub(r"[\s_-]+", "", title_line).lower()
-        saplaicme_metadata = SAPLAICME_TITLE_METADATA.get(compact_title) or SAPLAICME_TITLE_METADATA.get(
+        sapl_aicme_metadata = SAPL_AICME_TITLE_METADATA.get(compact_title) or SAPL_AICME_TITLE_METADATA.get(
             compact_title.removeprefix("saplaicme")
         )
-        if saplaicme_metadata:
-            return {
-                "system_name": "SAPLAICME",
-                **saplaicme_metadata,
-            }
+        if sapl_aicme_metadata:
+            return sapl_aicme_metadata
 
         match = re.match(r"^(?P<system>[A-Za-z-]+)\s+(?P<flow>Flow\d+_[A-Za-z]+)_(?P<kind>FAQS|TicketCases)$", title_line)
         if not match:
