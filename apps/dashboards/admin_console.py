@@ -264,13 +264,17 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         support_request = get_object_or_404(SupportRequest, pk=request.POST.get("support_request_id"))
         linked_ticket = Ticket.objects.filter(support_request=support_request).select_related("current_assignee", "submitted_by", "created_by").first()
         try:
+            sync_warning = ""
             if linked_ticket:
-                self.delete_ticket_with_external_sync(linked_ticket)
+                sync_warning = self.delete_ticket_with_external_sync(linked_ticket)
             queue_ticket_number = support_request.queue_ticket_number
             support_request.delete()
-            messages.success(request, f"Deleted PM queue record {queue_ticket_number}.")
+            if sync_warning:
+                messages.warning(request, f"Deleted PM queue record {queue_ticket_number} locally. Internal ticket cleanup warning: {sync_warning}")
+            else:
+                messages.success(request, f"Deleted PM queue record {queue_ticket_number}.")
         except Exception as exc:
-            messages.error(request, f"PM queue record was not deleted because linked internal ticket deletion failed: {exc}")
+            messages.error(request, f"PM queue record was not deleted locally: {exc}")
         return redirect("support_admin_dashboard")
 
     def handle_delete_selected_pm_requests(self, request):
@@ -323,11 +327,14 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             pk=request.POST.get("ticket_id"),
         )
         try:
-            self.delete_ticket_with_external_sync(ticket)
+            sync_warning = self.delete_ticket_with_external_sync(ticket)
         except Exception as exc:
-            messages.error(request, f"Ticket was not deleted because internal ticket deletion failed: {exc}")
+            messages.error(request, f"Ticket was not deleted locally: {exc}")
             return redirect("support_admin_dashboard")
-        messages.success(request, f"Deleted ticket {ticket.ticket_number}.")
+        if sync_warning:
+            messages.warning(request, f"Deleted ticket {ticket.ticket_number} locally. Internal ticket cleanup warning: {sync_warning}")
+        else:
+            messages.success(request, f"Deleted ticket {ticket.ticket_number}.")
         return redirect("support_admin_dashboard")
 
     def handle_delete_selected_tickets(self, request):
@@ -356,9 +363,7 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
 
     def handle_clear_dashboard_activity(self, request):
         ticket_result = self.bulk_delete_tickets(Ticket.objects.all())
-        pm_result = self.bulk_delete_pm_requests(
-            SupportRequest.objects.exclude(pk__in=ticket_result["failed_support_request_ids"])
-        )
+        pm_result = self.bulk_delete_pm_requests(SupportRequest.objects.all())
         widget_deleted_count, _ = SupportWidgetEvent.objects.all().delete()
         failure_count = len(ticket_result["failures"]) + len(pm_result["failures"])
         summary = (
@@ -369,7 +374,7 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         if failure_count:
             messages.warning(
                 request,
-                f"{summary} {failure_count} record(s) were kept because internal ticket deletion failed: "
+                f"{summary} Internal ticket cleanup had {failure_count} warning(s): "
                 + self.format_failure_preview([*ticket_result["failures"], *pm_result["failures"]]),
             )
         else:
@@ -378,35 +383,37 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
 
     @staticmethod
     def delete_ticket_with_external_sync(ticket):
+        sync_warning = ""
         if ticket.external_ticket_number:
-            delete_external_ticket(
-                ticket,
-                actor_email=settings.PROJECT_MANAGER_EMAIL,
-                message="Ticket deleted from Campaign Management admin dashboard.",
-            )
+            try:
+                delete_external_ticket(
+                    ticket,
+                    actor_email=settings.PROJECT_MANAGER_EMAIL,
+                    message="Ticket deleted from Campaign Management admin dashboard.",
+                )
+            except Exception as exc:
+                sync_warning = f"{ticket.ticket_number}: {exc}"
         ticket.delete()
+        return sync_warning
 
     def bulk_delete_tickets(self, queryset):
         deleted_count = 0
         failures = []
-        failed_support_request_ids = set()
         tickets = list(
             queryset.select_related("current_assignee", "submitted_by", "created_by", "support_request").order_by("pk")
         )
         for ticket in tickets:
             ticket_number = ticket.ticket_number
-            support_request_id = ticket.support_request_id
             try:
-                self.delete_ticket_with_external_sync(ticket)
+                sync_warning = self.delete_ticket_with_external_sync(ticket)
                 deleted_count += 1
+                if sync_warning:
+                    failures.append(sync_warning)
             except Exception as exc:
-                if support_request_id:
-                    failed_support_request_ids.add(support_request_id)
-                failures.append(f"{ticket_number}: {exc}")
+                failures.append(f"{ticket_number}: local deletion failed: {exc}")
         return {
             "deleted": deleted_count,
             "failures": failures,
-            "failed_support_request_ids": failed_support_request_ids,
         }
 
     def bulk_delete_pm_requests(self, queryset):
@@ -423,12 +430,14 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             )
             try:
                 if linked_ticket:
-                    self.delete_ticket_with_external_sync(linked_ticket)
+                    sync_warning = self.delete_ticket_with_external_sync(linked_ticket)
                     deleted_linked_tickets += 1
+                    if sync_warning:
+                        failures.append(sync_warning)
                 support_request.delete()
                 deleted_requests += 1
             except Exception as exc:
-                failures.append(f"{queue_ticket_number}: {exc}")
+                failures.append(f"{queue_ticket_number}: local deletion failed: {exc}")
         return {
             "deleted_requests": deleted_requests,
             "deleted_linked_tickets": deleted_linked_tickets,
@@ -446,7 +455,7 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         if failures:
             messages.warning(
                 request,
-                f"{label}: {success_message} {len(failures)} record(s) were kept because internal ticket deletion failed: "
+                f"{label}: {success_message} Internal ticket cleanup had {len(failures)} warning(s): "
                 + self.format_failure_preview(failures),
             )
             return

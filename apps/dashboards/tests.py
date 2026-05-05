@@ -2329,13 +2329,13 @@ class ExternalTicketSyncTests(TestCase):
         EXTERNAL_TICKETING_API_TOKEN="",
     )
     @patch("apps.ticketing.external_ticketing.requests.request")
-    def test_support_admin_dashboard_keeps_local_ticket_when_internal_delete_fails(self, mock_request):
+    def test_support_admin_dashboard_deletes_local_ticket_when_internal_delete_fails(self, mock_request):
         response_payload = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
         response_payload.json.return_value = {"success": False, "error": "delete failed"}
         mock_request.return_value = response_payload
         ticket = Ticket.objects.create(
-            title="Admin delete failure",
-            description="This ticket should remain locally when internal delete fails.",
+            title="Admin delete internal failure",
+            description="This ticket should still be deleted locally when internal delete fails.",
             ticket_type="Functional",
             user_type=Ticket.UserType.INTERNAL,
             source_system=Ticket.SourceSystem.PROJECT_MANAGER,
@@ -2362,8 +2362,9 @@ class ExternalTicketSyncTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(Ticket.objects.filter(pk=ticket.pk).exists())
-        self.assertContains(response, "Ticket was not deleted because internal ticket deletion failed")
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertContains(response, "Deleted ticket")
+        self.assertContains(response, "Internal ticket cleanup warning")
 
     def test_support_admin_dashboard_deletes_selected_pm_queue_records(self):
         selected_request = SupportRequest.objects.create(
@@ -2455,7 +2456,7 @@ class ExternalTicketSyncTests(TestCase):
         EXTERNAL_TICKETING_API_TOKEN="",
     )
     @patch("apps.ticketing.external_ticketing.requests.request")
-    def test_support_admin_dashboard_bulk_delete_tickets_keeps_internal_delete_failures(self, mock_request):
+    def test_support_admin_dashboard_bulk_delete_tickets_deletes_locally_when_internal_delete_fails(self, mock_request):
         def request_side_effect(method, url, headers=None, json=None, timeout=None):
             if "CLT-FAIL" in url:
                 response = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
@@ -2534,8 +2535,8 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Ticket.objects.filter(pk=success_ticket.pk).exists())
         self.assertFalse(Ticket.objects.filter(pk=local_ticket.pk).exists())
-        self.assertTrue(Ticket.objects.filter(pk=failed_ticket.pk).exists())
-        self.assertContains(response, "were kept because internal ticket deletion failed")
+        self.assertFalse(Ticket.objects.filter(pk=failed_ticket.pk).exists())
+        self.assertContains(response, "Internal ticket cleanup had")
 
     def test_support_admin_dashboard_clear_dashboard_activity_keeps_faq_catalog(self):
         support_page = SupportPage.objects.create(name="Clear Activity Page", source_system="In-clinic", source_flow="Doctor Flow")
