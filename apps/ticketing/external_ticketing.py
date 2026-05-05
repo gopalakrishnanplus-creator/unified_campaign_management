@@ -695,8 +695,7 @@ def send_external_ticket_delete_request(ticket, payload):
 
 
 def send_external_ticket_cancel_before_delete_request(ticket, payload, *, delete_status):
-    update_payload = {
-        "updated_by_email": payload.get("deleted_by_email") or resolve_external_update_actor_email(ticket),
+    base_update_payload = {
         "status": STATUS_MAP[Ticket.Status.CANNOT_COMPLETE],
         "inditech_status": STATUS_MAP[Ticket.Status.CANNOT_COMPLETE],
         "message": (
@@ -706,16 +705,163 @@ def send_external_ticket_cancel_before_delete_request(ticket, payload, *, delete
         + f" Internal ticket API returned {delete_status} for DELETE, so this ticket was marked cancelled before local removal.",
         "external_reference": payload.get("external_reference") or ticket.ticket_number,
     }
-    response_payload = send_external_ticket_update_request(ticket, update_payload, [])
-    if response_payload.get("success") is False:
-        raise ExternalTicketingSyncError(
-            response_payload.get("error")
-            or response_payload.get("message")
-            or "External ticket could not be cancelled before local deletion."
-        )
-    response_payload.setdefault("success", True)
-    response_payload["delete_fallback"] = "cancelled_via_inditech_update"
-    return response_payload
+    last_error = None
+    tried_emails = set()
+    for updater_email in resolve_external_delete_update_actor_emails(ticket, payload, include_directory=False):
+        tried_emails.add(updater_email.lower())
+        update_payload = {**base_update_payload, "updated_by_email": updater_email}
+        try:
+            response_payload = send_external_ticket_update_request(ticket, update_payload, [])
+        except ExternalTicketingSyncError as exc:
+            last_error = exc
+            if is_missing_external_updater_error(exc):
+                continue
+            raise
+        if response_payload.get("success") is False:
+            last_error = ExternalTicketingSyncError(
+                response_payload.get("error")
+                or response_payload.get("message")
+                or "External ticket could not be cancelled before local deletion."
+            )
+            if is_missing_external_updater_error(last_error):
+                continue
+            raise last_error
+        response_payload.setdefault("success", True)
+        response_payload["delete_fallback"] = "cancelled_via_inditech_update"
+        response_payload["updated_by_email"] = updater_email
+        return response_payload
+
+    for updater_email in resolve_external_delete_update_actor_emails(ticket, payload, include_directory=True):
+        if updater_email.lower() in tried_emails:
+            continue
+        tried_emails.add(updater_email.lower())
+        update_payload = {**base_update_payload, "updated_by_email": updater_email}
+        try:
+            response_payload = send_external_ticket_update_request(ticket, update_payload, [])
+        except ExternalTicketingSyncError as exc:
+            last_error = exc
+            if is_missing_external_updater_error(exc):
+                continue
+            raise
+        if response_payload.get("success") is False:
+            last_error = ExternalTicketingSyncError(
+                response_payload.get("error")
+                or response_payload.get("message")
+                or "External ticket could not be cancelled before local deletion."
+            )
+            if is_missing_external_updater_error(last_error):
+                continue
+            raise last_error
+        response_payload.setdefault("success", True)
+        response_payload["delete_fallback"] = "cancelled_via_inditech_update"
+        response_payload["updated_by_email"] = updater_email
+        return response_payload
+
+    raise ExternalTicketingSyncError(
+        str(last_error)
+        if last_error
+        else "External ticket could not be cancelled before local deletion because no updater email was available."
+    )
+
+
+def resolve_external_delete_update_actor_emails(ticket, payload, *, include_directory=True):
+    candidates = []
+
+    def add_candidate(email):
+        email = (email or "").strip()
+        if email and "@" in email:
+            candidates.append(User.objects.normalize_email(email))
+
+    add_candidate(payload.get("deleted_by_email"))
+    try:
+        add_candidate(resolve_external_update_actor_email(ticket))
+    except ExternalTicketingSyncError:
+        pass
+    for user in (ticket.current_assignee, ticket.direct_recipient, ticket.created_by, ticket.submitted_by):
+        if user:
+            add_candidate(user.email)
+    if ticket.department_id:
+        add_candidate(ticket.department.external_manager_email)
+        if ticket.department.default_recipient_id:
+            add_candidate(ticket.department.default_recipient.email)
+    add_candidate(settings.PROJECT_MANAGER_EMAIL)
+
+    if include_directory:
+        for email in fetch_external_directory_actor_emails(ticket):
+            add_candidate(email)
+
+    seen = set()
+    ordered_candidates = []
+    for email in candidates:
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered_candidates.append(email)
+    return ordered_candidates
+
+
+def fetch_external_directory_actor_emails(ticket):
+    try:
+        directory = fetch_directory_snapshot()
+    except ExternalTicketingSyncError:
+        return []
+
+    emails = []
+    target_department_id = ticket.department.external_directory_id if ticket.department_id else None
+    target_names = set()
+    target_codes = set()
+    if ticket.department_id:
+        target_names = {
+            value
+            for value in [
+                normalize_value(ticket.department.name),
+                normalize_value(ticket.department.external_directory_name),
+            ]
+            if value
+        }
+        target_codes = {
+            value
+            for value in [
+                normalize_value(ticket.department.code),
+                normalize_value(ticket.department.external_directory_code),
+            ]
+            if value
+        }
+
+    matching_department_ids = {target_department_id} if target_department_id else set()
+    for department in directory.get("departments") or []:
+        if target_department_id and department.get("id") == target_department_id:
+            matching_department_ids.add(department.get("id"))
+            emails.append(department.get("manager_email"))
+        elif normalize_value(department.get("name")) in target_names or normalize_value(department.get("code")) in target_codes:
+            matching_department_ids.add(department.get("id"))
+            emails.append(department.get("manager_email"))
+
+    for manager in directory.get("department_managers") or []:
+        if manager.get("department_id") in matching_department_ids:
+            emails.append(manager.get("manager_email"))
+        elif normalize_value(manager.get("department_name")) in target_names or normalize_value(manager.get("department_code")) in target_codes:
+            emails.append(manager.get("manager_email"))
+
+    for user in directory.get("users") or []:
+        if not user.get("is_active", True):
+            continue
+        if user.get("department_id") in matching_department_ids:
+            emails.append(user.get("email"))
+
+    for manager in directory.get("department_managers") or []:
+        emails.append(manager.get("manager_email"))
+    for department in directory.get("departments") or []:
+        emails.append(department.get("manager_email"))
+    for user in directory.get("users") or []:
+        if user.get("is_active", True):
+            emails.append(user.get("email"))
+    return emails
+
+
+def is_missing_external_updater_error(exc):
+    return "updater not found" in str(exc).lower()
 
 
 class AttachmentUploadContext:

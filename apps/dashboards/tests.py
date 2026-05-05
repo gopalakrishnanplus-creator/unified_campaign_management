@@ -2329,6 +2329,126 @@ class ExternalTicketSyncTests(TestCase):
         EXTERNAL_TICKETING_API_TOKEN="",
     )
     @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_retries_delete_fallback_with_directory_updater(self, mock_request):
+        def response(payload, *, status_code=200):
+            mock_response = Mock(status_code=status_code, content=b"{}")
+            mock_response.json.return_value = payload
+            return mock_response
+
+        def request_side_effect(method, url, **kwargs):
+            if method == "DELETE":
+                return Mock(status_code=405, content=b"")
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/departments/"):
+                return response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_email": "valid.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
+                return response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_email": "valid.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                        "department_managers": [
+                            {
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "department_code": "IT_SUPPORT",
+                                "manager_email": "valid.manager@inditech.co.in",
+                            }
+                        ],
+                        "users": [
+                            {
+                                "id": 99,
+                                "full_name": "Valid Manager",
+                                "email": "valid.manager@inditech.co.in",
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "POST" and url.endswith("/inditech-update/"):
+                if kwargs["json"]["updated_by_email"] != "valid.manager@inditech.co.in":
+                    return response({"success": False, "error": "Updater not found."}, status_code=400)
+                return response(
+                    {
+                        "success": True,
+                        "ticket": {
+                            "ticket_number": "CLT-DIRECTORY",
+                            "status_code": "cancelled",
+                        },
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+        ticket = Ticket.objects.create(
+            title="Admin delete mirrored ticket with directory updater",
+            description="This ticket should retry cancellation with an internal directory user.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-DIRECTORY",
+        )
+        self.department.external_directory_id = 3
+        self.department.external_directory_name = "IT Support"
+        self.department.external_directory_code = "IT_SUPPORT"
+        self.department.save(update_fields=["external_directory_id", "external_directory_name", "external_directory_code"])
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        updater_emails = [
+            call.kwargs["json"]["updated_by_email"]
+            for call in mock_request.call_args_list
+            if call.args[0] == "POST"
+        ]
+        self.assertIn("valid.manager@inditech.co.in", updater_emails)
+        self.assertContains(response, f"Deleted ticket {ticket.ticket_number}.")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
     def test_support_admin_dashboard_deletes_local_ticket_when_internal_delete_fails(self, mock_request):
         response_payload = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
         response_payload.json.return_value = {"success": False, "error": "delete failed"}
