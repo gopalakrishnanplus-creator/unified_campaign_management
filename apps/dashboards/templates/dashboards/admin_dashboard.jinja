@@ -22,6 +22,7 @@
         * { box-sizing: border-box; }
         body {
             margin: 0;
+            overflow-x: hidden;
             background:
                 radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.14), transparent 32rem),
                 radial-gradient(circle at 92% 4%, rgba(15, 118, 110, 0.18), transparent 28rem),
@@ -38,15 +39,15 @@
             backdrop-filter: blur(18px);
         }
         .shell {
-            width: min(1500px, calc(100vw - 32px));
+            width: min(1280px, calc(100vw - 24px));
             margin: 0 auto;
         }
         .topbar {
             display: flex;
-            gap: 20px;
+            gap: 14px;
             align-items: center;
             justify-content: space-between;
-            padding: 18px 0;
+            padding: 12px 0;
         }
         .eyebrow {
             margin: 0 0 5px;
@@ -57,30 +58,30 @@
             text-transform: uppercase;
         }
         h1, h2, h3 { margin: 0; letter-spacing: -0.035em; }
-        h1 { font-size: clamp(28px, 3vw, 44px); }
-        h2 { font-size: 24px; }
+        h1 { font-size: clamp(24px, 2.5vw, 34px); }
+        h2 { font-size: 21px; }
         h3 { font-size: 16px; }
-        p { color: var(--muted); line-height: 1.55; }
-        main { padding: 28px 0 48px; }
+        p { color: var(--muted); line-height: 1.45; }
+        main { padding: 18px 0 36px; }
         .grid {
             display: grid;
-            gap: 18px;
+            gap: 12px;
         }
         .metrics {
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            margin: 22px 0;
+            margin: 14px 0;
         }
         .card {
             border: 1px solid rgba(148, 163, 184, 0.28);
-            border-radius: 24px;
+            border-radius: 18px;
             background: rgba(255, 255, 255, 0.9);
-            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+            box-shadow: 0 12px 34px rgba(15, 23, 42, 0.07);
             overflow: hidden;
         }
-        .card-pad { padding: 22px; }
+        .card-pad { padding: 16px; }
         .metric-value {
-            margin-top: 10px;
-            font-size: 34px;
+            margin-top: 6px;
+            font-size: 28px;
             font-weight: 900;
             letter-spacing: -0.05em;
         }
@@ -97,44 +98,51 @@
         .message.success { background: #dcfce7; color: #166534; }
         table {
             width: 100%;
+            min-width: 900px;
+            table-layout: fixed;
             border-collapse: separate;
             border-spacing: 0;
-            font-size: 14px;
+            font-size: 13px;
         }
+        .widget-table { min-width: 780px; }
+        .pm-table { min-width: 1040px; }
+        .ticket-table { min-width: 1080px; }
         th {
             position: sticky;
-            top: 79px;
+            top: 61px;
             z-index: 2;
-            padding: 12px;
+            padding: 9px;
             border-bottom: 1px solid var(--line);
             background: #f8fafc;
             color: #475569;
-            font-size: 12px;
+            font-size: 11px;
             letter-spacing: 0.08em;
             text-align: left;
             text-transform: uppercase;
         }
         td {
-            padding: 12px;
+            padding: 9px;
             border-bottom: 1px solid #edf2f7;
             vertical-align: top;
+            overflow-wrap: anywhere;
         }
         tr:last-child td { border-bottom: 0; }
         input, select, textarea {
             width: 100%;
-            min-width: 130px;
-            padding: 10px 11px;
+            min-width: 0;
+            padding: 8px 9px;
             border: 1px solid var(--line);
-            border-radius: 12px;
+            border-radius: 10px;
             color: var(--ink);
             background: #fff;
             font: inherit;
         }
-        textarea { min-height: 84px; resize: vertical; }
+        textarea { min-height: 70px; resize: vertical; }
         .field-stack {
             display: grid;
-            gap: 8px;
-            min-width: 230px;
+            gap: 6px;
+            width: min(330px, 80vw);
+            min-width: 0;
         }
         .actions {
             display: flex;
@@ -143,11 +151,12 @@
             flex-wrap: wrap;
         }
         button {
-            padding: 10px 13px;
+            padding: 8px 11px;
             border: 0;
-            border-radius: 12px;
+            border-radius: 10px;
             color: #fff;
             background: linear-gradient(135deg, var(--brand), var(--blue));
+            font-size: 13px;
             font-weight: 800;
             cursor: pointer;
         }
@@ -174,11 +183,14 @@
         .muted { color: var(--muted); }
         .small { font-size: 12px; }
         .table-wrap {
+            width: 100%;
             max-height: 680px;
             overflow: auto;
+            overscroll-behavior: contain;
         }
         details {
-            min-width: 300px;
+            width: min(330px, 80vw);
+            min-width: 0;
         }
         details summary {
             cursor: pointer;
@@ -190,10 +202,33 @@
             gap: 16px;
             align-items: flex-start;
             justify-content: space-between;
-            padding: 22px 22px 0;
+            flex-wrap: wrap;
+            padding: 16px 16px 0;
+        }
+        .section-header p { margin: 8px 0 12px; }
+        .section-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .bulk-panel {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+            padding: 16px;
+        }
+        .bulk-panel p { margin: 4px 0 0; }
+        .danger-outline {
+            color: var(--danger);
+            border: 1px solid #fecaca;
+            background: #fff;
         }
         .logout {
-            padding: 10px 14px;
+            padding: 8px 12px;
             border: 1px solid var(--line);
             border-radius: 999px;
             background: #fff;
@@ -206,6 +241,7 @@
         }
         @media (max-width: 700px) {
             .metrics { grid-template-columns: 1fr; }
+            .bulk-panel { align-items: flex-start; flex-direction: column; }
             .topbar { align-items: flex-start; flex-direction: column; }
             .table-wrap { max-height: none; }
         }
@@ -236,23 +272,53 @@
         <section class="grid metrics">
             <div class="card card-pad">
                 <p class="eyebrow">Support Widgets</p>
-                <div class="metric-value">{{ widget_count_rows|length }}</div>
-                <p class="small">Systems with FAQ/widget activity.</p>
+                <div class="metric-value">{{ widget_event_total }}</div>
+                <p class="small">{{ widget_count_rows|length }} system(s) with FAQ/widget activity.</p>
             </div>
             <div class="card card-pad">
                 <p class="eyebrow">PM Queue</p>
-                <div class="metric-value">{{ pm_requests|length }}</div>
-                <p class="small">Latest queue records loaded for admin review.</p>
+                <div class="metric-value">{{ pm_request_total }}</div>
+                <p class="small">Total support issue records.</p>
             </div>
             <div class="card card-pad">
                 <p class="eyebrow">Tickets</p>
-                <div class="metric-value">{{ tickets|length }}</div>
-                <p class="small">Latest ticket records loaded for admin review.</p>
+                <div class="metric-value">{{ ticket_total }}</div>
+                <p class="small">Total ticket records.</p>
             </div>
             <div class="card card-pad">
                 <p class="eyebrow">Internal Sync</p>
                 <div class="metric-value">{{ 'On' if external_sync_enabled else 'Off' }}</div>
                 <p class="small">Ticket deletes require internal API delete when mirrored.</p>
+            </div>
+        </section>
+
+        <section class="card bulk-panel">
+            <div>
+                <p class="eyebrow">Bulk cleanup</p>
+                <h2>Clear dashboard activity</h2>
+                <p class="small">Bulk deletes clear operational records only. FAQ catalog pages and answers are not deleted.</p>
+            </div>
+            <div class="section-actions">
+                <form method="post" onsubmit="return confirm('Reset ALL widget open/resolved event counts?');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="reset_all_widget_counts">
+                    <button class="secondary" type="submit">Reset all counts</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Delete ALL PM queue records? Linked tickets will be deleted from internal ticketing first.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="delete_all_pm_requests">
+                    <button class="danger-outline" type="submit">Delete PM queue</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Delete ALL ticket records? Mirrored internal tickets must delete successfully first.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="delete_all_tickets">
+                    <button class="danger-outline" type="submit">Delete tickets</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Clear ALL widget event counts, PM queue records, and tickets? FAQ content will stay.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="clear_dashboard_activity">
+                    <button class="danger" type="submit">Clear all activity</button>
+                </form>
             </div>
         </section>
 
@@ -262,9 +328,16 @@
                     <h2>System-wise support widget counts</h2>
                     <p>Counts are derived from FAQ pages, FAQ items, widget open/resolved events, PM queue records, and tickets.</p>
                 </div>
+                <div class="section-actions">
+                    <form method="post" onsubmit="return confirm('Reset ALL widget open/resolved event counts?');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="reset_all_widget_counts">
+                        <button class="secondary" type="submit">Reset all widget counts</button>
+                    </form>
+                </div>
             </div>
             <div class="table-wrap">
-                <table>
+                <table class="widget-table">
                     <thead>
                         <tr>
                             <th>System</th>
@@ -310,9 +383,16 @@
                     <h2>PM queue</h2>
                     <p>Update or delete support issues waiting in the PM review queue. If a queue item already created a ticket, delete will remove that linked ticket first.</p>
                 </div>
+                <div class="section-actions">
+                    <form method="post" onsubmit="return confirm('Delete ALL PM queue records? Linked tickets will be deleted from internal ticketing first.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delete_all_pm_requests">
+                        <button class="danger-outline" type="submit">Bulk delete PM queue</button>
+                    </form>
+                </div>
             </div>
             <div class="table-wrap">
-                <table>
+                <table class="pm-table">
                     <thead>
                         <tr>
                             <th>Queue</th>
@@ -410,9 +490,16 @@
                     <h2>Ticketing data</h2>
                     <p>Update local ticket records. Mirrored ticket updates are pushed to the connected internal ticketing system; delete requires successful internal deletion first.</p>
                 </div>
+                <div class="section-actions">
+                    <form method="post" onsubmit="return confirm('Delete ALL ticket records? Mirrored internal tickets must delete successfully first.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delete_all_tickets">
+                        <button class="danger-outline" type="submit">Bulk delete tickets</button>
+                    </form>
+                </div>
             </div>
             <div class="table-wrap">
-                <table>
+                <table class="ticket-table">
                     <thead>
                         <tr>
                             <th>Ticket</th>

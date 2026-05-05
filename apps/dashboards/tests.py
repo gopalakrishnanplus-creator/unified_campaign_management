@@ -2197,6 +2197,31 @@ class ExternalTicketSyncTests(TestCase):
         self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
         self.assertContains(response, "Reset 1 widget event record")
 
+    def test_support_admin_dashboard_bulk_resets_all_widget_counts(self):
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.RESOLVED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "reset_all_widget_counts"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.exists())
+        self.assertContains(response, "Reset all widget event counts")
+
     @override_settings(
         EXTERNAL_TICKETING_SYNC_ENABLED=True,
         EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
@@ -2281,3 +2306,160 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Ticket.objects.filter(pk=ticket.pk).exists())
         self.assertContains(response, "Ticket was not deleted because internal ticket deletion failed")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_bulk_delete_tickets_keeps_internal_delete_failures(self, mock_request):
+        def request_side_effect(method, url, headers=None, json=None, timeout=None):
+            if "CLT-FAIL" in url:
+                response = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
+                response.json.return_value = {"success": False, "error": "delete failed"}
+                return response
+            return Mock(status_code=204, content=b"")
+
+        mock_request.side_effect = request_side_effect
+        success_ticket = Ticket.objects.create(
+            title="Bulk delete success",
+            description="External delete succeeds.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-SUCCESS",
+        )
+        failed_ticket = Ticket.objects.create(
+            title="Bulk delete failure",
+            description="External delete fails.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-FAIL",
+        )
+        local_ticket = Ticket.objects.create(
+            title="Bulk delete local only",
+            description="No external ticket number.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_all_tickets"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=success_ticket.pk).exists())
+        self.assertFalse(Ticket.objects.filter(pk=local_ticket.pk).exists())
+        self.assertTrue(Ticket.objects.filter(pk=failed_ticket.pk).exists())
+        self.assertContains(response, "were kept because internal ticket deletion failed")
+
+    def test_support_admin_dashboard_clear_dashboard_activity_keeps_faq_catalog(self):
+        support_page = SupportPage.objects.create(name="Clear Activity Page", source_system="In-clinic", source_flow="Doctor Flow")
+        support_super = SupportSuperCategory.objects.create(name="Clear Activity Section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Clear Activity Screen")
+        SupportItem.objects.create(
+            page=support_page,
+            category=support_category,
+            name="Clear activity FAQ",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Clear Activity User",
+            requester_email="clear-activity@example.com",
+            requester_number="+917700000000",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            subject="Other issue - clear activity",
+            free_text="Clear this queue record.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+        ticket = Ticket.objects.create(
+            title="Clear activity ticket",
+            description="This local ticket should be deleted.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            support_request=support_request,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "clear_dashboard_activity"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.exists())
+        self.assertFalse(SupportRequest.objects.filter(pk=support_request.pk).exists())
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertTrue(SupportItem.objects.filter(name="Clear activity FAQ").exists())
+        self.assertContains(response, "Cleared")

@@ -219,10 +219,14 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         action = request.POST.get("action")
         handlers = {
             "reset_widget_counts": self.handle_reset_widget_counts,
+            "reset_all_widget_counts": self.handle_reset_all_widget_counts,
             "update_pm_request": self.handle_update_pm_request,
             "delete_pm_request": self.handle_delete_pm_request,
+            "delete_all_pm_requests": self.handle_delete_all_pm_requests,
             "update_ticket": self.handle_update_ticket,
             "delete_ticket": self.handle_delete_ticket,
+            "delete_all_tickets": self.handle_delete_all_tickets,
+            "clear_dashboard_activity": self.handle_clear_dashboard_activity,
         }
         handler = handlers.get(action)
         if not handler:
@@ -237,6 +241,11 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             return redirect("support_admin_dashboard")
         deleted_count = delete_widget_events_for_system(system_name)
         messages.success(request, f"Reset {deleted_count} widget event record(s) for {system_name}.")
+        return redirect("support_admin_dashboard")
+
+    def handle_reset_all_widget_counts(self, request):
+        deleted_count, _ = SupportWidgetEvent.objects.all().delete()
+        messages.success(request, f"Reset all widget event counts by deleting {deleted_count} event record(s).")
         return redirect("support_admin_dashboard")
 
     def handle_update_pm_request(self, request):
@@ -260,6 +269,16 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             messages.success(request, f"Deleted PM queue record {queue_ticket_number}.")
         except Exception as exc:
             messages.error(request, f"PM queue record was not deleted because linked internal ticket deletion failed: {exc}")
+        return redirect("support_admin_dashboard")
+
+    def handle_delete_all_pm_requests(self, request):
+        result = self.bulk_delete_pm_requests(SupportRequest.objects.all())
+        self.add_bulk_delete_message(
+            request,
+            "PM queue",
+            f"Deleted {result['deleted_requests']} PM queue record(s) and {result['deleted_linked_tickets']} linked ticket(s).",
+            result["failures"],
+        )
         return redirect("support_admin_dashboard")
 
     def handle_update_ticket(self, request):
@@ -295,6 +314,38 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         messages.success(request, f"Deleted ticket {ticket.ticket_number}.")
         return redirect("support_admin_dashboard")
 
+    def handle_delete_all_tickets(self, request):
+        result = self.bulk_delete_tickets(Ticket.objects.all())
+        self.add_bulk_delete_message(
+            request,
+            "Ticketing data",
+            f"Deleted {result['deleted']} ticket record(s).",
+            result["failures"],
+        )
+        return redirect("support_admin_dashboard")
+
+    def handle_clear_dashboard_activity(self, request):
+        ticket_result = self.bulk_delete_tickets(Ticket.objects.all())
+        pm_result = self.bulk_delete_pm_requests(
+            SupportRequest.objects.exclude(pk__in=ticket_result["failed_support_request_ids"])
+        )
+        widget_deleted_count, _ = SupportWidgetEvent.objects.all().delete()
+        failure_count = len(ticket_result["failures"]) + len(pm_result["failures"])
+        summary = (
+            f"Cleared {widget_deleted_count} widget event record(s), "
+            f"{pm_result['deleted_requests']} PM queue record(s), "
+            f"and {ticket_result['deleted'] + pm_result['deleted_linked_tickets']} ticket record(s)."
+        )
+        if failure_count:
+            messages.warning(
+                request,
+                f"{summary} {failure_count} record(s) were kept because internal ticket deletion failed: "
+                + self.format_failure_preview([*ticket_result["failures"], *pm_result["failures"]]),
+            )
+        else:
+            messages.success(request, summary)
+        return redirect("support_admin_dashboard")
+
     @staticmethod
     def delete_ticket_with_external_sync(ticket):
         if ticket.external_ticket_number:
@@ -305,8 +356,77 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             )
         ticket.delete()
 
+    def bulk_delete_tickets(self, queryset):
+        deleted_count = 0
+        failures = []
+        failed_support_request_ids = set()
+        tickets = list(
+            queryset.select_related("current_assignee", "submitted_by", "created_by", "support_request").order_by("pk")
+        )
+        for ticket in tickets:
+            ticket_number = ticket.ticket_number
+            support_request_id = ticket.support_request_id
+            try:
+                self.delete_ticket_with_external_sync(ticket)
+                deleted_count += 1
+            except Exception as exc:
+                if support_request_id:
+                    failed_support_request_ids.add(support_request_id)
+                failures.append(f"{ticket_number}: {exc}")
+        return {
+            "deleted": deleted_count,
+            "failures": failures,
+            "failed_support_request_ids": failed_support_request_ids,
+        }
+
+    def bulk_delete_pm_requests(self, queryset):
+        deleted_requests = 0
+        deleted_linked_tickets = 0
+        failures = []
+        support_requests = list(queryset.order_by("pk"))
+        for support_request in support_requests:
+            queue_ticket_number = support_request.queue_ticket_number
+            linked_ticket = (
+                Ticket.objects.filter(support_request=support_request)
+                .select_related("current_assignee", "submitted_by", "created_by")
+                .first()
+            )
+            try:
+                if linked_ticket:
+                    self.delete_ticket_with_external_sync(linked_ticket)
+                    deleted_linked_tickets += 1
+                support_request.delete()
+                deleted_requests += 1
+            except Exception as exc:
+                failures.append(f"{queue_ticket_number}: {exc}")
+        return {
+            "deleted_requests": deleted_requests,
+            "deleted_linked_tickets": deleted_linked_tickets,
+            "failures": failures,
+        }
+
+    @staticmethod
+    def format_failure_preview(failures):
+        preview = "; ".join(failures[:3])
+        if len(failures) > 3:
+            preview = f"{preview}; and {len(failures) - 3} more"
+        return preview
+
+    def add_bulk_delete_message(self, request, label, success_message, failures):
+        if failures:
+            messages.warning(
+                request,
+                f"{label}: {success_message} {len(failures)} record(s) were kept because internal ticket deletion failed: "
+                + self.format_failure_preview(failures),
+            )
+            return
+        messages.success(request, f"{label}: {success_message}")
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        pm_request_total = SupportRequest.objects.count()
+        ticket_total = Ticket.objects.count()
+        widget_event_total = SupportWidgetEvent.objects.count()
         pm_requests = (
             SupportRequest.objects.select_related("support_page", "support_super_category", "support_category", "campaign")
             .order_by("-is_escalated", "-created_at")[:75]
@@ -331,6 +451,9 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
                 "ticket_status_choices": Ticket.Status.choices,
                 "ticket_priority_choices": Ticket.Priority.choices,
                 "departments": Department.objects.filter(is_active=True).select_related("default_recipient").order_by("name"),
+                "pm_request_total": pm_request_total,
+                "ticket_total": ticket_total,
+                "widget_event_total": widget_event_total,
                 "external_sync_enabled": settings.EXTERNAL_TICKETING_SYNC_ENABLED,
                 "external_base_url": settings.EXTERNAL_TICKETING_BASE_URL,
                 "admin_username": ADMIN_DASHBOARD_USERNAME,
