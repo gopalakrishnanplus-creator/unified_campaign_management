@@ -9,6 +9,13 @@ from django.urls import reverse
 
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
+from apps.support_center.analytics import (
+    get_widget_metric_reset_cutoffs,
+    is_after_widget_metric_reset,
+    support_item_system,
+    support_request_system,
+    widget_event_system,
+)
 from apps.support_center.models import SupportItem, SupportRequest, SupportWidgetEvent
 from apps.ticketing.models import Ticket
 from apps.ticketing.external_ticketing import sync_external_ticket_states
@@ -133,50 +140,65 @@ SYSTEM_ACTIVITY_ORDER = [
 ]
 
 
-def _canonical_support_system(system_name, flow_name=""):
-    if system_name != "SAPLAICME":
-        return system_name
-    normalized_flow = (flow_name or "").replace("-", "").replace("_", "").replace(" ", "").lower()
-    if "aicme" in normalized_flow:
-        return "AICME"
-    return "SAPL"
-
-
 def _system_sort_key(system_name):
     if system_name in SYSTEM_ACTIVITY_ORDER:
         return (0, SYSTEM_ACTIVITY_ORDER.index(system_name), system_name)
     return (1, system_name.lower())
 
 
-def _support_activity_system_names(queryset):
-    return {
-        _canonical_support_system(system_name, flow_name)
-        for system_name, flow_name in queryset.exclude(source_system="").values_list("source_system", "source_flow")
-    }
-
-
-def _support_activity_counts(queryset):
-    counts = defaultdict(int)
-    for system_name, flow_name in queryset.exclude(source_system="").values_list("source_system", "source_flow"):
-        counts[_canonical_support_system(system_name, flow_name)] += 1
-    return counts
-
-
 def _build_support_widget_activity_rows():
-    system_names = _support_activity_system_names(SupportItem.objects.all())
-    system_names.update(_support_activity_system_names(SupportRequest.objects.all()))
-    system_names.update(_support_activity_system_names(SupportWidgetEvent.objects.all()))
-    ordered_systems = sorted(system_names, key=_system_sort_key)
-
-    opened_counts = _support_activity_counts(SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED))
-    resolved_counts = _support_activity_counts(SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED))
-    widget_ticket_counts = _support_activity_counts(SupportRequest.objects.filter(origin_channel=SupportRequest.OriginChannel.WIDGET))
-    pm_raised_counts = _support_activity_counts(
-        SupportRequest.objects.filter(
-            origin_channel=SupportRequest.OriginChannel.WIDGET,
-            pm_ticket_raised_at__isnull=False,
+    reset_cutoffs = get_widget_metric_reset_cutoffs()
+    system_names = {support_item_system(item) for item in SupportItem.objects.select_related("page")}
+    system_names.update(
+        support_request_system(support_request)
+        for support_request in SupportRequest.objects.filter(origin_channel=SupportRequest.OriginChannel.WIDGET).select_related("support_page")
+        if is_after_widget_metric_reset(
+            support_request_system(support_request),
+            support_request.created_at,
+            reset_cutoffs=reset_cutoffs,
         )
     )
+    system_names.update(
+        widget_event_system(event)
+        for event in SupportWidgetEvent.objects.select_related("support_page", "support_request", "support_request__support_page")
+        if is_after_widget_metric_reset(widget_event_system(event), event.created_at, reset_cutoffs=reset_cutoffs)
+    )
+
+    opened_counts = defaultdict(int)
+    for event in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED).select_related(
+        "support_page",
+        "support_request",
+        "support_request__support_page",
+    ):
+        system_name = widget_event_system(event)
+        if is_after_widget_metric_reset(system_name, event.created_at, reset_cutoffs=reset_cutoffs):
+            opened_counts[system_name] += 1
+
+    resolved_counts = defaultdict(int)
+    for event in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED).select_related(
+        "support_page",
+        "support_request",
+        "support_request__support_page",
+    ):
+        system_name = widget_event_system(event)
+        if is_after_widget_metric_reset(system_name, event.created_at, reset_cutoffs=reset_cutoffs):
+            resolved_counts[system_name] += 1
+
+    widget_ticket_counts = defaultdict(int)
+    pm_raised_counts = defaultdict(int)
+    for support_request in SupportRequest.objects.filter(origin_channel=SupportRequest.OriginChannel.WIDGET).select_related("support_page"):
+        system_name = support_request_system(support_request)
+        if is_after_widget_metric_reset(system_name, support_request.created_at, reset_cutoffs=reset_cutoffs):
+            widget_ticket_counts[system_name] += 1
+        if is_after_widget_metric_reset(
+            system_name,
+            support_request.pm_ticket_raised_at,
+            reset_cutoffs=reset_cutoffs,
+        ):
+            pm_raised_counts[system_name] += 1
+            system_names.add(system_name)
+
+    ordered_systems = sorted(system_names, key=_system_sort_key)
 
     rows = []
     for system_name in ordered_systems:

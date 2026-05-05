@@ -2170,6 +2170,7 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Support admin dashboard")
         self.assertContains(response, "System-wise support widget counts")
+        self.assertNotContains(response, "Delete widget")
 
     def test_support_admin_dashboard_resets_widget_event_counts_by_system(self):
         SupportWidgetEvent.objects.create(
@@ -2195,7 +2196,7 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(SupportWidgetEvent.objects.filter(source_system="In-clinic").exists())
         self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
-        self.assertContains(response, "Reset 1 widget click event record")
+        self.assertContains(response, "Reset widget click counts for In-clinic")
 
     def test_support_admin_dashboard_resets_widget_click_counts_using_linked_page_system(self):
         inclinic_page = SupportPage.objects.create(
@@ -2234,9 +2235,39 @@ class ExternalTicketSyncTests(TestCase):
         self.assertFalse(SupportWidgetEvent.objects.filter(pk=reset_event.pk).exists())
         self.assertTrue(SupportWidgetEvent.objects.filter(pk=keep_event.pk).exists())
         self.assertTrue(SupportPage.objects.filter(pk=inclinic_page.pk).exists())
-        self.assertContains(response, "Reset 1 widget click event record")
+        self.assertContains(response, "Reset widget click counts for In-clinic")
 
     def test_support_admin_dashboard_bulk_resets_all_widget_counts(self):
+        support_page = SupportPage.objects.create(
+            name="Reset Count Page",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        support_super = SupportSuperCategory.objects.create(name="Reset Count Section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Reset Count Screen")
+        SupportItem.objects.create(
+            page=support_page,
+            category=support_category,
+            name="Reset count FAQ",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Reset Count User",
+            requester_email="reset-count@example.com",
+            requester_number="+917700000000",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            origin_channel=SupportRequest.OriginChannel.WIDGET,
+            subject="Other issue - reset counts",
+            free_text="This request should stay but no longer count as a widget click.",
+            status=SupportRequest.Status.TICKET_CREATED,
+            pm_ticket_raised_at=timezone.now(),
+        )
         SupportWidgetEvent.objects.create(
             user_type="doctor",
             source_system="In-clinic",
@@ -2259,95 +2290,18 @@ class ExternalTicketSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(SupportWidgetEvent.objects.exists())
+        self.assertTrue(SupportRequest.objects.filter(pk=support_request.pk).exists())
         self.assertContains(response, "Reset all widget click counts")
 
-    def test_support_admin_dashboard_deletes_support_widget_catalog_by_system(self):
-        inclinic_page = SupportPage.objects.create(name="In-clinic Page", source_system="In-clinic", source_flow="Doctor Flow")
-        pe_page = SupportPage.objects.create(name="PE Page", source_system="Patient Education", source_flow="Doctor Flow")
-        support_super = SupportSuperCategory.objects.create(name="Widget Delete Section")
-        support_category = SupportCategory.objects.create(super_category=support_super, name="Widget Delete Screen")
-        inclinic_item = SupportItem.objects.create(
-            page=inclinic_page,
-            category=support_category,
-            name="In-clinic delete FAQ",
-            source_system="In-clinic",
-            source_flow="Doctor Flow",
-        )
-        pe_item = SupportItem.objects.create(
-            page=pe_page,
-            category=support_category,
-            name="PE keep FAQ",
-            source_system="Patient Education",
-            source_flow="Doctor Flow",
-        )
-        SupportWidgetEvent.objects.create(
-            user_type="doctor",
-            support_page=inclinic_page,
-            support_super_category=support_super,
-            support_category=support_category,
-            source_system="In-clinic",
-            source_flow="Doctor Flow",
-            event_type=SupportWidgetEvent.EventType.OPENED,
-        )
-        SupportWidgetEvent.objects.create(
-            user_type="doctor",
-            support_page=pe_page,
-            support_super_category=support_super,
-            support_category=support_category,
-            source_system="Patient Education",
-            source_flow="Doctor Flow",
-            event_type=SupportWidgetEvent.EventType.OPENED,
-        )
-        self.login_support_admin_dashboard()
-
-        response = self.client.post(
-            reverse("support_admin_dashboard"),
-            data={"action": "delete_support_widgets", "system": "In-clinic"},
-            follow=True,
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(SupportPage.objects.filter(pk=inclinic_page.pk).exists())
-        self.assertFalse(SupportItem.objects.filter(pk=inclinic_item.pk).exists())
-        self.assertFalse(SupportWidgetEvent.objects.filter(source_system="In-clinic").exists())
-        self.assertTrue(SupportPage.objects.filter(pk=pe_page.pk).exists())
-        self.assertTrue(SupportItem.objects.filter(pk=pe_item.pk).exists())
-        self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
-        self.assertContains(response, "Deleted support widgets for In-clinic")
-
-    def test_support_admin_dashboard_bulk_deletes_support_widget_catalog(self):
-        support_page = SupportPage.objects.create(name="Bulk Widget Page", source_system="In-clinic", source_flow="Doctor Flow")
-        support_super = SupportSuperCategory.objects.create(name="Bulk Widget Section")
-        support_category = SupportCategory.objects.create(super_category=support_super, name="Bulk Widget Screen")
-        SupportItem.objects.create(
-            page=support_page,
-            category=support_category,
-            name="Bulk widget FAQ",
-            source_system="In-clinic",
-            source_flow="Doctor Flow",
-        )
-        SupportWidgetEvent.objects.create(
-            user_type="doctor",
-            support_page=support_page,
-            support_super_category=support_super,
-            support_category=support_category,
-            source_system="In-clinic",
-            source_flow="Doctor Flow",
-            event_type=SupportWidgetEvent.EventType.OPENED,
-        )
-        self.login_support_admin_dashboard()
-
-        response = self.client.post(
-            reverse("support_admin_dashboard"),
-            data={"action": "delete_all_support_widgets"},
-            follow=True,
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(SupportPage.objects.exists())
-        self.assertFalse(SupportItem.objects.exists())
-        self.assertFalse(SupportWidgetEvent.objects.exists())
-        self.assertContains(response, "Deleted all support widgets")
+        with self.settings(EXTERNAL_TICKETING_SYNC_ENABLED=False):
+            dashboard_data = get_support_dashboard_data()
+        widget_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "In-clinic")
+        self.assertEqual(widget_row["widget_open_count"], 0)
+        self.assertEqual(widget_row["resolved_count"], 0)
+        self.assertEqual(widget_row["send_ticket_count"], 0)
+        self.assertEqual(widget_row["pm_raised_ticket_count"], 0)
+        self.assertTrue(SupportPage.objects.filter(pk=support_page.pk).exists())
+        self.assertTrue(SupportItem.objects.filter(name="Reset count FAQ").exists())
 
     @override_settings(
         EXTERNAL_TICKETING_SYNC_ENABLED=True,

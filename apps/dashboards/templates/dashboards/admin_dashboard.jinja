@@ -316,11 +316,6 @@
                     <input type="hidden" name="action" value="reset_all_widget_counts">
                     <button class="secondary" type="submit">Reset click counts</button>
                 </form>
-                <form method="post" onsubmit="return confirm('Delete ALL support widget FAQ pages and answers? This removes the Pages and FAQs counts until the catalog is imported again.');">
-                    {{ csrf_input }}
-                    <input type="hidden" name="action" value="delete_all_support_widgets">
-                    <button class="danger-outline" type="submit">Delete widget catalog</button>
-                </form>
                 <form method="post" onsubmit="return confirm('Delete ALL PM queue records? Linked tickets will be deleted from internal ticketing first.');">
                     {{ csrf_input }}
                     <input type="hidden" name="action" value="delete_all_pm_requests">
@@ -351,11 +346,6 @@
                         <input type="hidden" name="action" value="reset_all_widget_counts">
                         <button class="secondary" type="submit">Reset all clicks</button>
                     </form>
-                    <form method="post" onsubmit="return confirm('Delete ALL support widget FAQ pages and answers? This removes the Pages and FAQs counts until the catalog is imported again.');">
-                        {{ csrf_input }}
-                        <input type="hidden" name="action" value="delete_all_support_widgets">
-                        <button class="danger-outline" type="submit">Delete all widgets</button>
-                    </form>
                 </div>
             </div>
             <div class="table-wrap">
@@ -367,9 +357,7 @@
                             <th>FAQs</th>
                             <th>Opened</th>
                             <th>Resolved</th>
-                            <th>PM Queue</th>
-                            <th>Tickets</th>
-                            <th>Widget Actions</th>
+                            <th>Click Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -380,8 +368,6 @@
                                 <td>{{ row.faq_count }}</td>
                                 <td>{{ row.widget_open_count }}</td>
                                 <td>{{ row.resolved_count }}</td>
-                                <td>{{ row.pm_queue_count }}</td>
-                                <td>{{ row.ticket_count }}</td>
                                 <td>
                                     <div class="stacked-actions">
                                         <form method="post" onsubmit="return confirm('Reset widget click counts for {{ row.system }}? FAQ pages and widget URLs will remain.');">
@@ -390,17 +376,11 @@
                                             <input type="hidden" name="system" value="{{ row.system }}">
                                             <button class="secondary" type="submit">Reset clicks</button>
                                         </form>
-                                        <form method="post" onsubmit="return confirm('Delete support widget FAQ pages and answers for {{ row.system }}? This removes the Pages and FAQs counts until the catalog is imported again.');">
-                                            {{ csrf_input }}
-                                            <input type="hidden" name="action" value="delete_support_widgets">
-                                            <input type="hidden" name="system" value="{{ row.system }}">
-                                            <button class="danger-outline" type="submit">Delete widgets</button>
-                                        </form>
                                     </div>
                                 </td>
                             </tr>
                         {% else %}
-                            <tr><td colspan="8" class="muted">No support widget activity is available.</td></tr>
+                            <tr><td colspan="6" class="muted">No support widget activity is available.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

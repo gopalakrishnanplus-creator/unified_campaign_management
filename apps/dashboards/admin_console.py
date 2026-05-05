@@ -8,6 +8,15 @@ from django.urls import reverse
 from django.utils.crypto import constant_time_compare
 from django.views.generic import TemplateView, View
 
+from apps.support_center.analytics import (
+    canonical_support_system,
+    get_widget_metric_reset_cutoffs,
+    is_after_widget_metric_reset,
+    reset_widget_metric_counters,
+    support_item_system,
+    support_page_system,
+    widget_event_system,
+)
 from apps.support_center.models import SupportItem, SupportPage, SupportRequest, SupportWidgetEvent
 from apps.ticketing.external_ticketing import (
     delete_external_ticket,
@@ -80,81 +89,6 @@ def admin_dashboard_authenticated(request):
     return bool(request.session.get(ADMIN_DASHBOARD_SESSION_KEY))
 
 
-def normalized_support_token(value):
-    return "".join(character for character in (value or "").lower() if character.isalnum())
-
-
-def canonical_support_system(system_name, flow_name=""):
-    system_name = (system_name or "").strip()
-    flow_name = (flow_name or "").strip()
-    system_token = normalized_support_token(system_name)
-    flow_token = normalized_support_token(flow_name)
-    combined_token = f"{system_token}{flow_token}"
-
-    if system_token == "saplaicme":
-        if "aicme" in flow_token:
-            return "AICME"
-        return "SAPL"
-    if system_token == "aicme" or "aicme" in combined_token:
-        return "AICME"
-    if system_token == "sapl" or "sapl" in combined_token:
-        return "SAPL"
-    if system_token in {"inclinic", "inclinicsystem"} or "inclinic" in combined_token:
-        return "In-clinic"
-    if system_token in {"patienteducation", "pe"} or "patienteducation" in combined_token:
-        return "Patient Education"
-    if system_token in {"redflagalert", "rfa"} or "redflagalert" in combined_token:
-        return "Red Flag Alert"
-    if not system_name:
-        return "Unknown"
-    return system_name
-
-
-def is_generic_support_system(system_name):
-    return normalized_support_token(system_name) in {"", "unknown", "customersupport", "generalsupport", "support"}
-
-
-def resolve_support_system(source_system, source_flow="", *fallback_records):
-    resolved_system = canonical_support_system(source_system, source_flow)
-    fallback_systems = []
-    for record in fallback_records:
-        if not record:
-            continue
-        fallback_systems.append(
-            canonical_support_system(
-                getattr(record, "source_system", ""),
-                getattr(record, "source_flow", ""),
-            )
-        )
-
-    if is_generic_support_system(resolved_system):
-        for fallback_system in fallback_systems:
-            if not is_generic_support_system(fallback_system):
-                return fallback_system
-    return resolved_system
-
-
-def support_page_system(page):
-    return resolve_support_system(page.source_system, page.source_flow)
-
-
-def support_item_system(item):
-    return resolve_support_system(item.source_system, item.source_flow, item.page)
-
-
-def support_request_system(support_request):
-    return resolve_support_system(support_request.source_system, support_request.source_flow, support_request.support_page)
-
-
-def widget_event_system(event):
-    request_page = event.support_request.support_page if event.support_request_id else None
-    return resolve_support_system(event.source_system, event.source_flow, event.support_page, event.support_request, request_page)
-
-
-def ticket_source_label(source_system):
-    return dict(Ticket.SourceSystem.choices).get(source_system, source_system or "Unknown")
-
-
 def empty_system_row(system_name):
     return {
         "system": system_name,
@@ -162,13 +96,12 @@ def empty_system_row(system_name):
         "faq_count": 0,
         "widget_open_count": 0,
         "resolved_count": 0,
-        "pm_queue_count": 0,
-        "ticket_count": 0,
     }
 
 
 def build_support_widget_count_rows():
     rows = {}
+    reset_cutoffs = get_widget_metric_reset_cutoffs()
 
     def row_for(system_name):
         if system_name not in rows:
@@ -184,6 +117,7 @@ def build_support_widget_count_rows():
             "support_request",
             "support_request__support_page",
         )
+        if is_after_widget_metric_reset(widget_event_system(event), event.created_at, reset_cutoffs=reset_cutoffs)
     )
     resolved_counts = Counter(
         widget_event_system(event)
@@ -192,20 +126,13 @@ def build_support_widget_count_rows():
             "support_request",
             "support_request__support_page",
         )
+        if is_after_widget_metric_reset(widget_event_system(event), event.created_at, reset_cutoffs=reset_cutoffs)
     )
-    pm_queue_counts = Counter(
-        support_request_system(support_request)
-        for support_request in SupportRequest.objects.select_related("support_page")
-    )
-    ticket_counts = Counter(ticket_source_label(source_system) for source_system in Ticket.objects.all().values_list("source_system", flat=True))
-
     for counter, key in [
         (page_counts, "page_count"),
         (faq_counts, "faq_count"),
         (open_counts, "widget_open_count"),
         (resolved_counts, "resolved_count"),
-        (pm_queue_counts, "pm_queue_count"),
-        (ticket_counts, "ticket_count"),
     ]:
         for system_name, count in counter.items():
             row_for(system_name)[key] = count
@@ -226,47 +153,13 @@ def delete_widget_events_for_system(system_name):
     return deleted_count
 
 
-def ids_for_support_system(model, system_name):
-    target_system = canonical_support_system(system_name)
-    if model is SupportPage:
-        return [page.pk for page in SupportPage.objects.all() if support_page_system(page) == target_system]
-    if model is SupportItem:
-        return [item.pk for item in SupportItem.objects.select_related("page") if support_item_system(item) == target_system]
-    return [
-        record_id
-        for record_id, source_system, source_flow in model.objects.values_list("pk", "source_system", "source_flow")
-        if canonical_support_system(source_system, source_flow) == target_system
-    ]
-
-
-def delete_support_widgets_for_system(system_name):
-    event_count = delete_widget_events_for_system(system_name)
-    item_ids = ids_for_support_system(SupportItem, system_name)
-    page_ids = ids_for_support_system(SupportPage, system_name)
-    item_count = len(item_ids)
-    page_count = len(page_ids)
-    if item_ids:
-        SupportItem.objects.filter(pk__in=item_ids).delete()
-    if page_ids:
-        SupportPage.objects.filter(pk__in=page_ids).delete()
-    return {
-        "event_count": event_count,
-        "item_count": item_count,
-        "page_count": page_count,
-    }
-
-
-def delete_all_support_widgets():
-    event_count, _ = SupportWidgetEvent.objects.all().delete()
-    item_count = SupportItem.objects.count()
-    page_count = SupportPage.objects.count()
-    SupportItem.objects.all().delete()
-    SupportPage.objects.all().delete()
-    return {
-        "event_count": event_count,
-        "item_count": item_count,
-        "page_count": page_count,
-    }
+def visible_widget_event_count():
+    reset_cutoffs = get_widget_metric_reset_cutoffs()
+    return sum(
+        1
+        for event in SupportWidgetEvent.objects.select_related("support_page", "support_request", "support_request__support_page")
+        if is_after_widget_metric_reset(widget_event_system(event), event.created_at, reset_cutoffs=reset_cutoffs)
+    )
 
 
 class AdminDashboardAuthMixin:
@@ -318,8 +211,6 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         handlers = {
             "reset_widget_counts": self.handle_reset_widget_counts,
             "reset_all_widget_counts": self.handle_reset_all_widget_counts,
-            "delete_support_widgets": self.handle_delete_support_widgets,
-            "delete_all_support_widgets": self.handle_delete_all_support_widgets,
             "update_pm_request": self.handle_update_pm_request,
             "delete_pm_request": self.handle_delete_pm_request,
             "delete_selected_pm_requests": self.handle_delete_selected_pm_requests,
@@ -341,42 +232,21 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         if not system_name:
             messages.error(request, "Choose a system before resetting widget counts.")
             return redirect("support_admin_dashboard")
-        deleted_count = delete_widget_events_for_system(system_name)
+        delete_widget_events_for_system(system_name)
+        reset_widget_metric_counters(system_name)
         messages.success(
             request,
-            f"Reset {deleted_count} widget click event record(s) for {system_name}. "
-            "FAQ pages, answers, and widget URLs are kept.",
+            f"Reset widget click counts for {canonical_support_system(system_name)}. "
+            "FAQ pages, answers, widget URLs, PM queue, and tickets are kept.",
         )
         return redirect("support_admin_dashboard")
 
     def handle_reset_all_widget_counts(self, request):
-        deleted_count, _ = SupportWidgetEvent.objects.all().delete()
+        SupportWidgetEvent.objects.all().delete()
+        reset_widget_metric_counters()
         messages.success(
             request,
-            f"Reset all widget click counts by deleting {deleted_count} event record(s). "
-            "FAQ pages, answers, and widget URLs are kept.",
-        )
-        return redirect("support_admin_dashboard")
-
-    def handle_delete_support_widgets(self, request):
-        system_name = (request.POST.get("system") or "").strip()
-        if not system_name:
-            messages.error(request, "Choose a system before deleting support widgets.")
-            return redirect("support_admin_dashboard")
-        result = delete_support_widgets_for_system(system_name)
-        messages.success(
-            request,
-            f"Deleted support widgets for {system_name}: {result['page_count']} page(s), "
-            f"{result['item_count']} FAQ item(s), and {result['event_count']} event record(s).",
-        )
-        return redirect("support_admin_dashboard")
-
-    def handle_delete_all_support_widgets(self, request):
-        result = delete_all_support_widgets()
-        messages.success(
-            request,
-            f"Deleted all support widgets: {result['page_count']} page(s), "
-            f"{result['item_count']} FAQ item(s), and {result['event_count']} event record(s).",
+            "Reset all widget click counts. FAQ pages, answers, widget URLs, PM queue, and tickets are kept.",
         )
         return redirect("support_admin_dashboard")
 
@@ -495,6 +365,7 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         ticket_result = self.bulk_delete_tickets(Ticket.objects.all())
         pm_result = self.bulk_delete_pm_requests(SupportRequest.objects.all())
         widget_deleted_count, _ = SupportWidgetEvent.objects.all().delete()
+        reset_widget_metric_counters()
         failure_count = len(ticket_result["failures"]) + len(pm_result["failures"])
         summary = (
             f"Cleared {widget_deleted_count} widget event record(s), "
@@ -595,7 +466,7 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         pm_request_total = SupportRequest.objects.count()
         ticket_total = Ticket.objects.count()
-        widget_event_total = SupportWidgetEvent.objects.count()
+        widget_event_total = visible_widget_event_count()
         pm_requests = (
             SupportRequest.objects.select_related("support_page", "support_super_category", "support_category", "campaign")
             .order_by("-is_escalated", "-created_at")[:75]

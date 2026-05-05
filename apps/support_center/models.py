@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 from django.core.validators import FileExtensionValidator
 from django.utils.text import slugify
+from django.utils import timezone
 
 
 def support_request_upload_to(instance, filename):
@@ -294,3 +295,15 @@ class SupportWidgetEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_event_type_display()} / {self.source_system or 'Unknown system'} / {self.user_type}"
+
+
+class SupportWidgetMetricReset(models.Model):
+    system = models.CharField(max_length=120, unique=True)
+    reset_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["system"]
+
+    def __str__(self):
+        return f"{self.system} reset at {self.reset_at:%Y-%m-%d %H:%M:%S}"
