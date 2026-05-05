@@ -2271,6 +2271,64 @@ class ExternalTicketSyncTests(TestCase):
         EXTERNAL_TICKETING_API_TOKEN="",
     )
     @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_deletes_mirrored_ticket_when_delete_is_not_supported(self, mock_request):
+        def request_side_effect(method, url, **kwargs):
+            if method == "DELETE":
+                return Mock(status_code=405, content=b"")
+            if method == "POST" and url.endswith("/inditech-update/"):
+                response = Mock(status_code=200, content=b'{"success": true}')
+                response.json.return_value = {
+                    "success": True,
+                    "ticket": {
+                        "ticket_number": "CLT-405",
+                        "status_code": "cancelled",
+                    },
+                }
+                return response
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+        ticket = Ticket.objects.create(
+            title="Admin delete mirrored ticket with 405 fallback",
+            description="This ticket should be cancelled remotely before local deletion.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-405",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertEqual([call.args[0] for call in mock_request.call_args_list], ["DELETE", "POST"])
+        self.assertEqual(mock_request.call_args_list[1].kwargs["json"]["status"], "cancelled")
+        self.assertIn("returned 405", mock_request.call_args_list[1].kwargs["json"]["message"])
+        self.assertContains(response, f"Deleted ticket {ticket.ticket_number}.")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
     def test_support_admin_dashboard_keeps_local_ticket_when_internal_delete_fails(self, mock_request):
         response_payload = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
         response_payload.json.return_value = {"success": False, "error": "delete failed"}
@@ -2306,6 +2364,90 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Ticket.objects.filter(pk=ticket.pk).exists())
         self.assertContains(response, "Ticket was not deleted because internal ticket deletion failed")
+
+    def test_support_admin_dashboard_deletes_selected_pm_queue_records(self):
+        selected_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Selected PM User",
+            requester_email="selected-pm@example.com",
+            requester_number="+917700000001",
+            subject="Selected PM issue",
+            free_text="Delete this selected PM queue record.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+        kept_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Kept PM User",
+            requester_email="kept-pm@example.com",
+            requester_number="+917700000002",
+            subject="Kept PM issue",
+            free_text="Keep this PM queue record.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_selected_pm_requests", "support_request_ids": [selected_request.pk]},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportRequest.objects.filter(pk=selected_request.pk).exists())
+        self.assertTrue(SupportRequest.objects.filter(pk=kept_request.pk).exists())
+        self.assertContains(response, "Selected PM queue")
+
+    def test_support_admin_dashboard_deletes_selected_ticket_records(self):
+        selected_ticket = Ticket.objects.create(
+            title="Selected local ticket",
+            description="Delete this selected ticket.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+        )
+        kept_ticket = Ticket.objects.create(
+            title="Kept local ticket",
+            description="Keep this unselected ticket.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_selected_tickets", "ticket_ids": [selected_ticket.pk]},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=selected_ticket.pk).exists())
+        self.assertTrue(Ticket.objects.filter(pk=kept_ticket.pk).exists())
+        self.assertContains(response, "Selected tickets")
 
     @override_settings(
         EXTERNAL_TICKETING_SYNC_ENABLED=True,

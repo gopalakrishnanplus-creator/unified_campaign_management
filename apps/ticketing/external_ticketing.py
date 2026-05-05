@@ -373,7 +373,16 @@ def delete_external_ticket(ticket, *, actor_email="", message=None):
     }
     try:
         response_payload = send_external_ticket_delete_request(ticket, payload)
-        sync_log.append(log_line("External ticket deleted successfully.", external_ticket_number=ticket.external_ticket_number))
+        if response_payload.get("delete_fallback"):
+            sync_log.append(
+                log_line(
+                    "External ticket marked cancelled because DELETE is not supported.",
+                    external_ticket_number=ticket.external_ticket_number,
+                    fallback=response_payload.get("delete_fallback"),
+                )
+            )
+        else:
+            sync_log.append(log_line("External ticket deleted successfully.", external_ticket_number=ticket.external_ticket_number))
         logger.info("External ticket delete succeeded for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
         return response_payload
     except Exception as exc:
@@ -668,6 +677,8 @@ def send_external_ticket_delete_request(ticket, payload):
     )
     if response.status_code == 404:
         return {"success": True, "message": "External ticket was already absent."}
+    if response.status_code in {405, 501}:
+        return send_external_ticket_cancel_before_delete_request(ticket, payload, delete_status=response.status_code)
     if response.status_code == 204 or not response.content:
         if response.status_code >= 400:
             raise ExternalTicketingSyncError(f"DELETE {url} failed with status {response.status_code}.")
@@ -681,6 +692,30 @@ def send_external_ticket_delete_request(ticket, payload):
             or f"DELETE {url} returned an unsuccessful response."
         )
     return data
+
+
+def send_external_ticket_cancel_before_delete_request(ticket, payload, *, delete_status):
+    update_payload = {
+        "updated_by_email": payload.get("deleted_by_email") or resolve_external_update_actor_email(ticket),
+        "status": STATUS_MAP[Ticket.Status.CANNOT_COMPLETE],
+        "inditech_status": STATUS_MAP[Ticket.Status.CANNOT_COMPLETE],
+        "message": (
+            payload.get("message")
+            or "Ticket deleted from Campaign Management admin dashboard."
+        )
+        + f" Internal ticket API returned {delete_status} for DELETE, so this ticket was marked cancelled before local removal.",
+        "external_reference": payload.get("external_reference") or ticket.ticket_number,
+    }
+    response_payload = send_external_ticket_update_request(ticket, update_payload, [])
+    if response_payload.get("success") is False:
+        raise ExternalTicketingSyncError(
+            response_payload.get("error")
+            or response_payload.get("message")
+            or "External ticket could not be cancelled before local deletion."
+        )
+    response_payload.setdefault("success", True)
+    response_payload["delete_fallback"] = "cancelled_via_inditech_update"
+    return response_payload
 
 
 class AttachmentUploadContext:

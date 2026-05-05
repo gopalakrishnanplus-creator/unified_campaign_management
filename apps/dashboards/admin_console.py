@@ -222,9 +222,11 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             "reset_all_widget_counts": self.handle_reset_all_widget_counts,
             "update_pm_request": self.handle_update_pm_request,
             "delete_pm_request": self.handle_delete_pm_request,
+            "delete_selected_pm_requests": self.handle_delete_selected_pm_requests,
             "delete_all_pm_requests": self.handle_delete_all_pm_requests,
             "update_ticket": self.handle_update_ticket,
             "delete_ticket": self.handle_delete_ticket,
+            "delete_selected_tickets": self.handle_delete_selected_tickets,
             "delete_all_tickets": self.handle_delete_all_tickets,
             "clear_dashboard_activity": self.handle_clear_dashboard_activity,
         }
@@ -271,6 +273,20 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             messages.error(request, f"PM queue record was not deleted because linked internal ticket deletion failed: {exc}")
         return redirect("support_admin_dashboard")
 
+    def handle_delete_selected_pm_requests(self, request):
+        selected_ids = request.POST.getlist("support_request_ids")
+        if not selected_ids:
+            messages.warning(request, "Select at least one PM queue record to delete.")
+            return redirect("support_admin_dashboard")
+        result = self.bulk_delete_pm_requests(SupportRequest.objects.filter(pk__in=selected_ids))
+        self.add_bulk_delete_message(
+            request,
+            "Selected PM queue",
+            f"Deleted {result['deleted_requests']} PM queue record(s) and {result['deleted_linked_tickets']} linked ticket(s).",
+            result["failures"],
+        )
+        return redirect("support_admin_dashboard")
+
     def handle_delete_all_pm_requests(self, request):
         result = self.bulk_delete_pm_requests(SupportRequest.objects.all())
         self.add_bulk_delete_message(
@@ -312,6 +328,20 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
             messages.error(request, f"Ticket was not deleted because internal ticket deletion failed: {exc}")
             return redirect("support_admin_dashboard")
         messages.success(request, f"Deleted ticket {ticket.ticket_number}.")
+        return redirect("support_admin_dashboard")
+
+    def handle_delete_selected_tickets(self, request):
+        selected_ids = request.POST.getlist("ticket_ids")
+        if not selected_ids:
+            messages.warning(request, "Select at least one ticket record to delete.")
+            return redirect("support_admin_dashboard")
+        result = self.bulk_delete_tickets(Ticket.objects.filter(pk__in=selected_ids))
+        self.add_bulk_delete_message(
+            request,
+            "Selected tickets",
+            f"Deleted {result['deleted']} ticket record(s).",
+            result["failures"],
+        )
         return redirect("support_admin_dashboard")
 
     def handle_delete_all_tickets(self, request):
