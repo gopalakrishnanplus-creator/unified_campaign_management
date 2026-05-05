@@ -308,6 +308,83 @@ def sync_external_ticket_attachments(ticket_id, *, attachment_ids=None):
         return None
 
 
+def update_external_ticket_from_local(ticket, *, message=None):
+    if not ticket or not external_ticketing_enabled() or not ticket.external_ticket_number:
+        return ticket
+
+    sync_log = [
+        log_line(
+            "Pushing local admin ticket update to external ticket.",
+            external_ticket_number=ticket.external_ticket_number,
+            external_reference=ticket.ticket_number,
+        )
+    ]
+    try:
+        payload = {
+            "updated_by_email": resolve_external_update_actor_email(ticket),
+            "project_manager_email": resolve_project_manager_email(ticket),
+            "priority": PRIORITY_MAP.get(ticket.priority, "medium"),
+            "status": STATUS_MAP.get(ticket.status, "open"),
+            "inditech_status": STATUS_MAP.get(ticket.status, "open"),
+            "message": message or "Ticket updated from Campaign Management admin dashboard.",
+            "external_reference": ticket.ticket_number,
+        }
+        if ticket.current_assignee_id and ticket.current_assignee.email:
+            payload["assigned_to_email"] = ticket.current_assignee.email
+        response_payload = send_external_ticket_update_request(ticket, payload, [])
+        external_ticket = response_payload.get("ticket") or {
+            "ticket_number": ticket.external_ticket_number,
+            "status_code": payload["status"],
+        }
+        sync_log.append(
+            log_line(
+                "External ticket updated successfully.",
+                external_ticket_number=ticket.external_ticket_number,
+                status=external_ticket.get("status_code") or external_ticket.get("status"),
+            )
+        )
+        return persist_external_ticket_mapping(ticket, external_ticket, sync_log, append_log=True)
+    except Exception as exc:
+        sync_log.append(log_line("External ticket update failed.", error=str(exc)))
+        ticket.external_ticket_error = str(exc)
+        ticket.external_ticket_log = "\n".join(filter(None, [ticket.external_ticket_log, *sync_log]))
+        ticket.save(update_fields=["external_ticket_error", "external_ticket_log"])
+        logger.warning("External ticket update failed for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
+        raise
+
+
+def delete_external_ticket(ticket, *, actor_email="", message=None):
+    if not ticket or not ticket.external_ticket_number:
+        return {"success": True, "message": "No external ticket number is linked."}
+    if not external_ticketing_enabled():
+        raise ExternalTicketingSyncError("External ticketing sync is disabled, so the linked internal ticket cannot be deleted.")
+
+    sync_log = [
+        log_line(
+            "Deleting external ticket.",
+            external_ticket_number=ticket.external_ticket_number,
+            external_reference=ticket.ticket_number,
+        )
+    ]
+    payload = {
+        "external_reference": ticket.ticket_number,
+        "deleted_by_email": actor_email or resolve_external_update_actor_email(ticket),
+        "message": message or "Ticket deleted from Campaign Management admin dashboard.",
+    }
+    try:
+        response_payload = send_external_ticket_delete_request(ticket, payload)
+        sync_log.append(log_line("External ticket deleted successfully.", external_ticket_number=ticket.external_ticket_number))
+        logger.info("External ticket delete succeeded for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
+        return response_payload
+    except Exception as exc:
+        sync_log.append(log_line("External ticket delete failed.", error=str(exc)))
+        ticket.external_ticket_error = str(exc)
+        ticket.external_ticket_log = "\n".join(filter(None, [ticket.external_ticket_log, *sync_log]))
+        ticket.save(update_fields=["external_ticket_error", "external_ticket_log"])
+        logger.warning("External ticket delete failed for %s\n%s", ticket.ticket_number, "\n".join(sync_log))
+        raise
+
+
 def map_external_status_to_local(status):
     normalized_status = normalize_value(status).replace("-", "_").replace(" ", "_")
     return EXTERNAL_STATUS_TO_LOCAL_MAP.get(normalized_status)
@@ -578,6 +655,32 @@ def send_external_ticket_update_request(ticket, payload, attachment_sources):
             data=payload,
             files=files,
         )
+
+
+def send_external_ticket_delete_request(ticket, payload):
+    url = build_api_url(f"/client-tickets/api/tickets/{ticket.external_ticket_number}/")
+    response = requests.request(
+        "DELETE",
+        url,
+        headers=build_headers(),
+        json=payload,
+        timeout=settings.EXTERNAL_TICKETING_TIMEOUT,
+    )
+    if response.status_code == 404:
+        return {"success": True, "message": "External ticket was already absent."}
+    if response.status_code == 204 or not response.content:
+        if response.status_code >= 400:
+            raise ExternalTicketingSyncError(f"DELETE {url} failed with status {response.status_code}.")
+        return {"success": True}
+
+    data = parse_json_response(response, "DELETE", url)
+    if data.get("success") is False:
+        raise ExternalTicketingSyncError(
+            data.get("error")
+            or data.get("message")
+            or f"DELETE {url} returned an unsuccessful response."
+        )
+    return data
 
 
 class AttachmentUploadContext:

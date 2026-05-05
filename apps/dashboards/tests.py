@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
+from apps.dashboards.admin_console import ADMIN_DASHBOARD_PASSWORD, ADMIN_DASHBOARD_USERNAME
 from apps.dashboards.services import get_support_dashboard_data
 from apps.reporting.services import build_live_performance_sections
 from apps.support_center.services import get_faq_combination, get_faq_page
@@ -2147,3 +2148,136 @@ class ExternalTicketSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "IT Support - Auto route to Tech Manager")
+
+    def login_support_admin_dashboard(self):
+        return self.client.post(
+            reverse("support_admin_login"),
+            data={
+                "username": ADMIN_DASHBOARD_USERNAME,
+                "password": ADMIN_DASHBOARD_PASSWORD,
+            },
+        )
+
+    def test_support_admin_dashboard_requires_hardcoded_credentials(self):
+        response = self.client.get(reverse("support_admin_dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("support_admin_login"), response["Location"])
+
+        response = self.login_support_admin_dashboard()
+        self.assertRedirects(response, reverse("support_admin_dashboard"))
+
+        response = self.client.get(reverse("support_admin_dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Support admin dashboard")
+        self.assertContains(response, "System-wise support widget counts")
+
+    def test_support_admin_dashboard_resets_widget_event_counts_by_system(self):
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "reset_widget_counts", "system": "In-clinic"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.filter(source_system="In-clinic").exists())
+        self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
+        self.assertContains(response, "Reset 1 widget event record")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_deletes_mirrored_ticket_after_internal_delete(self, mock_request):
+        response_payload = Mock(status_code=204, content=b"")
+        mock_request.return_value = response_payload
+        ticket = Ticket.objects.create(
+            title="Admin delete mirrored ticket",
+            description="This ticket should be removed after internal delete succeeds.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-ADMINDEL",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertEqual(mock_request.call_args.args[0], "DELETE")
+        self.assertTrue(mock_request.call_args.args[1].endswith("/client-tickets/api/tickets/CLT-ADMINDEL/"))
+        self.assertContains(response, f"Deleted ticket {ticket.ticket_number}.")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_keeps_local_ticket_when_internal_delete_fails(self, mock_request):
+        response_payload = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
+        response_payload.json.return_value = {"success": False, "error": "delete failed"}
+        mock_request.return_value = response_payload
+        ticket = Ticket.objects.create(
+            title="Admin delete failure",
+            description="This ticket should remain locally when internal delete fails.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-KEEP",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertContains(response, "Ticket was not deleted because internal ticket deletion failed")
