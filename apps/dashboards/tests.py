@@ -2195,7 +2195,46 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(SupportWidgetEvent.objects.filter(source_system="In-clinic").exists())
         self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
-        self.assertContains(response, "Reset 1 widget open/resolved event record")
+        self.assertContains(response, "Reset 1 widget click event record")
+
+    def test_support_admin_dashboard_resets_widget_click_counts_using_linked_page_system(self):
+        inclinic_page = SupportPage.objects.create(
+            name="In-clinic Click Page",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        pe_page = SupportPage.objects.create(
+            name="Patient Education Click Page",
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+        )
+        reset_event = SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=inclinic_page,
+            source_system="Customer support",
+            source_flow="General support",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        keep_event = SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=pe_page,
+            source_system="Customer support",
+            source_flow="General support",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "reset_widget_counts", "system": "In-clinic"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.filter(pk=reset_event.pk).exists())
+        self.assertTrue(SupportWidgetEvent.objects.filter(pk=keep_event.pk).exists())
+        self.assertTrue(SupportPage.objects.filter(pk=inclinic_page.pk).exists())
+        self.assertContains(response, "Reset 1 widget click event record")
 
     def test_support_admin_dashboard_bulk_resets_all_widget_counts(self):
         SupportWidgetEvent.objects.create(
@@ -2220,7 +2259,7 @@ class ExternalTicketSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(SupportWidgetEvent.objects.exists())
-        self.assertContains(response, "Reset all widget open/resolved event counts")
+        self.assertContains(response, "Reset all widget click counts")
 
     def test_support_admin_dashboard_deletes_support_widget_catalog_by_system(self):
         inclinic_page = SupportPage.objects.create(name="In-clinic Page", source_system="In-clinic", source_flow="Doctor Flow")

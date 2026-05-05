@@ -80,17 +80,75 @@ def admin_dashboard_authenticated(request):
     return bool(request.session.get(ADMIN_DASHBOARD_SESSION_KEY))
 
 
+def normalized_support_token(value):
+    return "".join(character for character in (value or "").lower() if character.isalnum())
+
+
 def canonical_support_system(system_name, flow_name=""):
     system_name = (system_name or "").strip()
     flow_name = (flow_name or "").strip()
+    system_token = normalized_support_token(system_name)
+    flow_token = normalized_support_token(flow_name)
+    combined_token = f"{system_token}{flow_token}"
+
+    if system_token == "saplaicme":
+        if "aicme" in flow_token:
+            return "AICME"
+        return "SAPL"
+    if system_token == "aicme" or "aicme" in combined_token:
+        return "AICME"
+    if system_token == "sapl" or "sapl" in combined_token:
+        return "SAPL"
+    if system_token in {"inclinic", "inclinicsystem"} or "inclinic" in combined_token:
+        return "In-clinic"
+    if system_token in {"patienteducation", "pe"} or "patienteducation" in combined_token:
+        return "Patient Education"
+    if system_token in {"redflagalert", "rfa"} or "redflagalert" in combined_token:
+        return "Red Flag Alert"
     if not system_name:
         return "Unknown"
-    if system_name != "SAPLAICME":
-        return system_name
-    normalized_flow = flow_name.replace("-", "").replace("_", "").replace(" ", "").lower()
-    if "aicme" in normalized_flow:
-        return "AICME"
-    return "SAPL"
+    return system_name
+
+
+def is_generic_support_system(system_name):
+    return normalized_support_token(system_name) in {"", "unknown", "customersupport", "generalsupport", "support"}
+
+
+def resolve_support_system(source_system, source_flow="", *fallback_records):
+    resolved_system = canonical_support_system(source_system, source_flow)
+    fallback_systems = []
+    for record in fallback_records:
+        if not record:
+            continue
+        fallback_systems.append(
+            canonical_support_system(
+                getattr(record, "source_system", ""),
+                getattr(record, "source_flow", ""),
+            )
+        )
+
+    if is_generic_support_system(resolved_system):
+        for fallback_system in fallback_systems:
+            if not is_generic_support_system(fallback_system):
+                return fallback_system
+    return resolved_system
+
+
+def support_page_system(page):
+    return resolve_support_system(page.source_system, page.source_flow)
+
+
+def support_item_system(item):
+    return resolve_support_system(item.source_system, item.source_flow, item.page)
+
+
+def support_request_system(support_request):
+    return resolve_support_system(support_request.source_system, support_request.source_flow, support_request.support_page)
+
+
+def widget_event_system(event):
+    request_page = event.support_request.support_page if event.support_request_id else None
+    return resolve_support_system(event.source_system, event.source_flow, event.support_page, event.support_request, request_page)
 
 
 def ticket_source_label(source_system):
@@ -117,31 +175,27 @@ def build_support_widget_count_rows():
             rows[system_name] = empty_system_row(system_name)
         return rows[system_name]
 
-    page_counts = Counter(
-        canonical_support_system(source_system, source_flow)
-        for source_system, source_flow in SupportPage.objects.filter(is_active=True).values_list("source_system", "source_flow")
-    )
-    faq_counts = Counter(
-        canonical_support_system(source_system, source_flow)
-        for source_system, source_flow in SupportItem.objects.filter(is_active=True).values_list("source_system", "source_flow")
-    )
+    page_counts = Counter(support_page_system(page) for page in SupportPage.objects.filter(is_active=True))
+    faq_counts = Counter(support_item_system(item) for item in SupportItem.objects.filter(is_active=True).select_related("page"))
     open_counts = Counter(
-        canonical_support_system(source_system, source_flow)
-        for source_system, source_flow in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED).values_list(
-            "source_system",
-            "source_flow",
+        widget_event_system(event)
+        for event in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED).select_related(
+            "support_page",
+            "support_request",
+            "support_request__support_page",
         )
     )
     resolved_counts = Counter(
-        canonical_support_system(source_system, source_flow)
-        for source_system, source_flow in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED).values_list(
-            "source_system",
-            "source_flow",
+        widget_event_system(event)
+        for event in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED).select_related(
+            "support_page",
+            "support_request",
+            "support_request__support_page",
         )
     )
     pm_queue_counts = Counter(
-        canonical_support_system(source_system, source_flow)
-        for source_system, source_flow in SupportRequest.objects.all().values_list("source_system", "source_flow")
+        support_request_system(support_request)
+        for support_request in SupportRequest.objects.select_related("support_page")
     )
     ticket_counts = Counter(ticket_source_label(source_system) for source_system in Ticket.objects.all().values_list("source_system", flat=True))
 
@@ -160,10 +214,11 @@ def build_support_widget_count_rows():
 
 
 def delete_widget_events_for_system(system_name):
+    target_system = canonical_support_system(system_name)
     event_ids = [
-        event_id
-        for event_id, source_system, source_flow in SupportWidgetEvent.objects.values_list("pk", "source_system", "source_flow")
-        if canonical_support_system(source_system, source_flow) == system_name
+        event.pk
+        for event in SupportWidgetEvent.objects.select_related("support_page", "support_request", "support_request__support_page")
+        if widget_event_system(event) == target_system
     ]
     if not event_ids:
         return 0
@@ -172,10 +227,15 @@ def delete_widget_events_for_system(system_name):
 
 
 def ids_for_support_system(model, system_name):
+    target_system = canonical_support_system(system_name)
+    if model is SupportPage:
+        return [page.pk for page in SupportPage.objects.all() if support_page_system(page) == target_system]
+    if model is SupportItem:
+        return [item.pk for item in SupportItem.objects.select_related("page") if support_item_system(item) == target_system]
     return [
         record_id
         for record_id, source_system, source_flow in model.objects.values_list("pk", "source_system", "source_flow")
-        if canonical_support_system(source_system, source_flow) == system_name
+        if canonical_support_system(source_system, source_flow) == target_system
     ]
 
 
@@ -284,8 +344,8 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         deleted_count = delete_widget_events_for_system(system_name)
         messages.success(
             request,
-            f"Reset {deleted_count} widget open/resolved event record(s) for {system_name}. "
-            "Page and FAQ catalog counts are kept; use Delete widgets to remove those counts.",
+            f"Reset {deleted_count} widget click event record(s) for {system_name}. "
+            "FAQ pages, answers, and widget URLs are kept.",
         )
         return redirect("support_admin_dashboard")
 
@@ -293,8 +353,8 @@ class AdminDashboardView(AdminDashboardAuthMixin, TemplateView):
         deleted_count, _ = SupportWidgetEvent.objects.all().delete()
         messages.success(
             request,
-            f"Reset all widget open/resolved event counts by deleting {deleted_count} event record(s). "
-            "Page and FAQ catalog counts are kept; use Delete all widgets to remove those counts.",
+            f"Reset all widget click counts by deleting {deleted_count} event record(s). "
+            "FAQ pages, answers, and widget URLs are kept.",
         )
         return redirect("support_admin_dashboard")
 

@@ -308,13 +308,13 @@
             <div>
                 <p class="eyebrow">Bulk cleanup</p>
                 <h2>Clear dashboard activity</h2>
-                <p class="small">Reset event counts clears only open/resolved analytics. Delete widget catalog removes FAQ page and answer counts.</p>
+                <p class="small">Reset click counts clears only widget interaction records. FAQ pages, answers, and widget URLs stay available.</p>
             </div>
             <div class="section-actions">
-                <form method="post" onsubmit="return confirm('Reset ALL widget open/resolved event counts?');">
+                <form method="post" onsubmit="return confirm('Reset ALL widget click counts? FAQ pages and widget URLs will remain.');">
                     {{ csrf_input }}
                     <input type="hidden" name="action" value="reset_all_widget_counts">
-                    <button class="secondary" type="submit">Reset event counts</button>
+                    <button class="secondary" type="submit">Reset click counts</button>
                 </form>
                 <form method="post" onsubmit="return confirm('Delete ALL support widget FAQ pages and answers? This removes the Pages and FAQs counts until the catalog is imported again.');">
                     {{ csrf_input }}
@@ -343,13 +343,13 @@
             <div class="section-header">
                 <div>
                     <h2>System-wise support widget counts</h2>
-                    <p>Pages/FAQs are widget catalog counts. Opened/Resolved are event counts. Use Delete widgets to remove catalog counts for a system.</p>
+                    <p>Pages/FAQs are catalog counts. Opened/Resolved are widget click counts. Reset clicks keeps FAQs and widget URLs unchanged.</p>
                 </div>
                 <div class="section-actions">
-                    <form method="post" onsubmit="return confirm('Reset ALL widget open/resolved event counts?');">
+                    <form method="post" onsubmit="return confirm('Reset ALL widget click counts? FAQ pages and widget URLs will remain.');">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="reset_all_widget_counts">
-                        <button class="secondary" type="submit">Reset all event counts</button>
+                        <button class="secondary" type="submit">Reset all clicks</button>
                     </form>
                     <form method="post" onsubmit="return confirm('Delete ALL support widget FAQ pages and answers? This removes the Pages and FAQs counts until the catalog is imported again.');">
                         {{ csrf_input }}
@@ -384,11 +384,11 @@
                                 <td>{{ row.ticket_count }}</td>
                                 <td>
                                     <div class="stacked-actions">
-                                        <form method="post" onsubmit="return confirm('Reset widget open/resolved event counts for {{ row.system }}? Page and FAQ counts will remain.');">
+                                        <form method="post" onsubmit="return confirm('Reset widget click counts for {{ row.system }}? FAQ pages and widget URLs will remain.');">
                                             {{ csrf_input }}
                                             <input type="hidden" name="action" value="reset_widget_counts">
                                             <input type="hidden" name="system" value="{{ row.system }}">
-                                            <button class="secondary" type="submit">Reset events</button>
+                                            <button class="secondary" type="submit">Reset clicks</button>
                                         </form>
                                         <form method="post" onsubmit="return confirm('Delete support widget FAQ pages and answers for {{ row.system }}? This removes the Pages and FAQs counts until the catalog is imported again.');">
                                             {{ csrf_input }}
