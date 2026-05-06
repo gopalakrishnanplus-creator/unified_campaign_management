@@ -4,14 +4,16 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.conf import settings
 from django.http import JsonResponse
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView, View
 
 from apps.campaigns.models import Campaign
+from apps.ticketing.models import SpecialInstructionReview
 from apps.ticketing.notifications import send_special_instruction_assignment_email
 from apps.ticketing.special_instructions import (
     SpecialInstructionAPIError,
@@ -47,7 +49,10 @@ class ProjectManagementDashboardView(ProjectManagerRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["support_data"] = get_support_dashboard_data()
+        context["support_data"] = get_support_dashboard_data(
+            special_instruction_page=self.request.GET.get("si_page") or 1,
+            special_instruction_scope=self.request.GET.get("si_scope") or "active",
+        )
         context["status_data"] = get_system_status_dashboard_data(self.request.build_absolute_uri("/").rstrip("/"))
         return context
 
@@ -84,6 +89,29 @@ class SpecialInstructionFetchView(ProjectManagerRequiredMixin, View):
             f"Special Instruction review ticket {review.ticket.ticket_number} is assigned to {review.ticket.current_assignee.email}.",
         )
         return redirect("ticketing:detail", pk=review.ticket.pk)
+
+
+class SpecialInstructionArchiveView(ProjectManagerRequiredMixin, View):
+    def post(self, request, review_id, *args, **kwargs):
+        review = get_object_or_404(SpecialInstructionReview.objects.select_related("ticket"), pk=review_id)
+        action = (request.POST.get("action") or "archive").strip().lower()
+        if action == "restore":
+            review.archived_at = None
+            review.archived_by = None
+            review.save(update_fields=["archived_at", "archived_by", "updated_at"])
+            messages.success(request, f"Special Instruction review {review.ticket.ticket_number} restored to the queue.")
+        elif not review.archived_at:
+            review.archived_at = timezone.now()
+            review.archived_by = request.user
+            review.save(update_fields=["archived_at", "archived_by", "updated_at"])
+            messages.success(request, f"Special Instruction review {review.ticket.ticket_number} moved to archive.")
+        else:
+            messages.info(request, f"Special Instruction review {review.ticket.ticket_number} is already archived.")
+
+        next_url = request.POST.get("next") or f"{reverse('dashboards:home')}#special-instruction-review"
+        if not str(next_url).startswith("/"):
+            next_url = f"{reverse('dashboards:home')}#special-instruction-review"
+        return redirect(next_url)
 
 
 def _special_instruction_request_token(request):

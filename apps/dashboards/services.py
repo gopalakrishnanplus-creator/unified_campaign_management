@@ -3,6 +3,7 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 from django.conf import settings
+from django.core.paginator import Paginator
 from django.db.models import Case, Count, IntegerField, Q, When
 from django.test import Client
 from django.urls import reverse
@@ -221,18 +222,32 @@ def _build_support_widget_activity_rows():
     return rows, totals
 
 
-def _build_special_instruction_review_rows(campaign=None, limit=12):
-    queryset = SpecialInstructionReview.objects.select_related(
+def _special_instruction_queue_url(*, scope="active", page=1):
+    query = urlencode({"si_scope": scope, "si_page": page})
+    return f"{reverse('dashboards:home')}?{query}#special-instruction-review"
+
+
+def _build_special_instruction_review_rows(campaign=None, *, page_number=1, scope="active", per_page=3):
+    archived = scope == "archived"
+    base_queryset = SpecialInstructionReview.objects.select_related(
         "ticket",
         "ticket__campaign",
         "ticket__current_assignee",
         "ticket__direct_recipient",
         "ticket__created_by",
+        "archived_by",
         "approved_by",
-    ).order_by("-updated_at")
+    )
     if campaign:
-        queryset = queryset.filter(ticket__campaign=campaign)
-    reviews = list(queryset[:limit])
+        base_queryset = base_queryset.filter(ticket__campaign=campaign)
+
+    active_count = base_queryset.filter(archived_at__isnull=True).count()
+    archived_count = base_queryset.filter(archived_at__isnull=False).count()
+    queryset = base_queryset.filter(archived_at__isnull=not archived)
+    queryset = queryset.order_by("-archived_at" if archived else "-updated_at")
+    paginator = Paginator(queryset, per_page)
+    page_obj = paginator.get_page(page_number)
+    reviews = list(page_obj.object_list)
     ticket_ids = [review.ticket_id for review in reviews]
     returned_events = {}
     for event in (
@@ -277,10 +292,33 @@ def _build_special_instruction_review_rows(campaign=None, limit=12):
                 "action_url": reverse("ticketing:detail", kwargs={"pk": ticket.pk}),
             }
         )
-    return rows
+    pagination = {
+        "scope": "archived" if archived else "active",
+        "is_archived": archived,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "page_number": page_obj.number,
+        "num_pages": paginator.num_pages,
+        "total_count": paginator.count,
+        "active_count": active_count,
+        "archived_count": archived_count,
+        "active_url": _special_instruction_queue_url(scope="active", page=1),
+        "archived_url": _special_instruction_queue_url(scope="archived", page=1),
+        "previous_url": (
+            _special_instruction_queue_url(scope="archived" if archived else "active", page=page_obj.previous_page_number())
+            if page_obj.has_previous()
+            else ""
+        ),
+        "next_url": (
+            _special_instruction_queue_url(scope="archived" if archived else "active", page=page_obj.next_page_number())
+            if page_obj.has_next()
+            else ""
+        ),
+    }
+    return rows, pagination
 
 
-def get_support_dashboard_data(campaign=None):
+def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, special_instruction_scope="active"):
     tickets = (
         Ticket.objects.select_related(
             "campaign",
@@ -504,7 +542,11 @@ def get_support_dashboard_data(campaign=None):
         for support_request in other_issue_requests
     ]
     widget_activity_rows, widget_activity_totals = _build_support_widget_activity_rows()
-    special_instruction_rows = _build_special_instruction_review_rows(campaign)
+    special_instruction_rows, special_instruction_pagination = _build_special_instruction_review_rows(
+        campaign,
+        page_number=special_instruction_page,
+        scope=special_instruction_scope,
+    )
 
     return {
         "overview_cards": overview_cards,
@@ -519,6 +561,7 @@ def get_support_dashboard_data(campaign=None):
         "ticket_distribution": ticket_distribution,
         "other_issue_rows": other_issue_rows,
         "special_instruction_rows": special_instruction_rows,
+        "special_instruction_pagination": special_instruction_pagination,
         "chart_data": {
             "category": {
                 "labels": [row["label"] for row in category_breakdown],
@@ -546,7 +589,8 @@ def get_support_dashboard_data(campaign=None):
             "completed_tickets": closed_count,
             "critical_tickets": critical_count,
             "other_issue_requests": len(other_issue_rows),
-            "special_instruction_reviews": len(special_instruction_rows),
+            "special_instruction_reviews": special_instruction_pagination["active_count"],
+            "archived_special_instruction_reviews": special_instruction_pagination["archived_count"],
         },
         "widget_activity_rows": widget_activity_rows,
         "widget_activity_totals": widget_activity_totals,

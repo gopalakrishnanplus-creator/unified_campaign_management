@@ -29,21 +29,21 @@ class SpecialInstructionWorkflowTests(TestCase):
         cls.special_instruction_assignee = Department.objects.get(code="PRODUCT").default_recipient
         cls.assignee = Department.objects.get(code="TECHNOLOGY").default_recipient
 
-    def _payload(self):
+    def _payload(self, *, doctor_id="DOC401", campaign_id="campaign-uuid", doctor_name="Dr. Portal Doctor"):
         return {
             "ok": True,
             "ticket": {
                 "doctor": {
-                    "id": "DOC401",
-                    "name": "Dr. Portal Doctor",
-                    "email": "portal@example.com",
+                    "id": doctor_id,
+                    "name": doctor_name,
+                    "email": f"{doctor_id.lower()}@example.com",
                 },
                 "clinic": {
                     "name": "Clinic Portal",
                     "phone": "9876543210",
                 },
                 "associated_campaign": {
-                    "campaign_id": "campaign-uuid",
+                    "campaign_id": campaign_id,
                     "campaign_name": "Growth Campaign",
                     "brand_name": "Pedia",
                     "field_rep": {
@@ -61,8 +61,8 @@ class SpecialInstructionWorkflowTests(TestCase):
                     "current_status": "Document in process",
                     "status_code": "in_process",
                     "uploaded_at": "2026-05-06T10:30:00+00:00",
-                    "download_url": "https://red-flag-alerts.co.in/internal/special-instructions/DOC401/download/",
-                    "approve_url": "https://red-flag-alerts.co.in/internal/special-instructions/DOC401/approve/",
+                    "download_url": f"https://red-flag-alerts.co.in/internal/special-instructions/{doctor_id}/download/",
+                    "approve_url": f"https://red-flag-alerts.co.in/internal/special-instructions/{doctor_id}/approve/",
                 },
             },
         }
@@ -210,6 +210,68 @@ class SpecialInstructionWorkflowTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(SpecialInstructionReview.objects.filter(doctor_id="DOC401").exists())
+
+    @patch("apps.dashboards.services.requests.get")
+    def test_document_approval_queue_is_paginated_three_cards_at_a_time(self, mock_status_get):
+        mock_status_get.return_value = Mock(status_code=200)
+        for index in range(5):
+            create_or_update_special_instruction_review(
+                self._payload(
+                    doctor_id=f"DOC40{index}",
+                    campaign_id=f"campaign-{index}",
+                    doctor_name=f"Dr. Portal Doctor {index}",
+                ),
+                actor=self.pm_user,
+            )
+
+        self.client.force_login(self.pm_user)
+        response = self.client.get(reverse("dashboards:home"))
+        content = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(content.count("Doctor ID DOC40"), 3)
+        self.assertContains(response, "Page 1 of 2")
+        self.assertContains(response, "Next")
+        self.assertNotContains(response, "webhook delivery needs recovery")
+
+        next_response = self.client.get(reverse("dashboards:home") + "?si_scope=active&si_page=2")
+        next_content = next_response.content.decode()
+        self.assertEqual(next_response.status_code, 200)
+        self.assertEqual(next_content.count("Doctor ID DOC40"), 2)
+        self.assertContains(next_response, "Page 2 of 2")
+
+    @patch("apps.dashboards.services.requests.get")
+    def test_document_approval_queue_archive_moves_card_to_archive_section(self, mock_status_get):
+        mock_status_get.return_value = Mock(status_code=200)
+        review = create_or_update_special_instruction_review(self._payload(), actor=self.pm_user)
+
+        self.client.force_login(self.pm_user)
+        archive_response = self.client.post(
+            reverse("dashboards:special_instruction_archive", kwargs={"review_id": review.pk}),
+            data={"next": reverse("dashboards:home") + "#special-instruction-review"},
+            follow=True,
+        )
+        review.refresh_from_db()
+
+        self.assertEqual(archive_response.status_code, 200)
+        self.assertIsNotNone(review.archived_at)
+        self.assertEqual(review.archived_by, self.pm_user)
+        self.assertContains(archive_response, "No Special Instruction reviews have arrived from RFA yet.")
+
+        archived_response = self.client.get(reverse("dashboards:home") + "?si_scope=archived")
+        self.assertContains(archived_response, "Archived document approvals")
+        self.assertContains(archived_response, "Doctor ID DOC401")
+        self.assertContains(archived_response, "Restore")
+
+        restore_response = self.client.post(
+            reverse("dashboards:special_instruction_archive", kwargs={"review_id": review.pk}),
+            data={"action": "restore", "next": reverse("dashboards:home") + "?si_scope=archived#special-instruction-review"},
+            follow=True,
+        )
+        review.refresh_from_db()
+        self.assertEqual(restore_response.status_code, 200)
+        self.assertIsNone(review.archived_at)
+        self.assertIsNone(review.archived_by)
 
     def test_assigning_special_instruction_ticket_sends_download_and_approve_email(self):
         review = create_or_update_special_instruction_review(self._payload(), actor=self.pm_user)
