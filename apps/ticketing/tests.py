@@ -257,21 +257,23 @@ class SpecialInstructionWorkflowTests(TestCase):
         self.assertIsNotNone(review.archived_at)
         self.assertEqual(review.archived_by, self.pm_user)
         self.assertContains(archive_response, "No Special Instruction reviews have arrived from RFA yet.")
-
-        archived_response = self.client.get(reverse("dashboards:home") + "?si_scope=archived")
-        self.assertContains(archived_response, "Archived document approvals")
-        self.assertContains(archived_response, "Doctor ID DOC401")
-        self.assertContains(archived_response, "Restore")
+        self.assertContains(archive_response, 'data-bs-target="#special-instruction-archive-modal"')
+        self.assertContains(archive_response, "Archived document approvals")
+        self.assertContains(archive_response, "Search by Doctor Name or Doctor ID")
+        self.assertContains(archive_response, "data-special-instruction-archive-card")
+        self.assertContains(archive_response, "Doctor ID DOC401")
+        self.assertContains(archive_response, "Restore")
 
         restore_response = self.client.post(
             reverse("dashboards:special_instruction_archive", kwargs={"review_id": review.pk}),
-            data={"action": "restore", "next": reverse("dashboards:home") + "?si_scope=archived#special-instruction-review"},
+            data={"action": "restore", "next": reverse("dashboards:home") + "#special-instruction-review"},
             follow=True,
         )
         review.refresh_from_db()
         self.assertEqual(restore_response.status_code, 200)
         self.assertIsNone(review.archived_at)
         self.assertIsNone(review.archived_by)
+        self.assertContains(restore_response, "No archived Special Instruction reviews yet.")
 
     def test_assigning_special_instruction_ticket_sends_download_and_approve_email(self):
         review = create_or_update_special_instruction_review(self._payload(), actor=self.pm_user)

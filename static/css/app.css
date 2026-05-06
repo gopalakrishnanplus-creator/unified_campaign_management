@@ -192,6 +192,24 @@ body {
     color: var(--muted);
 }
 
+.archive-action-pill {
+    cursor: pointer;
+}
+
+.archive-action-pill:hover,
+.archive-action-pill:focus {
+    background: var(--info-soft);
+    color: #1d4ed8;
+}
+
+.special-instruction-archive-search {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--surface-2);
+    padding-bottom: 0.75rem;
+}
+
 .ticket-row-escalated td:first-child,
 .ticket-row-critical td:first-child,
 .ticket-row-high td:first-child {

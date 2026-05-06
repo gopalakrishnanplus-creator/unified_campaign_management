@@ -195,11 +195,15 @@
                 </div>
             </form>
         </details>
-        {% if support_data.special_instruction_pagination.is_archived %}
-            <a class="btn btn-sm btn-outline-secondary" href="{{ support_data.special_instruction_pagination.active_url }}">Active queue</a>
-        {% else %}
-            <a class="btn btn-sm btn-outline-secondary" href="{{ support_data.special_instruction_pagination.archived_url }}">Archive</a>
-        {% endif %}
+        <button
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#special-instruction-archive-modal"
+        >
+            Archive
+            <span class="badge text-bg-light ms-1">{{ support_data.support_cards.archived_special_instruction_reviews }}</span>
+        </button>
     </div>
 
     {% if support_data.special_instruction_pagination.total_count %}
@@ -238,14 +242,14 @@
                                         {{ csrf_input }}
                                         <input type="hidden" name="action" value="restore">
                                         <input type="hidden" name="next" value="{{ request.get_full_path() }}#special-instruction-review">
-                                        <button class="status-code-pill status-secondary" type="submit" title="Restore to queue">Restore</button>
+                                        <button class="status-code-pill status-secondary archive-action-pill" type="submit" title="Restore to queue">Restore</button>
                                     </form>
                                 {% else %}
                                     <form method="post" action="{{ url('dashboards:special_instruction_archive', review_id=row.review.pk) }}">
                                         {{ csrf_input }}
                                         <input type="hidden" name="action" value="archive">
                                         <input type="hidden" name="next" value="{{ request.get_full_path() }}#special-instruction-review">
-                                        <button class="status-code-pill status-secondary" type="submit" title="Archive review">Archive</button>
+                                        <button class="status-code-pill status-secondary archive-action-pill" type="submit" title="Archive review">Archive</button>
                                     </form>
                                 {% endif %}
                             </div>
@@ -270,6 +274,86 @@
                 </div>
             </div>
         {% endfor %}
+    </div>
+
+    <div class="modal fade special-instruction-archive-modal" id="special-instruction-archive-modal" tabindex="-1" aria-labelledby="special-instruction-archive-modal-title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header align-items-start">
+                    <div>
+                        <p class="eyebrow mb-1">RFA Special Instructions</p>
+                        <h2 class="modal-title fs-5" id="special-instruction-archive-modal-title">Archived document approvals</h2>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="status-code-pill status-info">{{ support_data.support_cards.archived_special_instruction_reviews }} archived</span>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <div class="special-instruction-archive-search mb-3">
+                        <label class="form-label" for="special-instruction-archive-search">Search archived entries</label>
+                        <input
+                            class="form-control"
+                            id="special-instruction-archive-search"
+                            type="search"
+                            placeholder="Search by Doctor Name or Doctor ID"
+                            autocomplete="off"
+                            data-special-instruction-archive-search
+                        >
+                        <div class="small text-secondary mt-2">
+                            <span id="special-instruction-archive-match-count">{{ support_data.special_instruction_archive_rows|length }}</span>
+                            matching archived cards
+                        </div>
+                    </div>
+
+                    <div class="row g-3" id="special-instruction-archive-results">
+                        {% for row in support_data.special_instruction_archive_rows %}
+                            <div
+                                class="col-md-6 special-instruction-archive-card"
+                                data-special-instruction-archive-card
+                                data-special-instruction-archive-search-text="{{ row.review.doctor_id }} {{ row.review.doctor_name or '' }}"
+                            >
+                                <div class="card shadow-sm border-0 rounded-4 h-100">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between gap-2 align-items-start mb-3">
+                                            <div>
+                                                <p class="eyebrow mb-1">Doctor ID {{ row.review.doctor_id }}</p>
+                                                <h3 class="h5 mb-1">{{ row.review.doctor_name or 'Doctor not provided' }}</h3>
+                                                <div class="text-secondary small">{{ row.review.clinic_name or 'Clinic not provided' }}</div>
+                                            </div>
+                                            <div class="d-flex gap-2 align-items-start">
+                                                <span class="status-code-pill {{ row.workflow_badge }}">{{ row.workflow_label }}</span>
+                                                <form method="post" action="{{ url('dashboards:special_instruction_archive', review_id=row.review.pk) }}">
+                                                    {{ csrf_input }}
+                                                    <input type="hidden" name="action" value="restore">
+                                                    <input type="hidden" name="next" value="{{ request.get_full_path() }}#special-instruction-review">
+                                                    <button class="status-code-pill status-secondary archive-action-pill" type="submit" title="Restore to queue">Restore</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                        <div class="metric-row"><span>Campaign</span><strong>{{ row.review.campaign_name or 'Not provided' }}</strong></div>
+                                        <div class="metric-row"><span>Brand</span><strong>{{ row.review.brand_name or 'Not provided' }}</strong></div>
+                                        <div class="metric-row"><span>RFA status</span><strong>{{ row.review.rfa_current_status or 'Not provided' }}</strong></div>
+                                        <div class="metric-row"><span>Assignee</span><strong>{{ row.ticket.current_assignee.full_name or row.ticket.current_assignee.email }}</strong></div>
+                                        <div class="metric-row"><span>Approved</span><strong>{{ row.review.approved_at|india_datetime if row.review.approved_at else 'Pending' }}</strong></div>
+                                        <div class="metric-row"><span>Archived</span><strong>{{ row.review.archived_at|india_datetime if row.review.archived_at else 'Not available' }}</strong></div>
+                                        <a class="btn btn-sm btn-primary mt-3" href="{{ row.action_url }}">{{ row.action_label }}</a>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="col-12">
+                                <div class="alert alert-light border mb-0">No archived Special Instruction reviews yet.</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="alert alert-light border d-none mt-3 mb-0" id="special-instruction-archive-no-results">
+                        No archived cards match this search.
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -540,7 +624,46 @@
     const chartPayload = {{ support_data.chart_data|tojson }};
     const visualizations = document.getElementById("dashboard-visualizations");
     const toggleButton = document.getElementById("toggle-visualizations");
+    const archiveModal = document.getElementById("special-instruction-archive-modal");
+    const archiveSearch = document.getElementById("special-instruction-archive-search");
+    const archiveCards = Array.from(document.querySelectorAll("[data-special-instruction-archive-card]"));
+    const archiveEmptySearch = document.getElementById("special-instruction-archive-no-results");
+    const archiveMatchCount = document.getElementById("special-instruction-archive-match-count");
     let chartsInitialized = false;
+
+    function filterArchivedCards() {
+        if (!archiveSearch) {
+            return;
+        }
+        const query = archiveSearch.value.trim().toLowerCase();
+        let visibleCount = 0;
+        archiveCards.forEach((card) => {
+            const searchText = (card.dataset.specialInstructionArchiveSearchText || "").toLowerCase();
+            const isVisible = !query || searchText.includes(query);
+            card.classList.toggle("d-none", !isVisible);
+            if (isVisible) {
+                visibleCount += 1;
+            }
+        });
+        if (archiveMatchCount) {
+            archiveMatchCount.textContent = visibleCount;
+        }
+        if (archiveEmptySearch) {
+            archiveEmptySearch.classList.toggle("d-none", visibleCount !== 0 || archiveCards.length === 0);
+        }
+    }
+
+    if (archiveSearch) {
+        archiveSearch.addEventListener("input", filterArchivedCards);
+        filterArchivedCards();
+    }
+
+    if (archiveModal && archiveSearch) {
+        archiveModal.addEventListener("shown.bs.modal", () => {
+            archiveSearch.focus();
+            filterArchivedCards();
+        });
+    }
 
     function navigateOnClick(urls, elements) {
         if (!elements.length) {

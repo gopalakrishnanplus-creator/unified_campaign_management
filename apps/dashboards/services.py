@@ -227,9 +227,8 @@ def _special_instruction_queue_url(*, scope="active", page=1):
     return f"{reverse('dashboards:home')}?{query}#special-instruction-review"
 
 
-def _build_special_instruction_review_rows(campaign=None, *, page_number=1, scope="active", per_page=3):
-    archived = scope == "archived"
-    base_queryset = SpecialInstructionReview.objects.select_related(
+def _special_instruction_review_queryset(campaign=None):
+    queryset = SpecialInstructionReview.objects.select_related(
         "ticket",
         "ticket__campaign",
         "ticket__current_assignee",
@@ -239,15 +238,11 @@ def _build_special_instruction_review_rows(campaign=None, *, page_number=1, scop
         "approved_by",
     )
     if campaign:
-        base_queryset = base_queryset.filter(ticket__campaign=campaign)
+        queryset = queryset.filter(ticket__campaign=campaign)
+    return queryset
 
-    active_count = base_queryset.filter(archived_at__isnull=True).count()
-    archived_count = base_queryset.filter(archived_at__isnull=False).count()
-    queryset = base_queryset.filter(archived_at__isnull=not archived)
-    queryset = queryset.order_by("-archived_at" if archived else "-updated_at")
-    paginator = Paginator(queryset, per_page)
-    page_obj = paginator.get_page(page_number)
-    reviews = list(page_obj.object_list)
+
+def _build_special_instruction_rows(reviews):
     ticket_ids = [review.ticket_id for review in reviews]
     returned_events = {}
     for event in (
@@ -292,6 +287,20 @@ def _build_special_instruction_review_rows(campaign=None, *, page_number=1, scop
                 "action_url": reverse("ticketing:detail", kwargs={"pk": ticket.pk}),
             }
         )
+    return rows
+
+
+def _build_special_instruction_review_rows(campaign=None, *, page_number=1, scope="active", per_page=3):
+    archived = scope == "archived"
+    base_queryset = _special_instruction_review_queryset(campaign)
+
+    active_count = base_queryset.filter(archived_at__isnull=True).count()
+    archived_count = base_queryset.filter(archived_at__isnull=False).count()
+    queryset = base_queryset.filter(archived_at__isnull=not archived)
+    queryset = queryset.order_by("-archived_at" if archived else "-updated_at")
+    paginator = Paginator(queryset, per_page)
+    page_obj = paginator.get_page(page_number)
+    rows = _build_special_instruction_rows(list(page_obj.object_list))
     pagination = {
         "scope": "archived" if archived else "active",
         "is_archived": archived,
@@ -316,6 +325,15 @@ def _build_special_instruction_review_rows(campaign=None, *, page_number=1, scop
         ),
     }
     return rows, pagination
+
+
+def _build_special_instruction_archive_rows(campaign=None):
+    reviews = list(
+        _special_instruction_review_queryset(campaign)
+        .filter(archived_at__isnull=False)
+        .order_by("-archived_at")
+    )
+    return _build_special_instruction_rows(reviews)
 
 
 def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, special_instruction_scope="active"):
@@ -547,6 +565,7 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
         page_number=special_instruction_page,
         scope=special_instruction_scope,
     )
+    special_instruction_archive_rows = _build_special_instruction_archive_rows(campaign)
 
     return {
         "overview_cards": overview_cards,
@@ -561,6 +580,7 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
         "ticket_distribution": ticket_distribution,
         "other_issue_rows": other_issue_rows,
         "special_instruction_rows": special_instruction_rows,
+        "special_instruction_archive_rows": special_instruction_archive_rows,
         "special_instruction_pagination": special_instruction_pagination,
         "chart_data": {
             "category": {
