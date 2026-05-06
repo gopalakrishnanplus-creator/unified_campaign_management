@@ -10,12 +10,14 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
+from apps.dashboards.admin_console import ADMIN_DASHBOARD_PASSWORD, ADMIN_DASHBOARD_USERNAME
 from apps.dashboards.services import get_support_dashboard_data
 from apps.reporting.services import build_live_performance_sections
-from apps.support_center.services import get_faq_combination
+from apps.support_center.services import get_faq_combination, get_faq_page
 from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory, SupportWidgetEvent
 from apps.ticketing.models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketTypeDefinition
 from apps.ticketing.external_ticketing import sync_external_directory
@@ -40,6 +42,8 @@ class SeededIntegrationTestCase(TestCase):
             reverse("support_center:landing", kwargs={"user_type": "publisher"}),
             reverse("support_center:landing", kwargs={"user_type": "field_rep"}),
             reverse("support_center:landing", kwargs={"user_type": "patient"}),
+            reverse("support_center:landing", kwargs={"user_type": "student"}),
+            reverse("support_center:landing", kwargs={"user_type": "expert"}),
             "/accounts/login/?next=/app/",
         ]
         for path in paths:
@@ -1280,6 +1284,117 @@ class SupportPdfImportCommandTests(TestCase):
         self.assertGreaterEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["role_title"], "Publisher Support")
 
+    @patch("apps.dashboards.services.sync_external_ticket_states")
+    def test_import_support_pdfs_loads_sapl_and_aicme_flows_with_separate_widget_tracking(self, mock_sync_external_ticket_states):
+        base_dir = Path(settings.BASE_DIR)
+        sapl_aicme_pdfs = [
+            base_dir / "static" / "support-pdfs" / "sapl-expert-webinar-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "aicme-student-ai-cme-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "sapl-student-lecture-flow-faqs.pdf",
+            base_dir / "static" / "support-pdfs" / "sapl-student-webinar-flow-faqs.pdf",
+        ]
+
+        call_command("import_support_pdfs", "--replace", *[str(pdf_path) for pdf_path in sapl_aicme_pdfs])
+
+        student_page = SupportPage.objects.get(slug="aicme-student-ai-cme-flow-role-selector-page")
+        expert_page = SupportPage.objects.get(slug="sapl-expert-webinar-flow-role-selector-page")
+        student_item = SupportItem.objects.filter(
+            page=student_page,
+            source_system="AICME",
+            source_flow="Student AI-CME Flow",
+            is_visible_to_students=True,
+        ).first()
+        expert_item = SupportItem.objects.filter(
+            page=expert_page,
+            source_system="SAPL",
+            source_flow="Expert Webinar Flow",
+            is_visible_to_experts=True,
+        ).first()
+
+        self.assertIsNotNone(student_item)
+        self.assertIsNotNone(expert_item)
+        self.assertTrue(get_faq_page("student", student_page.slug))
+        self.assertTrue(get_faq_page("expert", expert_page.slug))
+        self.assertEqual(student_item.associated_pdf_url, "/static/support-pdfs/aicme-student-ai-cme-flow-faqs.pdf")
+
+        student_links_response = self.client.get(reverse("support_center:faq_links_api", kwargs={"user_type": "student"}))
+        expert_links_response = self.client.get(reverse("support_center:faq_links_api", kwargs={"user_type": "expert"}))
+        self.assertEqual(student_links_response.status_code, 200)
+        self.assertEqual(expert_links_response.status_code, 200)
+        self.assertEqual(student_links_response.json()["role_title"], "Student Support")
+        self.assertEqual(expert_links_response.json()["role_title"], "Expert Support")
+
+        widget_url = reverse(
+            "support_center:faq_page_widget",
+            kwargs={"user_type": "student", "page_slug": student_page.slug},
+        )
+        widget_response = self.client.get(f"{widget_url}?embed=1")
+        self.assertEqual(widget_response.status_code, 200)
+
+        event_response = self.client.post(
+            reverse(
+                "support_center:faq_page_widget_event",
+                kwargs={"user_type": "student", "page_slug": student_page.slug},
+            ),
+            data={
+                "event_type": "resolved",
+                "selected_faq_id": student_item.pk,
+                "source_system": "AICME",
+                "source_flow": "Student AI-CME Flow",
+            },
+        )
+        self.assertEqual(event_response.status_code, 200)
+
+        expert_widget_response = self.client.get(
+            f"{reverse('support_center:faq_page_widget', kwargs={'user_type': 'expert', 'page_slug': expert_page.slug})}?embed=1"
+        )
+        self.assertEqual(expert_widget_response.status_code, 200)
+
+        SupportWidgetEvent.objects.create(
+            event_type=SupportWidgetEvent.EventType.OPENED,
+            user_type="student",
+            source_system="SAPLAICME",
+            source_flow="Student AI-CME Flow",
+        )
+        SupportWidgetEvent.objects.create(
+            event_type=SupportWidgetEvent.EventType.OPENED,
+            user_type="expert",
+            source_system="SAPLAICME",
+            source_flow="Expert Webinar Flow",
+        )
+
+        other_issue_response = self.client.post(
+            reverse(
+                "support_center:faq_page_other_issue",
+                kwargs={"user_type": "student", "page_slug": student_page.slug},
+            ),
+            data={
+                "requester_name": "Student AICME User",
+                "requester_email": "student.aicme@example.com",
+                "requester_number": "+915555111111",
+                "free_text": "The AICME page needs help.",
+                "selected_faq_id": student_item.pk,
+                "source_system": "AICME",
+                "source_flow": "Student AI-CME Flow",
+            },
+        )
+        self.assertEqual(other_issue_response.status_code, 200)
+        support_request = SupportRequest.objects.get(pk=other_issue_response.json()["request_id"])
+        support_request.pm_ticket_raised_at = timezone.now()
+        support_request.save(update_fields=["pm_ticket_raised_at"])
+
+        dashboard_data = get_support_dashboard_data()
+        aicme_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "AICME")
+        sapl_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "SAPL")
+        self.assertEqual(aicme_row["widget_open_count"], 2)
+        self.assertEqual(aicme_row["resolved_count"], 1)
+        self.assertEqual(aicme_row["send_ticket_count"], 1)
+        self.assertEqual(aicme_row["pm_raised_ticket_count"], 1)
+        self.assertEqual(sapl_row["widget_open_count"], 2)
+        self.assertEqual(sapl_row["resolved_count"], 0)
+        self.assertEqual(sapl_row["send_ticket_count"], 0)
+        self.assertEqual(sapl_row["pm_raised_ticket_count"], 0)
+
 
 class TicketingDropdownSeedCommandTests(TestCase):
     def test_seed_ticketing_dropdowns_creates_ticket_form_dependencies(self):
@@ -2033,3 +2148,662 @@ class ExternalTicketSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "IT Support - Auto route to Tech Manager")
+
+    def login_support_admin_dashboard(self):
+        return self.client.post(
+            reverse("support_admin_login"),
+            data={
+                "username": ADMIN_DASHBOARD_USERNAME,
+                "password": ADMIN_DASHBOARD_PASSWORD,
+            },
+        )
+
+    def test_support_admin_dashboard_requires_hardcoded_credentials(self):
+        response = self.client.get(reverse("support_admin_dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("support_admin_login"), response["Location"])
+
+        response = self.login_support_admin_dashboard()
+        self.assertRedirects(response, reverse("support_admin_dashboard"))
+
+        response = self.client.get(reverse("support_admin_dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Support admin dashboard")
+        self.assertContains(response, "System-wise support widget counts")
+        self.assertNotContains(response, "Delete widget")
+
+    def test_support_admin_dashboard_resets_widget_event_counts_by_system(self):
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "reset_widget_counts", "system": "In-clinic"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.filter(source_system="In-clinic").exists())
+        self.assertTrue(SupportWidgetEvent.objects.filter(source_system="Patient Education").exists())
+        self.assertContains(response, "Reset widget click counts for In-clinic")
+
+    def test_support_admin_dashboard_resets_widget_click_counts_using_linked_page_system(self):
+        inclinic_page = SupportPage.objects.create(
+            name="In-clinic Click Page",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        pe_page = SupportPage.objects.create(
+            name="Patient Education Click Page",
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+        )
+        reset_event = SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=inclinic_page,
+            source_system="Customer support",
+            source_flow="General support",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        keep_event = SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=pe_page,
+            source_system="Customer support",
+            source_flow="General support",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "reset_widget_counts", "system": "In-clinic"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.filter(pk=reset_event.pk).exists())
+        self.assertTrue(SupportWidgetEvent.objects.filter(pk=keep_event.pk).exists())
+        self.assertTrue(SupportPage.objects.filter(pk=inclinic_page.pk).exists())
+        self.assertContains(response, "Reset widget click counts for In-clinic")
+
+    def test_support_admin_dashboard_bulk_resets_all_widget_counts(self):
+        support_page = SupportPage.objects.create(
+            name="Reset Count Page",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        support_super = SupportSuperCategory.objects.create(name="Reset Count Section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Reset Count Screen")
+        SupportItem.objects.create(
+            page=support_page,
+            category=support_category,
+            name="Reset count FAQ",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Reset Count User",
+            requester_email="reset-count@example.com",
+            requester_number="+917700000000",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            origin_channel=SupportRequest.OriginChannel.WIDGET,
+            subject="Other issue - reset counts",
+            free_text="This request should stay but no longer count as a widget click.",
+            status=SupportRequest.Status.TICKET_CREATED,
+            pm_ticket_raised_at=timezone.now(),
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            source_system="Patient Education",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.RESOLVED,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "reset_all_widget_counts"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.exists())
+        self.assertTrue(SupportRequest.objects.filter(pk=support_request.pk).exists())
+        self.assertContains(response, "Reset all widget click counts")
+
+        with self.settings(EXTERNAL_TICKETING_SYNC_ENABLED=False):
+            dashboard_data = get_support_dashboard_data()
+        widget_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "In-clinic")
+        self.assertEqual(widget_row["widget_open_count"], 0)
+        self.assertEqual(widget_row["resolved_count"], 0)
+        self.assertEqual(widget_row["send_ticket_count"], 0)
+        self.assertEqual(widget_row["pm_raised_ticket_count"], 0)
+        self.assertTrue(SupportPage.objects.filter(pk=support_page.pk).exists())
+        self.assertTrue(SupportItem.objects.filter(name="Reset count FAQ").exists())
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_deletes_mirrored_ticket_after_internal_delete(self, mock_request):
+        response_payload = Mock(status_code=204, content=b"")
+        mock_request.return_value = response_payload
+        ticket = Ticket.objects.create(
+            title="Admin delete mirrored ticket",
+            description="This ticket should be removed after internal delete succeeds.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-ADMINDEL",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertEqual(mock_request.call_args.args[0], "DELETE")
+        self.assertTrue(mock_request.call_args.args[1].endswith("/client-tickets/api/tickets/CLT-ADMINDEL/"))
+        self.assertContains(response, f"Deleted ticket {ticket.ticket_number}.")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_deletes_mirrored_ticket_when_delete_is_not_supported(self, mock_request):
+        def request_side_effect(method, url, **kwargs):
+            if method == "DELETE":
+                return Mock(status_code=405, content=b"")
+            if method == "POST" and url.endswith("/inditech-update/"):
+                response = Mock(status_code=200, content=b'{"success": true}')
+                response.json.return_value = {
+                    "success": True,
+                    "ticket": {
+                        "ticket_number": "CLT-405",
+                        "status_code": "cancelled",
+                    },
+                }
+                return response
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+        ticket = Ticket.objects.create(
+            title="Admin delete mirrored ticket with 405 fallback",
+            description="This ticket should be cancelled remotely before local deletion.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-405",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertEqual([call.args[0] for call in mock_request.call_args_list], ["DELETE", "POST"])
+        self.assertEqual(mock_request.call_args_list[1].kwargs["json"]["status"], "cancelled")
+        self.assertIn("returned 405", mock_request.call_args_list[1].kwargs["json"]["message"])
+        self.assertContains(response, f"Deleted ticket {ticket.ticket_number}.")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_retries_delete_fallback_with_directory_updater(self, mock_request):
+        def response(payload, *, status_code=200):
+            mock_response = Mock(status_code=status_code, content=b"{}")
+            mock_response.json.return_value = payload
+            return mock_response
+
+        def request_side_effect(method, url, **kwargs):
+            if method == "DELETE":
+                return Mock(status_code=405, content=b"")
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/departments/"):
+                return response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_email": "valid.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "GET" and url.endswith("/client-tickets/api/lookups/system-directory/"):
+                return response(
+                    {
+                        "success": True,
+                        "departments": [
+                            {
+                                "id": 3,
+                                "name": "IT Support",
+                                "code": "IT_SUPPORT",
+                                "manager_email": "valid.manager@inditech.co.in",
+                                "is_active": True,
+                            }
+                        ],
+                        "department_managers": [
+                            {
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "department_code": "IT_SUPPORT",
+                                "manager_email": "valid.manager@inditech.co.in",
+                            }
+                        ],
+                        "users": [
+                            {
+                                "id": 99,
+                                "full_name": "Valid Manager",
+                                "email": "valid.manager@inditech.co.in",
+                                "department_id": 3,
+                                "department_name": "IT Support",
+                                "is_active": True,
+                            }
+                        ],
+                    }
+                )
+            if method == "POST" and url.endswith("/inditech-update/"):
+                if kwargs["json"]["updated_by_email"] != "valid.manager@inditech.co.in":
+                    return response({"success": False, "error": "Updater not found."}, status_code=400)
+                return response(
+                    {
+                        "success": True,
+                        "ticket": {
+                            "ticket_number": "CLT-DIRECTORY",
+                            "status_code": "cancelled",
+                        },
+                    }
+                )
+            raise AssertionError(f"Unexpected request {method} {url}")
+
+        mock_request.side_effect = request_side_effect
+        ticket = Ticket.objects.create(
+            title="Admin delete mirrored ticket with directory updater",
+            description="This ticket should retry cancellation with an internal directory user.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-DIRECTORY",
+        )
+        self.department.external_directory_id = 3
+        self.department.external_directory_name = "IT Support"
+        self.department.external_directory_code = "IT_SUPPORT"
+        self.department.save(update_fields=["external_directory_id", "external_directory_name", "external_directory_code"])
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        updater_emails = [
+            call.kwargs["json"]["updated_by_email"]
+            for call in mock_request.call_args_list
+            if call.args[0] == "POST"
+        ]
+        self.assertIn("valid.manager@inditech.co.in", updater_emails)
+        self.assertContains(response, f"Deleted ticket {ticket.ticket_number}.")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_deletes_local_ticket_when_internal_delete_fails(self, mock_request):
+        response_payload = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
+        response_payload.json.return_value = {"success": False, "error": "delete failed"}
+        mock_request.return_value = response_payload
+        ticket = Ticket.objects.create(
+            title="Admin delete internal failure",
+            description="This ticket should still be deleted locally when internal delete fails.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-KEEP",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_ticket", "ticket_id": ticket.pk},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertContains(response, "Deleted ticket")
+        self.assertContains(response, "Internal ticket cleanup warning")
+
+    def test_support_admin_dashboard_deletes_selected_pm_queue_records(self):
+        selected_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Selected PM User",
+            requester_email="selected-pm@example.com",
+            requester_number="+917700000001",
+            subject="Selected PM issue",
+            free_text="Delete this selected PM queue record.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+        kept_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Kept PM User",
+            requester_email="kept-pm@example.com",
+            requester_number="+917700000002",
+            subject="Kept PM issue",
+            free_text="Keep this PM queue record.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_selected_pm_requests", "support_request_ids": [selected_request.pk]},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportRequest.objects.filter(pk=selected_request.pk).exists())
+        self.assertTrue(SupportRequest.objects.filter(pk=kept_request.pk).exists())
+        self.assertContains(response, "Selected PM queue")
+
+    def test_support_admin_dashboard_deletes_selected_ticket_records(self):
+        selected_ticket = Ticket.objects.create(
+            title="Selected local ticket",
+            description="Delete this selected ticket.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+        )
+        kept_ticket = Ticket.objects.create(
+            title="Kept local ticket",
+            description="Keep this unselected ticket.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_selected_tickets", "ticket_ids": [selected_ticket.pk]},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=selected_ticket.pk).exists())
+        self.assertTrue(Ticket.objects.filter(pk=kept_ticket.pk).exists())
+        self.assertContains(response, "Selected tickets")
+
+    @override_settings(
+        EXTERNAL_TICKETING_SYNC_ENABLED=True,
+        EXTERNAL_TICKETING_BASE_URL="https://support.inditech.co.in",
+        EXTERNAL_TICKETING_API_TOKEN="",
+    )
+    @patch("apps.ticketing.external_ticketing.requests.request")
+    def test_support_admin_dashboard_bulk_delete_tickets_deletes_locally_when_internal_delete_fails(self, mock_request):
+        def request_side_effect(method, url, headers=None, json=None, timeout=None):
+            if "CLT-FAIL" in url:
+                response = Mock(status_code=500, content=b'{"success": false, "error": "delete failed"}')
+                response.json.return_value = {"success": False, "error": "delete failed"}
+                return response
+            return Mock(status_code=204, content=b"")
+
+        mock_request.side_effect = request_side_effect
+        success_ticket = Ticket.objects.create(
+            title="Bulk delete success",
+            description="External delete succeeds.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-SUCCESS",
+        )
+        failed_ticket = Ticket.objects.create(
+            title="Bulk delete failure",
+            description="External delete fails.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            external_ticket_number="CLT-FAIL",
+        )
+        local_ticket = Ticket.objects.create(
+            title="Bulk delete local only",
+            description="No external ticket number.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "delete_all_tickets"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(pk=success_ticket.pk).exists())
+        self.assertFalse(Ticket.objects.filter(pk=local_ticket.pk).exists())
+        self.assertFalse(Ticket.objects.filter(pk=failed_ticket.pk).exists())
+        self.assertContains(response, "Internal ticket cleanup had")
+
+    def test_support_admin_dashboard_clear_dashboard_activity_keeps_faq_catalog(self):
+        support_page = SupportPage.objects.create(name="Clear Activity Page", source_system="In-clinic", source_flow="Doctor Flow")
+        support_super = SupportSuperCategory.objects.create(name="Clear Activity Section")
+        support_category = SupportCategory.objects.create(super_category=support_super, name="Clear Activity Screen")
+        SupportItem.objects.create(
+            page=support_page,
+            category=support_category,
+            name="Clear activity FAQ",
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+        )
+        SupportWidgetEvent.objects.create(
+            user_type="doctor",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            event_type=SupportWidgetEvent.EventType.OPENED,
+        )
+        support_request = SupportRequest.objects.create(
+            user_type="doctor",
+            requester_name="Clear Activity User",
+            requester_email="clear-activity@example.com",
+            requester_number="+917700000000",
+            support_page=support_page,
+            support_super_category=support_super,
+            support_category=support_category,
+            source_system="In-clinic",
+            source_flow="Doctor Flow",
+            subject="Other issue - clear activity",
+            free_text="Clear this queue record.",
+            status=SupportRequest.Status.PENDING_PM_REVIEW,
+        )
+        ticket = Ticket.objects.create(
+            title="Clear activity ticket",
+            description="This local ticket should be deleted.",
+            ticket_type="Functional",
+            user_type=Ticket.UserType.INTERNAL,
+            source_system=Ticket.SourceSystem.PROJECT_MANAGER,
+            priority=Ticket.Priority.HIGH,
+            status=Ticket.Status.NOT_STARTED,
+            department=self.department,
+            campaign=self.campaign,
+            created_by=self.pm_user,
+            submitted_by=self.pm_user,
+            direct_recipient=self.department.default_recipient,
+            current_assignee=self.department.default_recipient,
+            requester_name="Campaign PM",
+            requester_email=self.pm_user.email,
+            requester_number=self.pm_user.phone_number,
+            requester_company="Inditech",
+            support_request=support_request,
+        )
+        self.login_support_admin_dashboard()
+
+        response = self.client.post(
+            reverse("support_admin_dashboard"),
+            data={"action": "clear_dashboard_activity"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SupportWidgetEvent.objects.exists())
+        self.assertFalse(SupportRequest.objects.filter(pk=support_request.pk).exists())
+        self.assertFalse(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertTrue(SupportItem.objects.filter(name="Clear activity FAQ").exists())
+        self.assertContains(response, "Cleared")

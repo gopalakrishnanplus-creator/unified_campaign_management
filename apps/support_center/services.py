@@ -21,6 +21,8 @@ ROLE_VISIBILITY_FIELD = {
     "publisher": "is_visible_to_publishers",
     "field_rep": "is_visible_to_field_reps",
     "patient": "is_visible_to_patients",
+    "student": "is_visible_to_students",
+    "expert": "is_visible_to_experts",
 }
 GENERAL_SUPPORT_FLOW = "General support"
 SOURCE_SYSTEM_TO_TICKET_SOURCE = {

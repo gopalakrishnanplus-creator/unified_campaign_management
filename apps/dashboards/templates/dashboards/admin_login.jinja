@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Support Admin Login</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #172033;
+            --muted: #64748b;
+            --line: #dbe4ee;
+            --brand: #0f766e;
+            --brand-strong: #134e4a;
+            --surface: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            place-items: center;
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 34rem),
+                linear-gradient(135deg, #eef7f5 0%, #f8fafc 52%, #e2e8f0 100%);
+            color: var(--ink);
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        .login-card {
+            width: min(92vw, 420px);
+            padding: 32px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 28px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.16);
+            backdrop-filter: blur(18px);
+        }
+        .eyebrow {
+            margin: 0 0 8px;
+            color: var(--brand);
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+        }
+        .helper {
+            margin: 0 0 28px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+        label {
+            display: block;
+            margin: 14px 0 6px;
+            color: #334155;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        input {
+            width: 100%;
+            padding: 13px 14px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            font-size: 15px;
+            color: var(--ink);
+            background: #fff;
+        }
+        input:focus {
+            border-color: var(--brand);
+            outline: 3px solid rgba(15, 118, 110, 0.14);
+        }
+        button {
+            width: 100%;
+            margin-top: 22px;
+            padding: 13px 16px;
+            border: 0;
+            border-radius: 16px;
+            background: linear-gradient(135deg, var(--brand), #2563eb);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .message {
+            margin: 0 0 16px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <main class="login-card">
+        <p class="eyebrow">Restricted Console</p>
+        <h1>Support admin</h1>
+        <p class="helper">Direct access only. Use the hardcoded operations credentials to manage support widgets, PM queue records, and ticket data.</p>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="message">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="post">
+            {{ csrf_input }}
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" required>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+            <button type="submit">Open admin dashboard</button>
+        </form>
+    </main>
+</body>
+</html>

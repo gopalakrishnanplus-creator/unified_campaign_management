@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('ticketing', '0011_alter_ticket_user_type_and_more'),
+        ('ticketing', '0012_alter_ticket_user_type'),
     ]
 
     operations = [

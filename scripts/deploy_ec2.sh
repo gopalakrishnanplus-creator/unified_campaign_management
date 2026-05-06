@@ -90,6 +90,10 @@ FLOW_SUPPORT_PDFS=(
   "$APP_DIR/static/support-pdfs/red-flag-alert-flow3-patient-faqs.pdf"
   "$APP_DIR/static/support-pdfs/red-flag-alert-flow4-publisher-faqs.pdf"
   "$APP_DIR/static/support-pdfs/red-flag-alert-flow5-brand-manager-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/sapl-expert-webinar-flow-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/aicme-student-ai-cme-flow-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/sapl-student-lecture-flow-faqs.pdf"
+  "$APP_DIR/static/support-pdfs/sapl-student-webinar-flow-faqs.pdf"
 )
 
 LEGACY_SUPPORT_PDFS=(

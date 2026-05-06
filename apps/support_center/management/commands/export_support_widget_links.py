@@ -14,6 +14,8 @@ ROLE_CONFIG = {
     "publisher": "Publisher Support",
     "field_rep": "Field Rep Support",
     "patient": "Patient Support",
+    "student": "Student Support",
+    "expert": "Expert Support",
 }
 
 

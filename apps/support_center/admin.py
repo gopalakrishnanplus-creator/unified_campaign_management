@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory, SupportWidgetEvent
+from .models import (
+    SupportCategory,
+    SupportItem,
+    SupportPage,
+    SupportRequest,
+    SupportSuperCategory,
+    SupportWidgetEvent,
+    SupportWidgetMetricReset,
+)
 
 
 class SupportCategoryInline(admin.TabularInline):
@@ -50,3 +58,10 @@ class SupportWidgetEventAdmin(admin.ModelAdmin):
     list_display = ("event_type", "source_system", "source_flow", "user_type", "support_page", "support_category", "created_at")
     list_filter = ("event_type", "source_system", "user_type")
     search_fields = ("source_system", "source_flow", "user_type", "support_page__name", "support_category__name")
+
+
+@admin.register(SupportWidgetMetricReset)
+class SupportWidgetMetricResetAdmin(admin.ModelAdmin):
+    list_display = ("system", "reset_at", "updated_at")
+    readonly_fields = ("updated_at",)
+    search_fields = ("system",)

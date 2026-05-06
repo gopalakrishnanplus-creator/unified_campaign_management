@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Support Admin Dashboard</title>
+    <style>
+        :root {
+            --bg: #eef4f3;
+            --ink: #142033;
+            --muted: #64748b;
+            --line: #d9e3ea;
+            --surface: #ffffff;
+            --soft: #f8fafc;
+            --brand: #0f766e;
+            --blue: #2563eb;
+            --danger: #dc2626;
+            --warning: #b45309;
+            --ok: #15803d;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            overflow-x: hidden;
+            background:
+                radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.14), transparent 32rem),
+                radial-gradient(circle at 92% 4%, rgba(15, 118, 110, 0.18), transparent 28rem),
+                var(--bg);
+            color: var(--ink);
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+            background: rgba(255, 255, 255, 0.86);
+            backdrop-filter: blur(18px);
+        }
+        .shell {
+            width: min(1280px, calc(100vw - 24px));
+            margin: 0 auto;
+        }
+        .topbar {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+        }
+        .eyebrow {
+            margin: 0 0 5px;
+            color: var(--brand);
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+        h1, h2, h3 { margin: 0; letter-spacing: -0.035em; }
+        h1 { font-size: clamp(24px, 2.5vw, 34px); }
+        h2 { font-size: 21px; }
+        h3 { font-size: 16px; }
+        p { color: var(--muted); line-height: 1.45; }
+        main { padding: 18px 0 36px; }
+        .grid {
+            display: grid;
+            gap: 12px;
+        }
+        .metrics {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            margin: 14px 0;
+        }
+        .card {
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 12px 34px rgba(15, 23, 42, 0.07);
+            overflow: hidden;
+        }
+        .card-pad { padding: 16px; }
+        .metric-value {
+            margin-top: 6px;
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: -0.05em;
+        }
+        .message {
+            margin-bottom: 14px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: #e0f2fe;
+            color: #075985;
+            font-weight: 700;
+        }
+        .message.error, .message.danger { background: #fee2e2; color: #991b1b; }
+        .message.warning { background: #fef3c7; color: #92400e; }
+        .message.success { background: #dcfce7; color: #166534; }
+        table {
+            width: 100%;
+            min-width: 900px;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13px;
+        }
+        .widget-table { min-width: 780px; }
+        .pm-table { min-width: 1040px; }
+        .ticket-table { min-width: 1080px; }
+        .stacked-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: flex-start;
+        }
+        th {
+            position: sticky;
+            top: 61px;
+            z-index: 2;
+            padding: 9px;
+            border-bottom: 1px solid var(--line);
+            background: #f8fafc;
+            color: #475569;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-align: left;
+            text-transform: uppercase;
+        }
+        td {
+            padding: 9px;
+            border-bottom: 1px solid #edf2f7;
+            vertical-align: top;
+            overflow-wrap: anywhere;
+        }
+        tr:last-child td { border-bottom: 0; }
+        input, select, textarea {
+            width: 100%;
+            min-width: 0;
+            padding: 8px 9px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            color: var(--ink);
+            background: #fff;
+            font: inherit;
+        }
+        textarea { min-height: 70px; resize: vertical; }
+        .field-stack {
+            display: grid;
+            gap: 6px;
+            width: min(330px, 80vw);
+            min-width: 0;
+        }
+        .actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 8px 11px;
+            border: 0;
+            border-radius: 10px;
+            color: #fff;
+            background: linear-gradient(135deg, var(--brand), var(--blue));
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        button.secondary {
+            color: #334155;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+        button.danger { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            color: #334155;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .pill.ok { background: #dcfce7; color: #166534; }
+        .pill.warn { background: #fef3c7; color: #92400e; }
+        .pill.danger { background: #fee2e2; color: #991b1b; }
+        .muted { color: var(--muted); }
+        .small { font-size: 12px; }
+        .table-wrap {
+            width: 100%;
+            max-height: 680px;
+            overflow: auto;
+            overscroll-behavior: contain;
+        }
+        details {
+            width: min(330px, 80vw);
+            min-width: 0;
+        }
+        details summary {
+            cursor: pointer;
+            color: var(--blue);
+            font-weight: 800;
+        }
+        .section-header {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            padding: 16px 16px 0;
+        }
+        .section-header p { margin: 8px 0 12px; }
+        .section-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .bulk-panel {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+            padding: 16px;
+        }
+        .bulk-panel p { margin: 4px 0 0; }
+        .danger-outline {
+            color: var(--danger);
+            border: 1px solid #fecaca;
+            background: #fff;
+        }
+        .row-check {
+            width: auto;
+            min-width: 0;
+            transform: translateY(2px);
+        }
+        .select-col { width: 48px; }
+        .logout {
+            padding: 8px 12px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: #fff;
+            color: #334155;
+            font-weight: 800;
+        }
+        @media (max-width: 1000px) {
+            .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            th { position: static; }
+        }
+        @media (max-width: 700px) {
+            .metrics { grid-template-columns: 1fr; }
+            .bulk-panel { align-items: flex-start; flex-direction: column; }
+            .topbar { align-items: flex-start; flex-direction: column; }
+            .table-wrap { max-height: none; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="shell topbar">
+            <div>
+                <p class="eyebrow">Restricted Console</p>
+                <h1>Support admin dashboard</h1>
+                <p class="muted small">Direct URL only: {{ admin_dashboard_path }} · External ticketing: {{ external_base_url or 'not configured' }}</p>
+            </div>
+            <form method="post" action="{{ url('support_admin_logout') }}">
+                {{ csrf_input }}
+                <button class="logout" type="submit">Log out</button>
+            </form>
+        </div>
+    </header>
+
+    <main class="shell">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="message {{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <section class="grid metrics">
+            <div class="card card-pad">
+                <p class="eyebrow">Support Widgets</p>
+                <div class="metric-value">{{ widget_event_total }}</div>
+                <p class="small">{{ widget_count_rows|length }} system(s) with FAQ/widget activity.</p>
+            </div>
+            <div class="card card-pad">
+                <p class="eyebrow">PM Queue</p>
+                <div class="metric-value">{{ pm_request_total }}</div>
+                <p class="small">Total support issue records.</p>
+            </div>
+            <div class="card card-pad">
+                <p class="eyebrow">Tickets</p>
+                <div class="metric-value">{{ ticket_total }}</div>
+                <p class="small">Total ticket records.</p>
+            </div>
+            <div class="card card-pad">
+                <p class="eyebrow">Internal Sync</p>
+                <div class="metric-value">{{ 'On' if external_sync_enabled else 'Off' }}</div>
+                <p class="small">Ticket deletes require internal API delete when mirrored.</p>
+            </div>
+        </section>
+
+        <section class="card bulk-panel">
+            <div>
+                <p class="eyebrow">Bulk cleanup</p>
+                <h2>Clear dashboard activity</h2>
+                <p class="small">Reset click counts clears only widget interaction records. FAQ pages, answers, and widget URLs stay available.</p>
+            </div>
+            <div class="section-actions">
+                <form method="post" onsubmit="return confirm('Reset ALL widget click counts? FAQ pages and widget URLs will remain.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="reset_all_widget_counts">
+                    <button class="secondary" type="submit">Reset click counts</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Delete ALL PM queue records? Linked tickets will be deleted from internal ticketing first.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="delete_all_pm_requests">
+                    <button class="danger-outline" type="submit">Delete PM queue</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Delete ALL ticket records? Mirrored internal tickets must delete successfully first.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="delete_all_tickets">
+                    <button class="danger-outline" type="submit">Delete tickets</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Clear ALL widget event counts, PM queue records, and tickets? FAQ content will stay.');">
+                    {{ csrf_input }}
+                    <input type="hidden" name="action" value="clear_dashboard_activity">
+                    <button class="danger" type="submit">Clear all activity</button>
+                </form>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-header">
+                <div>
+                    <h2>System-wise support widget counts</h2>
+                    <p>Pages/FAQs are catalog counts. Opened/Resolved are widget click counts. Reset clicks keeps FAQs and widget URLs unchanged.</p>
+                </div>
+                <div class="section-actions">
+                    <form method="post" onsubmit="return confirm('Reset ALL widget click counts? FAQ pages and widget URLs will remain.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="reset_all_widget_counts">
+                        <button class="secondary" type="submit">Reset all clicks</button>
+                    </form>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="widget-table">
+                    <thead>
+                        <tr>
+                            <th>System</th>
+                            <th>Pages</th>
+                            <th>FAQs</th>
+                            <th>Opened</th>
+                            <th>Resolved</th>
+                            <th>Click Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in widget_count_rows %}
+                            <tr>
+                                <td><strong>{{ row.system }}</strong></td>
+                                <td>{{ row.page_count }}</td>
+                                <td>{{ row.faq_count }}</td>
+                                <td>{{ row.widget_open_count }}</td>
+                                <td>{{ row.resolved_count }}</td>
+                                <td>
+                                    <div class="stacked-actions">
+                                        <form method="post" onsubmit="return confirm('Reset widget click counts for {{ row.system }}? FAQ pages and widget URLs will remain.');">
+                                            {{ csrf_input }}
+                                            <input type="hidden" name="action" value="reset_widget_counts">
+                                            <input type="hidden" name="system" value="{{ row.system }}">
+                                            <button class="secondary" type="submit">Reset clicks</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="6" class="muted">No support widget activity is available.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card" style="margin-top: 22px;">
+            <div class="section-header">
+                <div>
+                    <h2>PM queue</h2>
+                    <p>Update or delete support issues waiting in the PM review queue. If a queue item already created a ticket, delete will remove that linked ticket first.</p>
+                </div>
+                <div class="section-actions">
+                    <form id="selected-pm-delete-form" method="post" onsubmit="return confirm('Delete the selected PM queue records? Linked tickets will be deleted from internal ticketing first.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delete_selected_pm_requests">
+                        <button class="danger-outline" type="submit">Delete selected</button>
+                    </form>
+                    <form method="post" onsubmit="return confirm('Delete ALL PM queue records? Linked tickets will be deleted from internal ticketing first.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delete_all_pm_requests">
+                        <button class="danger-outline" type="submit">Bulk delete PM queue</button>
+                    </form>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="pm-table">
+                    <thead>
+                        <tr>
+                            <th class="select-col"><input class="row-check" type="checkbox" data-select-all="pm-request-checkboxes" aria-label="Select all visible PM queue records"></th>
+                            <th>Queue</th>
+                            <th>Context</th>
+                            <th>Requester</th>
+                            <th>Issue</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in pm_requests %}
+                            <tr>
+                                <td><input class="row-check pm-request-checkboxes" form="selected-pm-delete-form" type="checkbox" name="support_request_ids" value="{{ item.pk }}" aria-label="Select {{ item.queue_ticket_number }}"></td>
+                                <td>
+                                    <strong>{{ item.queue_ticket_number }}</strong>
+                                    <div class="small muted">{{ item.created_at|india_datetime }}</div>
+                                    {% if item.is_escalated %}
+                                        <div class="pill danger">Escalated</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div><strong>{{ item.source_system or 'Unknown system' }}</strong></div>
+                                    <div class="small muted">{{ item.source_flow or 'General support' }}</div>
+                                    <div class="small muted">{{ item.screen_label or 'No screen' }}</div>
+                                </td>
+                                <td>
+                                    <div>{{ item.requester_name }}</div>
+                                    <div class="small muted">{{ item.requester_email }}</div>
+                                    <div class="small muted">{{ item.requester_number or 'Phone not provided' }}</div>
+                                </td>
+                                <td>
+                                    <div><strong>{{ item.subject }}</strong></div>
+                                    <div class="small muted">{{ item.free_text|truncate(160) }}</div>
+                                    {% if item.uploaded_file %}
+                                        <div class="small"><a href="{{ item.uploaded_file.url }}" target="_blank" rel="noopener">View uploaded file</a></div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="pill {{ 'ok' if item.status == 'ticket_created' else 'warn' }}">{{ item.get_status_display() }}</span>
+                                </td>
+                                <td>
+                                    <details>
+                                        <summary>Update record</summary>
+                                        <form class="field-stack" method="post">
+                                            {{ csrf_input }}
+                                            <input type="hidden" name="action" value="update_pm_request">
+                                            <input type="hidden" name="support_request_id" value="{{ item.pk }}">
+                                            <label class="small">Status</label>
+                                            <select name="status">
+                                                {% for value, label in support_request_status_choices %}
+                                                    <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>{{ label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <label class="small">System</label>
+                                            <input name="source_system" value="{{ item.source_system }}">
+                                            <label class="small">Flow</label>
+                                            <input name="source_flow" value="{{ item.source_flow }}">
+                                            <label class="small">Subject</label>
+                                            <input name="subject" value="{{ item.subject }}">
+                                            <label class="small">Description</label>
+                                            <textarea name="free_text">{{ item.free_text }}</textarea>
+                                            <label class="small">Requester name</label>
+                                            <input name="requester_name" value="{{ item.requester_name }}">
+                                            <label class="small">Requester email</label>
+                                            <input name="requester_email" value="{{ item.requester_email }}">
+                                            <label class="small">Phone</label>
+                                            <input name="requester_number" value="{{ item.requester_number }}">
+                                            <label class="small">Company</label>
+                                            <input name="requester_company" value="{{ item.requester_company }}">
+                                            <label class="small"><input style="width:auto;min-width:0;" type="checkbox" name="is_escalated" {% if item.is_escalated %}checked{% endif %}> Escalated</label>
+                                            <div class="actions">
+                                                <button type="submit">Save PM record</button>
+                                            </div>
+                                        </form>
+                                    </details>
+                                    <form method="post" onsubmit="return confirm('Delete PM queue record {{ item.queue_ticket_number }}? Linked tickets will be deleted from internal ticketing first.');" style="margin-top: 8px;">
+                                        {{ csrf_input }}
+                                        <input type="hidden" name="action" value="delete_pm_request">
+                                        <input type="hidden" name="support_request_id" value="{{ item.pk }}">
+                                        <button class="danger" type="submit">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="7" class="muted">No PM queue records found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card" style="margin-top: 22px;">
+            <div class="section-header">
+                <div>
+                    <h2>Ticketing data</h2>
+                    <p>Update local ticket records. Mirrored ticket updates are pushed to the connected internal ticketing system; delete requires successful internal deletion first.</p>
+                </div>
+                <div class="section-actions">
+                    <form id="selected-ticket-delete-form" method="post" onsubmit="return confirm('Delete the selected tickets? Mirrored internal tickets will be cancelled/deleted first.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delete_selected_tickets">
+                        <button class="danger-outline" type="submit">Delete selected</button>
+                    </form>
+                    <form method="post" onsubmit="return confirm('Delete ALL ticket records? Mirrored internal tickets must delete successfully first.');">
+                        {{ csrf_input }}
+                        <input type="hidden" name="action" value="delete_all_tickets">
+                        <button class="danger-outline" type="submit">Bulk delete tickets</button>
+                    </form>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="ticket-table">
+                    <thead>
+                        <tr>
+                            <th class="select-col"><input class="row-check" type="checkbox" data-select-all="ticket-checkboxes" aria-label="Select all visible tickets"></th>
+                            <th>Ticket</th>
+                            <th>Requester</th>
+                            <th>Routing</th>
+                            <th>External</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ticket in tickets %}
+                            <tr>
+                                <td><input class="row-check ticket-checkboxes" form="selected-ticket-delete-form" type="checkbox" name="ticket_ids" value="{{ ticket.pk }}" aria-label="Select {{ ticket.ticket_number }}"></td>
+                                <td>
+                                    <strong>{{ ticket.ticket_number }}</strong>
+                                    <div class="small muted">{{ ticket.title }}</div>
+                                    <div class="small muted">{{ ticket.created_at|india_datetime }}</div>
+                                    {% if ticket.is_escalated %}
+                                        <div class="pill danger">Escalated</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div>{{ ticket.requester_name }}</div>
+                                    <div class="small muted">{{ ticket.requester_email }}</div>
+                                    <div class="small muted">{{ ticket.requester_number or 'Phone not provided' }}</div>
+                                </td>
+                                <td>
+                                    <div>{{ ticket.department.display_name }}</div>
+                                    <div class="small muted">Auto: {{ ticket.department.default_recipient.full_name if ticket.department.default_recipient else 'not configured' }}</div>
+                                    <div class="small muted">{{ ticket.ticket_category.name if ticket.ticket_category else 'Uncategorized' }} / {{ ticket.ticket_type }}</div>
+                                </td>
+                                <td>
+                                    {% if ticket.external_ticket_number %}
+                                        <div class="pill ok">{{ ticket.external_ticket_number }}</div>
+                                        <div class="small muted">{{ ticket.external_ticket_status or 'status pending' }}</div>
+                                        {% if ticket.external_ticket_error %}
+                                            <div class="small" style="color: var(--danger);">{{ ticket.external_ticket_error|truncate(140) }}</div>
+                                        {% endif %}
+                                    {% else %}
+                                        <div class="pill warn">Not mirrored</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="pill">{{ ticket.get_status_display() }}</div>
+                                    <div class="small muted">{{ ticket.get_priority_display() }}</div>
+                                </td>
+                                <td>
+                                    <details>
+                                        <summary>Update ticket</summary>
+                                        <form class="field-stack" method="post">
+                                            {{ csrf_input }}
+                                            <input type="hidden" name="action" value="update_ticket">
+                                            <input type="hidden" name="ticket_id" value="{{ ticket.pk }}">
+                                            <label class="small">Title</label>
+                                            <input name="title" value="{{ ticket.title }}">
+                                            <label class="small">Description</label>
+                                            <textarea name="description">{{ ticket.description }}</textarea>
+                                            <label class="small">Status</label>
+                                            <select name="status">
+                                                {% for value, label in ticket_status_choices %}
+                                                    <option value="{{ value }}" {% if ticket.status == value %}selected{% endif %}>{{ label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <label class="small">Priority</label>
+                                            <select name="priority">
+                                                {% for value, label in ticket_priority_choices %}
+                                                    <option value="{{ value }}" {% if ticket.priority == value %}selected{% endif %}>{{ label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <label class="small">Department</label>
+                                            <select name="department">
+                                                {% for department in departments %}
+                                                    <option value="{{ department.pk }}" {% if ticket.department_id == department.pk %}selected{% endif %}>
+                                                        {{ department.display_name }}{% if department.default_recipient %} - {{ department.default_recipient.full_name or department.default_recipient.email }}{% endif %}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                            <label class="small">Requester name</label>
+                                            <input name="requester_name" value="{{ ticket.requester_name }}">
+                                            <label class="small">Requester email</label>
+                                            <input name="requester_email" value="{{ ticket.requester_email }}">
+                                            <label class="small">Phone</label>
+                                            <input name="requester_number" value="{{ ticket.requester_number }}">
+                                            <label class="small">Company</label>
+                                            <input name="requester_company" value="{{ ticket.requester_company }}">
+                                            <label class="small"><input style="width:auto;min-width:0;" type="checkbox" name="is_escalated" {% if ticket.is_escalated %}checked{% endif %}> Escalated</label>
+                                            <div class="actions">
+                                                <button type="submit">Save ticket</button>
+                                            </div>
+                                        </form>
+                                    </details>
+                                    <form method="post" onsubmit="return confirm('Delete ticket {{ ticket.ticket_number }}? If mirrored, internal ticket deletion must succeed first.');" style="margin-top: 8px;">
+                                        {{ csrf_input }}
+                                        <input type="hidden" name="action" value="delete_ticket">
+                                        <input type="hidden" name="ticket_id" value="{{ ticket.pk }}">
+                                        <button class="danger" type="submit">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="7" class="muted">No ticket records found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+    <script>
+        document.querySelectorAll("[data-select-all]").forEach((toggle) => {
+            toggle.addEventListener("change", () => {
+                document.querySelectorAll(`.${toggle.dataset.selectAll}`).forEach((checkbox) => {
+                    checkbox.checked = toggle.checked;
+                });
+            });
+        });
+    </script>
+</body>
+</html>

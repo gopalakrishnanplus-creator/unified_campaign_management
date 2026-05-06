@@ -7,7 +7,7 @@
             <p class="eyebrow mb-2">Unified support and campaign intelligence</p>
             <h1 class="display-5 fw-semibold mb-3">Customer support, ticketing, and campaign performance in one local Django workspace.</h1>
             <p class="lead text-secondary mb-4">
-                This implementation combines the doctor, clinic staff, brand manager, publisher, and field-rep support entry points with a ticketing workflow,
+                This implementation combines doctor, clinic staff, brand manager, publisher, field-rep, patient, student, and expert support entry points with a ticketing workflow,
                 campaign reporting APIs, and a project-management dashboard built for <strong>campaignpm@inditech.co.in</strong>.
             </p>
             <div class="d-flex flex-wrap gap-2">
@@ -46,7 +46,9 @@
         ('Brand Manager', 'brand_manager'),
         ('Publisher', 'publisher'),
         ('Field Rep', 'field_rep'),
-        ('Patient', 'patient')
+        ('Patient', 'patient'),
+        ('Student', 'student'),
+        ('Expert', 'expert')
     ] %}
     {% for label, user_type in support_links %}
         <div class="col-md-6 col-xl-3">
