@@ -1016,7 +1016,7 @@ EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK=
 
 SPECIAL_INSTRUCTION_BASE_URL=https://stage.red-flag-alerts.co.in
 SPECIAL_INSTRUCTION_PM_API_TOKEN=
-SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE=CAMP-OPS
+SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE=PRODUCT
 
 REPORTING_API_USE_LIVE=false
 REPORTING_API_RED_FLAG_ALERT_URL=https://reports.inditech.co.in/reporting/api/red_flag_alert/
@@ -1058,7 +1058,7 @@ PM_QUEUE_ESTIMATED_RESPONSE_TIME=Within 2 business hours
 | `SPECIAL_INSTRUCTION_BASE_URL` | For RFA Special Instruction review | Defaults to `https://stage.red-flag-alerts.co.in` |
 | `SPECIAL_INSTRUCTION_PM_API_TOKEN` | For RFA Special Instruction review | Sent as `Authorization: Bearer <token>` when configured |
 | `SPECIAL_INSTRUCTION_TIMEOUT` | No | `10` seconds |
-| `SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE` | No | Local department code used for PM review tickets; defaults to `CAMP-OPS` |
+| `SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE` | No | Local department code used for PM review tickets; defaults to `PRODUCT` |
 | `REPORTING_API_USE_LIVE` | No | `true` |
 | `REPORTING_API_TIMEOUT` | No | `5` seconds |
 | `REPORTING_API_RED_FLAG_ALERT_URL` | If live reporting enabled | Live Red Flag Alert endpoint |
@@ -1077,7 +1077,7 @@ Authorization: Bearer <SPECIAL_INSTRUCTION_PM_API_TOKEN>
 
 The webhook also accepts `/app/special-instructions/webhook` without the trailing slash, JSON payloads wrapped under `data` or `payload`, and form-encoded doctor/campaign IDs for delivery retries.
 
-The PM dashboard's manual Special Instruction fetch is a fallback for missed or replayed webhook deliveries.
+Special Instruction tickets are auto-assigned to the configured default recipient of the `PRODUCT` department and the review email is sent immediately. The PM dashboard's manual Special Instruction fetch is a fallback for missed or replayed webhook deliveries.
 | `WORDPRESS_GROWTH_WEBINAR_FILTERS` | No | `SAPA Growth Clinics` |
 | `WORDPRESS_CERTIFICATE_COURSE_IDS` | No | `8693,9204` |
 | `DEFAULT_FROM_EMAIL` | No | `noreply@inditech.local` |

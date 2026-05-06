@@ -1419,7 +1419,7 @@ class ExternalTicketSyncTests(TestCase):
         cls.pm_user = User.objects.get(email=settings.PROJECT_MANAGER_EMAIL)
         cls.pm_user.phone_number = "+919876543210"
         cls.pm_user.save(update_fields=["phone_number"])
-        cls.department = Department.objects.get(code="TECH")
+        cls.department = Department.objects.get(code="IT")
         cls.campaign = Campaign.objects.get(slug="cardioplus-unified-care")
 
     def _json_response(self, payload, *, status_code=200):
@@ -1505,7 +1505,7 @@ class ExternalTicketSyncTests(TestCase):
                     }
                 )
             if method == "POST" and url.endswith("/client-tickets/api/tickets/"):
-                self.assertEqual(json["assigned_to_email"], "tech.manager@inditech.co.in")
+                self.assertEqual(json["assigned_to_email"], "nikhil.verma@inditech.co.in")
                 self.assertEqual(json["project_manager_email"], settings.PROJECT_MANAGER_EMAIL)
                 self.assertEqual(json["department_id"], 3)
                 self.assertEqual(json["ticket_type_id"], 12)
@@ -1558,7 +1558,7 @@ class ExternalTicketSyncTests(TestCase):
         self.assertIn("Starting external ticket sync.", ticket.external_ticket_log)
         self.assertIn("Creating external ticket.", ticket.external_ticket_log)
         self.assertIn("External ticket created successfully.", ticket.external_ticket_log)
-        self.assertEqual(self.department.default_recipient.email, "tech.manager@inditech.co.in")
+        self.assertEqual(self.department.default_recipient.email, "nikhil.verma@inditech.co.in")
         self.assertEqual(self.department.external_directory_name, "IT Support")
         self.assertEqual(self.department.external_directory_code, "IT_SUPPORT")
 
@@ -1645,7 +1645,7 @@ class ExternalTicketSyncTests(TestCase):
                 )
             if method == "POST" and url.endswith("/client-tickets/api/tickets/"):
                 self.assertIsNone(json)
-                self.assertEqual(data["assigned_to_email"], "tech.manager@inditech.co.in")
+                self.assertEqual(data["assigned_to_email"], "nikhil.verma@inditech.co.in")
                 self.assertEqual(data["project_manager_email"], settings.PROJECT_MANAGER_EMAIL)
                 self.assertEqual(data["department_id"], 3)
                 self.assertEqual(data["ticket_type_id"], 12)
@@ -1755,7 +1755,7 @@ class ExternalTicketSyncTests(TestCase):
         self.assertEqual(department.external_directory_name, "IT Support")
         self.assertEqual(department.external_directory_code, "IT_SUPPORT")
         self.assertEqual(department.external_manager_email, "tech.manager@inditech.co.in")
-        self.assertEqual(department.default_recipient.email, "tech.manager@inditech.co.in")
+        self.assertEqual(department.default_recipient.email, "nikhil.verma@inditech.co.in")
 
     @patch("apps.ticketing.external_ticketing.requests.request")
     def test_ticket_create_page_uses_synced_internal_directory_departments(self, mock_request):
@@ -1814,7 +1814,7 @@ class ExternalTicketSyncTests(TestCase):
         response = self.client.get(reverse("ticketing:create"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "IT Support - Auto route to Tech Manager")
+        self.assertContains(response, "IT Support - Auto route to Nikhil Verma")
         self.assertContains(response, self.pm_user.phone_number)
 
     @patch("apps.ticketing.external_ticketing.requests.request")
@@ -2147,7 +2147,7 @@ class ExternalTicketSyncTests(TestCase):
         response = self.client.get(reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "IT Support - Auto route to Tech Manager")
+        self.assertContains(response, "IT Support - Auto route to Nikhil Verma")
 
     def login_support_admin_dashboard(self):
         return self.client.post(

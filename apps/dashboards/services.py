@@ -258,14 +258,14 @@ def _build_special_instruction_review_rows(campaign=None, limit=12):
             workflow_label = "Returned"
             workflow_at = returned_event.created_at
             workflow_badge = "status-warning"
-        elif ticket.current_assignee_id != ticket.direct_recipient_id:
-            workflow_label = "Assigned"
-            workflow_at = ticket.updated_at
-            workflow_badge = "status-info"
-        else:
+        elif ticket.current_assignee_id == ticket.created_by_id:
             workflow_label = "Needs assignment"
             workflow_at = ticket.created_at
             workflow_badge = "status-warning"
+        else:
+            workflow_label = "Assigned"
+            workflow_at = ticket.updated_at
+            workflow_badge = "status-info"
         rows.append(
             {
                 "review": review,

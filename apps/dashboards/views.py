@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView, View
 
 from apps.campaigns.models import Campaign
+from apps.ticketing.notifications import send_special_instruction_assignment_email
 from apps.ticketing.special_instructions import (
     SpecialInstructionAPIError,
     create_or_update_special_instruction_review,
@@ -77,9 +78,10 @@ class SpecialInstructionFetchView(ProjectManagerRequiredMixin, View):
         except SpecialInstructionAPIError as exc:
             messages.error(request, f"RFA Special Instruction ticket could not be fetched: {exc}")
             return redirect("dashboards:home")
+        _send_special_instruction_assignment_email_if_needed(review, request.user, request)
         messages.success(
             request,
-            f"Special Instruction review ticket {review.ticket.ticket_number} is ready for assignment.",
+            f"Special Instruction review ticket {review.ticket.ticket_number} is assigned to {review.ticket.current_assignee.email}.",
         )
         return redirect("ticketing:detail", pk=review.ticket.pk)
 
@@ -89,6 +91,11 @@ def _special_instruction_request_token(request):
     if authorization.lower().startswith("bearer "):
         return authorization[7:].strip()
     return (request.headers.get("X-Special-Instruction-Token") or "").strip()
+
+
+def _send_special_instruction_assignment_email_if_needed(review, actor, request):
+    if getattr(review, "assignment_notification_required", False):
+        send_special_instruction_assignment_email(review.ticket, actor, request)
 
 
 def _json_object(value):
@@ -216,6 +223,7 @@ class SpecialInstructionWebhookView(View):
             review = create_or_update_special_instruction_review(payload)
         except SpecialInstructionAPIError as exc:
             return JsonResponse({"success": False, "error": str(exc)}, status=502)
+        _send_special_instruction_assignment_email_if_needed(review, review.ticket.created_by, request)
 
         return JsonResponse(
             {
@@ -225,6 +233,7 @@ class SpecialInstructionWebhookView(View):
                 "ticket_url": request.build_absolute_uri(reverse("ticketing:detail", kwargs={"pk": review.ticket.pk})),
                 "doctor_id": review.doctor_id,
                 "status": review.rfa_status_code,
+                "assignee_email": review.ticket.current_assignee.email,
             }
         )
 

@@ -8,6 +8,7 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign, CampaignClinicEnrollment, CampaignFieldRepAssignment, Clinic, ClinicGroup, Doctor
 from apps.reporting.models import AdoptionSnapshot, ExternalGrowthSnapshot, InClinicSnapshot, PatientEducationSnapshot, RedFlagSnapshot
 from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory
+from apps.ticketing.department_seed_data import DEPARTMENT_RECIPIENT_CONFIG
 from apps.ticketing.models import Department, Ticket, TicketNote
 from apps.ticketing.services import change_ticket_status, create_ticket, resolve_ticket_classification, seed_default_ticket_taxonomy
 
@@ -32,36 +33,19 @@ class Command(BaseCommand):
             },
         )
 
-        operations_user, _ = User.objects.update_or_create(
-            email="ops@inditech.co.in",
-            defaults={
-                "full_name": "Clinical Operations Lead",
-                "role": User.Role.DEPARTMENT_OWNER,
-                "is_staff": True,
-                "company": "Inditech",
-                "title": "Operations Lead",
-            },
-        )
-        analytics_user, _ = User.objects.update_or_create(
-            email="analytics@inditech.co.in",
-            defaults={
-                "full_name": "Analytics Lead",
-                "role": User.Role.DEPARTMENT_OWNER,
-                "is_staff": True,
-                "company": "Inditech",
-                "title": "Analytics Lead",
-            },
-        )
-        tech_user, _ = User.objects.update_or_create(
-            email="support.tech@inditech.co.in",
-            defaults={
-                "full_name": "Technical Support Lead",
-                "role": User.Role.DEPARTMENT_OWNER,
-                "is_staff": True,
-                "company": "Inditech",
-                "title": "Technical Support Lead",
-            },
-        )
+        department_users = {}
+        for config in DEPARTMENT_RECIPIENT_CONFIG:
+            user, _ = User.objects.update_or_create(
+                email=config["recipient_email"],
+                defaults={
+                    "full_name": config["recipient_name"],
+                    "role": User.Role.DEPARTMENT_OWNER,
+                    "is_staff": True,
+                    "company": "Inditech",
+                    "title": f"{config['name']} Owner",
+                },
+            )
+            department_users[config["code"]] = user
         field_rep_user, _ = User.objects.update_or_create(
             email="meera.rep@example.com",
             defaults={
@@ -90,37 +74,26 @@ class Command(BaseCommand):
             },
         )
 
-        campaign_ops, _ = Department.objects.update_or_create(
-            code="CAMP-OPS",
-            defaults={
-                "name": "Campaign Operations",
-                "description": "Handles clinic onboarding, campaign activation, and field rep support.",
-                "support_email": "campaign-ops@inditech.co.in",
-                "default_recipient": operations_user,
-            },
-        )
-        analytics, _ = Department.objects.update_or_create(
-            code="ANALYTICS",
-            defaults={
-                "name": "Campaign Analytics",
-                "description": "Handles reporting, KPI analysis, and performance questions.",
-                "support_email": "analytics-support@inditech.co.in",
-                "default_recipient": analytics_user,
-            },
-        )
-        technical, _ = Department.objects.update_or_create(
-            code="TECH",
-            defaults={
-                "name": "Technical Support",
-                "description": "Handles access, login, and troubleshooting issues.",
-                "support_email": "tech-support@inditech.co.in",
-                "default_recipient": tech_user,
-            },
-        )
+        departments = {}
+        for config in DEPARTMENT_RECIPIENT_CONFIG:
+            department, _ = Department.objects.update_or_create(
+                code=config["code"],
+                defaults={
+                    "name": config["name"],
+                    "description": config["description"],
+                    "support_email": config["support_email"],
+                    "default_recipient": department_users[config["code"]],
+                    "is_active": True,
+                },
+            )
+            department_users[config["code"]].department = department
+            department_users[config["code"]].save(update_fields=["department"])
+            departments[config["code"]] = department
 
-        for user, department in [(operations_user, campaign_ops), (analytics_user, analytics), (tech_user, technical)]:
-            user.department = department
-            user.save(update_fields=["department"])
+        product = departments["PRODUCT"]
+        content = departments["CONTENT"]
+        technology = departments["TECHNOLOGY"]
+        it_department = departments["IT"]
 
         cardio_campaign, _ = Campaign.objects.update_or_create(
             slug="cardioplus-unified-care",
@@ -249,7 +222,7 @@ class Command(BaseCommand):
                 "solution_title": "Reset the browser session and confirm the allowed Google account",
                 "solution_body": "Ask the user to clear the previous Google session, re-open the login screen, allow browser pop-ups, and retry with the approved work email.",
                 "associated_pdf_url": "https://example.com/google-auth-checklist.pdf",
-                "ticket_department": technical,
+                "ticket_department": it_department,
                 "default_ticket_type": "Authentication issue",
                 "source_system": "Customer support",
                 "is_visible_to_brand_managers": True,
@@ -266,7 +239,7 @@ class Command(BaseCommand):
                 "name": "Doctor or clinic has not been added to the campaign",
                 "summary": "Escalate onboarding gaps to campaign operations.",
                 "response_mode": SupportItem.ResponseMode.DIRECT_TICKET,
-                "ticket_department": campaign_ops,
+                "ticket_department": product,
                 "default_ticket_type": "Campaign onboarding issue",
                 "source_system": "Customer support",
             },
@@ -282,7 +255,7 @@ class Command(BaseCommand):
                 "solution_title": "Verify link format and clinic browser permissions",
                 "solution_body": "Confirm the field rep used the current campaign link, the doctor opened the correct month collateral, and the clinic browser allows PDF/video content to load.",
                 "associated_video_url": "https://example.com/in-clinic-help-video",
-                "ticket_department": campaign_ops,
+                "ticket_department": content,
                 "default_ticket_type": "In-clinic content issue",
                 "source_system": "In-clinic",
             },
@@ -295,7 +268,7 @@ class Command(BaseCommand):
                 "name": "Weekly campaign report is missing",
                 "summary": "Escalate missing or delayed reporting data to analytics.",
                 "response_mode": SupportItem.ResponseMode.DIRECT_TICKET,
-                "ticket_department": analytics,
+                "ticket_department": product,
                 "default_ticket_type": "Reporting issue",
                 "source_system": "Campaign performance",
             },
@@ -331,7 +304,7 @@ class Command(BaseCommand):
         ticket_1, created_1 = Ticket.objects.get_or_create(
             title="In-clinic collateral is not opening",
             requester_email=request_1.requester_email,
-            department=campaign_ops,
+            department=content,
             defaults={
                 "description": request_1.free_text,
                 "ticket_type": "In-clinic content issue",
@@ -341,8 +314,8 @@ class Command(BaseCommand):
                 "campaign": cardio_campaign,
                 "created_by": pm_user,
                 "submitted_by": pm_user,
-                "direct_recipient": campaign_ops.default_recipient,
-                "current_assignee": campaign_ops.default_recipient,
+                "direct_recipient": content.default_recipient,
+                "current_assignee": content.default_recipient,
                 "requester_name": request_1.requester_name,
                 "requester_company": request_1.requester_company,
                 "support_request": request_1,
@@ -351,7 +324,7 @@ class Command(BaseCommand):
         ticket_2, created_2 = Ticket.objects.get_or_create(
             title="Weekly campaign report is missing",
             requester_email=request_2.requester_email,
-            department=analytics,
+            department=product,
             defaults={
                 "description": request_2.free_text,
                 "ticket_type": "Reporting issue",
@@ -361,8 +334,8 @@ class Command(BaseCommand):
                 "campaign": cardio_campaign,
                 "created_by": pm_user,
                 "submitted_by": pm_user,
-                "direct_recipient": analytics.default_recipient,
-                "current_assignee": analytics.default_recipient,
+                "direct_recipient": product.default_recipient,
+                "current_assignee": product.default_recipient,
                 "requester_name": request_2.requester_name,
                 "requester_company": request_2.requester_company,
                 "support_request": request_2,
@@ -371,7 +344,7 @@ class Command(BaseCommand):
         manual_ticket, created_3 = Ticket.objects.get_or_create(
             title="Doctor not added to campaign",
             requester_email="meera.rep@example.com",
-            department=campaign_ops,
+            department=product,
             defaults={
                 "description": "Please activate Dr. Karan Singh for the patient education campaign and confirm reporting visibility.",
                 "ticket_type": "Campaign onboarding issue",
@@ -381,8 +354,8 @@ class Command(BaseCommand):
                 "campaign": gluco_campaign,
                 "created_by": pm_user,
                 "submitted_by": field_rep_user_2,
-                "direct_recipient": campaign_ops.default_recipient,
-                "current_assignee": campaign_ops.default_recipient,
+                "direct_recipient": product.default_recipient,
+                "current_assignee": product.default_recipient,
                 "requester_name": "Rajan Menon",
                 "requester_company": "GlucoCare",
             },
@@ -409,14 +382,14 @@ class Command(BaseCommand):
             ticket.save(update_fields=["ticket_category", "ticket_type_definition", "ticket_type", "updated_at"])
 
         for ticket, body, author in [
-            (ticket_1, "Checked the content package and confirmed the PDF loads. Investigating the video embed issue.", operations_user),
-            (ticket_2, "Analytics export rerun completed and the report will be reissued.", analytics_user),
-            (manual_ticket, "Clinic enrollment is in progress. Awaiting doctor confirmation.", operations_user),
+            (ticket_1, "Checked the content package and confirmed the PDF loads. Investigating the video embed issue.", content.default_recipient),
+            (ticket_2, "Analytics export rerun completed and the report will be reissued.", product.default_recipient),
+            (manual_ticket, "Clinic enrollment is in progress. Awaiting doctor confirmation.", product.default_recipient),
         ]:
             TicketNote.objects.get_or_create(ticket=ticket, author=author, body=body)
 
         if ticket_2.status != Ticket.Status.COMPLETED:
-            change_ticket_status(ticket_2, analytics_user, Ticket.Status.COMPLETED)
+            change_ticket_status(ticket_2, product.default_recipient, Ticket.Status.COMPLETED)
 
         for campaign, group, clinic, form_fills, red_flags, patient_views, reports_sent, form_shares, patient_scans, follow_ups, reminders in [
             (cardio_campaign, bengaluru_group, clinic_a, 128, 39, 84, 28, 96, 104, 32, 24),

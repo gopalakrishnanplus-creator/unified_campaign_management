@@ -6,39 +6,10 @@ from django.db import transaction
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
+from apps.ticketing.department_seed_data import DEPARTMENT_RECIPIENT_CONFIG
 from apps.ticketing.models import Department, TicketCategory, TicketTypeDefinition
 from apps.ticketing.services import seed_default_ticket_taxonomy
 
-
-DEPARTMENT_SEED = [
-    {
-        "user_email": "ops@inditech.co.in",
-        "user_name": "Clinical Operations Lead",
-        "user_role": User.Role.DEPARTMENT_OWNER,
-        "department_code": "CAMP-OPS",
-        "department_name": "Campaign Operations",
-        "department_description": "Handles clinic onboarding, campaign activation, and field rep support.",
-        "support_email": "campaign-ops@inditech.co.in",
-    },
-    {
-        "user_email": "analytics@inditech.co.in",
-        "user_name": "Analytics Lead",
-        "user_role": User.Role.DEPARTMENT_OWNER,
-        "department_code": "ANALYTICS",
-        "department_name": "Campaign Analytics",
-        "department_description": "Handles reporting, KPI analysis, and performance questions.",
-        "support_email": "analytics-support@inditech.co.in",
-    },
-    {
-        "user_email": "support.tech@inditech.co.in",
-        "user_name": "Technical Support Lead",
-        "user_role": User.Role.DEPARTMENT_OWNER,
-        "department_code": "TECH",
-        "department_name": "Technical Support",
-        "department_description": "Handles access, login, and troubleshooting issues.",
-        "support_email": "tech-support@inditech.co.in",
-    },
-]
 
 CAMPAIGN_SEED = [
     {
@@ -119,21 +90,21 @@ class Command(BaseCommand):
 
     def seed_departments(self):
         touched = []
-        for config in DEPARTMENT_SEED:
+        for config in DEPARTMENT_RECIPIENT_CONFIG:
             user, _ = User.objects.update_or_create(
-                email=config["user_email"],
+                email=config["recipient_email"],
                 defaults={
-                    "full_name": config["user_name"],
-                    "role": config["user_role"],
+                    "full_name": config["recipient_name"],
+                    "role": User.Role.DEPARTMENT_OWNER,
                     "is_staff": True,
                     "company": "Inditech",
                 },
             )
             department, _ = Department.objects.update_or_create(
-                code=config["department_code"],
+                code=config["code"],
                 defaults={
-                    "name": config["department_name"],
-                    "description": config["department_description"],
+                    "name": config["name"],
+                    "description": config["description"],
                     "support_email": config["support_email"],
                     "default_recipient": user,
                     "is_active": True,

@@ -14,6 +14,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from config.timezones import format_india_datetime
 
+from .department_routing import department_config_for_values
 from .models import Department, Ticket, TicketAttachment, TicketRoutingEvent
 
 
@@ -934,6 +935,11 @@ def resolve_external_update_actor_email(ticket):
 
 
 def resolve_department_manager_email(ticket, external_department):
+    recipient_email = ""
+    if ticket.department_id and ticket.department.default_recipient_id:
+        recipient_email = (ticket.department.default_recipient.email or "").strip()
+    if recipient_email:
+        return recipient_email
     manager_email = (external_department.get("manager_email") or "").strip()
     if manager_email:
         return manager_email
@@ -1053,7 +1059,7 @@ def upsert_local_department(external_department):
         "code": department.code if department else trim_department_code(external_department.get("code"), external_department.get("id")),
         "description": department.description if department else "",
         "support_email": support_email,
-        "default_recipient": manager_user,
+        "default_recipient": (department.default_recipient if department and department.default_recipient_id else None) or manager_user,
         "external_directory_name": external_department.get("name") or "",
         "external_directory_code": external_department.get("code") or "",
         "external_manager_email": external_department.get("manager_email") or "",
@@ -1092,6 +1098,11 @@ def find_local_department_for_external(external_department):
         if department:
             return department
         department = Department.objects.filter(name__iexact=external_department.get("name")).first()
+        if department:
+            return department
+    configured_department = department_config_for_values(external_department.get("code"), external_department.get("name"))
+    if configured_department:
+        department = Department.objects.filter(code__iexact=configured_department["code"]).first()
         if department:
             return department
 

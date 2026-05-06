@@ -99,6 +99,7 @@ def create_or_update_special_instruction_review(payload, *, actor=None):
     source_reference = build_special_instruction_source_reference(doctor_id, campaign_payload.get("campaign_id"))
     pm_user = resolve_project_manager_user(actor)
     department = resolve_special_instruction_review_department()
+    assignee = resolve_special_instruction_review_recipient(department)
     local_campaign = resolve_local_campaign(campaign_payload)
     review = (
         SpecialInstructionReview.objects.select_related("ticket")
@@ -115,9 +116,20 @@ def create_or_update_special_instruction_review(payload, *, actor=None):
         assigned_field_rep=assigned_field_rep,
         instruction=instruction,
     )
+    assignment_notification_required = False
     if review:
         ticket = review.ticket
-        update_existing_special_instruction_ticket(ticket, title, description, local_campaign, doctor, clinic)
+        assignment_notification_required = update_existing_special_instruction_ticket(
+            ticket,
+            title,
+            description,
+            local_campaign,
+            doctor,
+            clinic,
+            department,
+            assignee,
+            actor=pm_user,
+        )
     else:
         category = get_or_create_ticket_category(
             "Content",
@@ -145,14 +157,15 @@ def create_or_update_special_instruction_review(payload, *, actor=None):
             campaign=local_campaign,
             created_by=pm_user,
             submitted_by=pm_user,
-            direct_recipient=pm_user,
-            current_assignee=pm_user,
+            direct_recipient=assignee,
+            current_assignee=assignee,
             requester_name=doctor.get("name") or doctor_id,
             requester_email=doctor.get("email") or pm_user.email,
             requester_number=clinic.get("phone") or "",
             requester_company=clinic.get("name") or "",
             sync_external=False,
         )
+        assignment_notification_required = True
 
     review_values = build_special_instruction_review_values(
         ticket=ticket,
@@ -171,6 +184,7 @@ def create_or_update_special_instruction_review(payload, *, actor=None):
         review.save(update_fields=[*review_values.keys(), "updated_at"])
     else:
         review = SpecialInstructionReview.objects.create(**review_values)
+    review.assignment_notification_required = assignment_notification_required
     return review
 
 
@@ -302,23 +316,39 @@ def build_special_instruction_review_values(
     }
 
 
-def update_existing_special_instruction_ticket(ticket, title, description, campaign, doctor, clinic):
+def update_existing_special_instruction_ticket(ticket, title, description, campaign, doctor, clinic, department, assignee, *, actor=None):
     changed_fields = []
+    previous_assignee = ticket.current_assignee
     updates = {
         "title": title,
         "description": description,
+        "department": department,
         "campaign": campaign,
+        "direct_recipient": assignee,
         "requester_name": doctor.get("name") or doctor.get("id") or ticket.requester_name,
         "requester_email": doctor.get("email") or ticket.requester_email,
         "requester_number": clinic.get("phone") or ticket.requester_number,
         "requester_company": clinic.get("name") or ticket.requester_company,
     }
+    if ticket.status != Ticket.Status.COMPLETED:
+        updates["current_assignee"] = assignee
     for field, value in updates.items():
         if getattr(ticket, field) != value:
             setattr(ticket, field, value)
             changed_fields.append(field)
     if changed_fields:
         ticket.save(update_fields=[*changed_fields, "updated_at"])
+    assignment_changed = bool(previous_assignee and previous_assignee != ticket.current_assignee)
+    if assignment_changed:
+        TicketRoutingEvent.objects.create(
+            ticket=ticket,
+            action=TicketRoutingEvent.Action.ASSIGNED,
+            actor=actor if getattr(actor, "is_authenticated", False) else None,
+            from_user=previous_assignee,
+            to_user=ticket.current_assignee,
+            description=f"Special Instruction request auto-assigned to {department.display_name}.",
+        )
+    return assignment_changed
 
 
 def resolve_project_manager_user(actor=None):
@@ -341,11 +371,21 @@ def resolve_special_instruction_review_department():
     department = None
     if code:
         department = Department.objects.filter(code__iexact=code, is_active=True).select_related("default_recipient").first()
+        if not department:
+            department = Department.objects.filter(name__iexact=code, is_active=True).select_related("default_recipient").first()
     if not department:
-        department = Department.objects.filter(default_recipient__isnull=False, is_active=True).select_related("default_recipient").first()
+        department = Department.objects.filter(name__iexact="Product", is_active=True).select_related("default_recipient").first()
     if not department:
         raise SpecialInstructionAPIError("No active department is configured for Special Instruction review tickets.")
     return department
+
+
+def resolve_special_instruction_review_recipient(department):
+    if department and department.default_recipient_id:
+        return department.default_recipient
+    raise SpecialInstructionAPIError(
+        f"Special Instruction review department {department.display_name if department else ''} does not have a default recipient configured."
+    )
 
 
 def resolve_local_campaign(campaign_payload):

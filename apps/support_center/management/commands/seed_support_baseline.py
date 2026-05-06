@@ -4,6 +4,7 @@ from django.db import transaction
 
 from apps.accounts.models import User
 from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportSuperCategory
+from apps.ticketing.department_seed_data import DEPARTMENT_RECIPIENT_CONFIG
 from apps.ticketing.models import Department
 
 
@@ -67,7 +68,7 @@ class Command(BaseCommand):
                 "solution_title": "Reset the browser session and confirm the allowed Google account",
                 "solution_body": "Ask the user to clear the previous Google session, re-open the login screen, allow browser pop-ups, and retry with the approved work email.",
                 "associated_pdf_url": "https://example.com/google-auth-checklist.pdf",
-                "ticket_department": departments["technical"],
+                "ticket_department": departments["IT"],
                 "default_ticket_type": "Authentication issue",
                 "source_system": "Customer support",
                 "source_flow": "",
@@ -93,7 +94,7 @@ class Command(BaseCommand):
                 "response_mode": SupportItem.ResponseMode.DIRECT_TICKET,
                 "solution_title": "Raise a campaign operations ticket",
                 "solution_body": "If the doctor or clinic is missing from the campaign setup, capture the onboarding context and escalate to campaign operations.",
-                "ticket_department": departments["campaign_ops"],
+                "ticket_department": departments["PRODUCT"],
                 "default_ticket_type": "Campaign onboarding issue",
                 "source_system": "Customer support",
                 "source_flow": "",
@@ -119,7 +120,7 @@ class Command(BaseCommand):
                 "response_mode": SupportItem.ResponseMode.DIRECT_TICKET,
                 "solution_title": "Raise a reporting escalation",
                 "solution_body": "Capture the campaign, expected report window, and affected geography, then escalate the issue to campaign analytics.",
-                "ticket_department": departments["analytics"],
+                "ticket_department": departments["PRODUCT"],
                 "default_ticket_type": "Reporting issue",
                 "source_system": "Campaign performance",
                 "source_flow": "",
@@ -137,49 +138,23 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Seeded baseline support FAQ catalog."))
 
     def ensure_departments(self):
-        definitions = {
-            "campaign_ops": {
-                "user_email": "ops@inditech.co.in",
-                "user_name": "Clinical Operations Lead",
-                "user_role": User.Role.DEPARTMENT_OWNER,
-                "department_code": "CAMP-OPS",
-                "department_name": "Campaign Operations",
-                "department_email": "campaign-ops@inditech.co.in",
-            },
-            "analytics": {
-                "user_email": "analytics@inditech.co.in",
-                "user_name": "Analytics Lead",
-                "user_role": User.Role.DEPARTMENT_OWNER,
-                "department_code": "ANALYTICS",
-                "department_name": "Campaign Analytics",
-                "department_email": "analytics-support@inditech.co.in",
-            },
-            "technical": {
-                "user_email": "support.tech@inditech.co.in",
-                "user_name": "Technical Support Lead",
-                "user_role": User.Role.DEPARTMENT_OWNER,
-                "department_code": "TECH",
-                "department_name": "Technical Support",
-                "department_email": "tech-support@inditech.co.in",
-            },
-        }
-
         departments = {}
-        for config in definitions.values():
+        for config in DEPARTMENT_RECIPIENT_CONFIG:
             user, _ = User.objects.update_or_create(
-                email=config["user_email"],
+                email=config["recipient_email"],
                 defaults={
-                    "full_name": config["user_name"],
-                    "role": config["user_role"],
+                    "full_name": config["recipient_name"],
+                    "role": User.Role.DEPARTMENT_OWNER,
                     "is_staff": True,
                     "company": "Inditech",
                 },
             )
             department, _ = Department.objects.update_or_create(
-                code=config["department_code"],
+                code=config["code"],
                 defaults={
-                    "name": config["department_name"],
-                    "support_email": config["department_email"],
+                    "name": config["name"],
+                    "description": config["description"],
+                    "support_email": config["support_email"],
                     "default_recipient": user,
                     "is_active": True,
                 },
@@ -187,7 +162,7 @@ class Command(BaseCommand):
             if user.department_id != department.id:
                 user.department = department
                 user.save(update_fields=["department"])
-            departments[config["department_code"]] = department
+            departments[config["code"]] = department
 
         pm_user, _ = User.objects.update_or_create(
             email=settings.PROJECT_MANAGER_EMAIL,
@@ -202,8 +177,4 @@ class Command(BaseCommand):
             pm_user.is_staff = True
             pm_user.save(update_fields=["is_staff"])
 
-        return {
-            "campaign_ops": departments["CAMP-OPS"],
-            "analytics": departments["ANALYTICS"],
-            "technical": departments["TECH"],
-        }
+        return departments

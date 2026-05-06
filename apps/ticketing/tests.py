@@ -26,7 +26,8 @@ class SpecialInstructionWorkflowTests(TestCase):
     def setUpTestData(cls):
         call_command("seed_demo_data")
         cls.pm_user = User.objects.get(email=settings.PROJECT_MANAGER_EMAIL)
-        cls.assignee = Department.objects.get(code="TECH").default_recipient
+        cls.special_instruction_assignee = Department.objects.get(code="PRODUCT").default_recipient
+        cls.assignee = Department.objects.get(code="TECHNOLOGY").default_recipient
 
     def _payload(self):
         return {
@@ -102,9 +103,12 @@ class SpecialInstructionWorkflowTests(TestCase):
         self.assertEqual(review.rfa_current_status, "Document in process")
         self.assertEqual(review.ticket.source_system, Ticket.SourceSystem.RED_FLAG_ALERT)
         self.assertEqual(review.ticket.ticket_type, "Special Instruction Approval")
-        self.assertEqual(review.ticket.current_assignee, self.pm_user)
-        self.assertEqual(review.ticket.direct_recipient, self.pm_user)
+        self.assertEqual(review.ticket.department.code, "PRODUCT")
+        self.assertEqual(review.ticket.current_assignee, self.special_instruction_assignee)
+        self.assertEqual(review.ticket.direct_recipient, self.special_instruction_assignee)
         self.assertEqual(review.ticket.external_ticket_number, "")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.special_instruction_assignee.email])
 
         second_response = self.client.post(
             reverse("dashboards:special_instruction_fetch"),
@@ -113,6 +117,7 @@ class SpecialInstructionWorkflowTests(TestCase):
         review.refresh_from_db()
         self.assertEqual(second_response.status_code, 302)
         self.assertEqual(SpecialInstructionReview.objects.filter(doctor_id="DOC401").count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_rfa_webhook_creates_review_ticket_without_manual_pm_fetch(self):
         response = self.client.post(
@@ -128,15 +133,19 @@ class SpecialInstructionWorkflowTests(TestCase):
         self.assertEqual(response_payload["doctor_id"], "DOC401")
         review = SpecialInstructionReview.objects.select_related("ticket").get(doctor_id="DOC401")
         self.assertEqual(response_payload["ticket_number"], review.ticket.ticket_number)
+        self.assertEqual(response_payload["assignee_email"], self.special_instruction_assignee.email)
         self.assertIn(reverse("ticketing:detail", kwargs={"pk": review.ticket.pk}), response_payload["ticket_url"])
-        self.assertEqual(review.ticket.current_assignee, self.pm_user)
+        self.assertEqual(review.ticket.department.code, "PRODUCT")
+        self.assertEqual(review.ticket.current_assignee, self.special_instruction_assignee)
         self.assertEqual(review.rfa_current_status, "Document in process")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.special_instruction_assignee.email])
 
         self.client.force_login(self.pm_user)
         dashboard_response = self.client.get(reverse("dashboards:home"))
         self.assertContains(dashboard_response, "Doctor ID DOC401")
         self.assertContains(dashboard_response, "Document approval queue")
-        self.assertContains(dashboard_response, "Needs assignment")
+        self.assertContains(dashboard_response, "Assigned")
 
     def test_rfa_webhook_accepts_wrapped_payload_without_trailing_slash(self):
         response = self.client.post(

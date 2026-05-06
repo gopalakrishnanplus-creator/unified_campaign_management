@@ -100,10 +100,10 @@ def send_special_instruction_assignment_email(ticket, actor, request):
     try:
         review = ticket.special_instruction_review
     except Exception:
-        return
+        return False
     recipient = (ticket.current_assignee.email or "").strip().lower()
     if not recipient:
-        return
+        return False
 
     context = {
         "ticket": ticket,
@@ -135,5 +135,7 @@ def send_special_instruction_assignment_email(ticket, actor, request):
                 text_body=text_body,
                 html_body=html_body,
             )
+        return True
     except Exception:
         logger.exception("Special Instruction assignment email failed for %s", ticket.ticket_number)
+    return False
