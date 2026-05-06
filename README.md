@@ -1014,7 +1014,7 @@ EXTERNAL_TICKETING_API_TOKEN=
 EXTERNAL_TICKETING_PULL_SYNC_MAX_AGE_SECONDS=60
 EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK=
 
-SPECIAL_INSTRUCTION_BASE_URL=https://stage.red-flag-alerts.co.in
+SPECIAL_INSTRUCTION_BASE_URL=https://red-flag-alerts.co.in
 SPECIAL_INSTRUCTION_PM_API_TOKEN=
 SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE=PRODUCT
 
@@ -1055,7 +1055,7 @@ PM_QUEUE_ESTIMATED_RESPONSE_TIME=Within 2 business hours
 | `EXTERNAL_TICKETING_TIMEOUT` | No | `10` seconds |
 | `EXTERNAL_TICKETING_PULL_SYNC_MAX_AGE_SECONDS` | No | `60`; controls how often mirrored ticket state is re-fetched |
 | `EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK` | Optional | Used when requester phone cannot be resolved |
-| `SPECIAL_INSTRUCTION_BASE_URL` | For RFA Special Instruction review | Defaults to `https://stage.red-flag-alerts.co.in` |
+| `SPECIAL_INSTRUCTION_BASE_URL` | For RFA Special Instruction review | Defaults to `https://red-flag-alerts.co.in` |
 | `SPECIAL_INSTRUCTION_PM_API_TOKEN` | For RFA Special Instruction review | Sent as `Authorization: Bearer <token>` when configured |
 | `SPECIAL_INSTRUCTION_TIMEOUT` | No | `10` seconds |
 | `SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE` | No | Local department code used for PM review tickets; defaults to `PRODUCT` |

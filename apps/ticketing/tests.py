@@ -18,7 +18,7 @@ from apps.ticketing.special_instructions import create_or_update_special_instruc
     EXTERNAL_TICKETING_SYNC_ENABLED=False,
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     SENDGRID_API_KEY="",
-    SPECIAL_INSTRUCTION_BASE_URL="https://stage.red-flag-alerts.co.in",
+    SPECIAL_INSTRUCTION_BASE_URL="https://red-flag-alerts.co.in",
     SPECIAL_INSTRUCTION_PM_API_TOKEN="test-token",
 )
 class SpecialInstructionWorkflowTests(TestCase):
@@ -61,13 +61,13 @@ class SpecialInstructionWorkflowTests(TestCase):
                     "current_status": "Document in process",
                     "status_code": "in_process",
                     "uploaded_at": "2026-05-06T10:30:00+00:00",
-                    "download_url": "https://stage.red-flag-alerts.co.in/internal/special-instructions/DOC401/download/",
-                    "approve_url": "https://stage.red-flag-alerts.co.in/internal/special-instructions/DOC401/approve/",
+                    "download_url": "https://red-flag-alerts.co.in/internal/special-instructions/DOC401/download/",
+                    "approve_url": "https://red-flag-alerts.co.in/internal/special-instructions/DOC401/approve/",
                 },
             },
         }
 
-    def _json_response(self, payload, *, status_code=200, url="https://stage.red-flag-alerts.co.in/test/"):
+    def _json_response(self, payload, *, status_code=200, url="https://red-flag-alerts.co.in/test/"):
         response = Mock()
         response.status_code = status_code
         response.url = url
