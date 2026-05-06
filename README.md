@@ -349,6 +349,8 @@ graph TD
 | `config/context_processors.py` | Tells templates whether Google OAuth is available |
 | `config/jinja2.py` | Registers `static()` and named URL helpers for Jinja templates |
 | `apps/reporting/contracts.py` | Defines the expected reporting payload contract used by the contract view and API |
+| `apps/ticketing/special_instruction_contracts.py` | Analysis-only Special Instruction contract definitions kept separate from reporting contracts |
+| `docs/special-instruction-api-contract.md` | Standalone RFA Special Instruction API contract reference |
 | `apps/ticketing/external_ticketing.py` | Encapsulates all HTTP calls to the external internal-ticketing platform |
 
 ### Middleware and Runtime Behavior
