@@ -13,9 +13,10 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
+from apps.dashboards.services import get_support_dashboard_data
 from apps.reporting.services import build_live_performance_sections
 from apps.support_center.services import get_faq_combination
-from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory
+from apps.support_center.models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory, SupportWidgetEvent
 from apps.ticketing.models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketTypeDefinition
 from apps.ticketing.external_ticketing import sync_external_directory
 from apps.ticketing.services import create_ticket
@@ -907,6 +908,120 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(created_ticket.title, "Viewer blank screen after verification")
         self.assertTrue(TicketNote.objects.filter(ticket=created_ticket, body__icontains="support widget").exists())
         self.assertTrue(TicketAttachment.objects.filter(note__ticket=created_ticket).exists())
+
+    @patch("apps.dashboards.services.sync_external_ticket_states")
+    @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)
+    def test_support_dashboard_reports_widget_activity_counts_by_system(self, mock_sync_external_ticket_states):
+        support_page = SupportPage.objects.create(
+            name="Widget Analytics Page",
+            slug="widget-analytics-page",
+            source_system="In-clinic",
+            source_flow="Widget Analytics",
+        )
+        support_super = SupportSuperCategory.objects.create(name="Widget Analytics Section", slug="widget-analytics-section")
+        support_category = SupportCategory.objects.create(
+            super_category=support_super,
+            name="Widget Analytics Screen",
+            slug="widget-analytics-screen",
+        )
+        support_item = SupportItem.objects.create(
+            page=support_page,
+            category=support_category,
+            name="Widget analytics FAQ",
+            slug="widget-analytics-faq",
+            knowledge_type=SupportItem.KnowledgeType.FAQ,
+            solution_body="Use this answer to verify widget analytics.",
+            source_system="In-clinic",
+            source_flow="Widget Analytics",
+            is_visible_to_doctors=True,
+            is_visible_to_clinic_staff=False,
+            is_visible_to_brand_managers=False,
+            is_visible_to_field_reps=False,
+            is_visible_to_patients=False,
+        )
+
+        widget_url = reverse(
+            "support_center:faq_page_widget",
+            kwargs={"user_type": "doctor", "page_slug": support_page.slug},
+        )
+        widget_response = self.client.get(f"{widget_url}?embed=1")
+        self.assertEqual(widget_response.status_code, 200)
+
+        event_response = self.client.post(
+            reverse(
+                "support_center:faq_page_widget_event",
+                kwargs={"user_type": "doctor", "page_slug": support_page.slug},
+            ),
+            data={
+                "event_type": "resolved",
+                "selected_faq_id": support_item.pk,
+                "selected_section_slug": support_super.slug,
+                "source_system": "In-clinic",
+                "source_flow": "Widget Analytics",
+            },
+        )
+        self.assertEqual(event_response.status_code, 200)
+
+        other_issue_response = self.client.post(
+            reverse(
+                "support_center:faq_page_other_issue",
+                kwargs={"user_type": "doctor", "page_slug": support_page.slug},
+            ),
+            data={
+                "requester_name": "Doctor Widget User",
+                "requester_email": "doctor.widget.analytics@example.com",
+                "requester_number": "+915555000000",
+                "free_text": "The widget analytics screen still needs a PM-raised ticket.",
+                "selected_faq_id": support_item.pk,
+                "selected_section_slug": support_super.slug,
+                "source_system": "In-clinic",
+                "source_flow": "Widget Analytics",
+            },
+        )
+        self.assertEqual(other_issue_response.status_code, 200)
+        support_request = SupportRequest.objects.get(pk=other_issue_response.json()["request_id"])
+        self.assertEqual(support_request.origin_channel, SupportRequest.OriginChannel.WIDGET)
+
+        self.client.force_login(self.pm_user)
+        raise_response = self.client.post(
+            reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}),
+            data={
+                "title": "Widget analytics ticket",
+                "description": "Raised by PM from widget analytics flow.",
+                "ticket_category": TicketCategory.objects.get(name="Support").pk,
+                "ticket_type_definition": TicketTypeDefinition.objects.get(
+                    category__name="Support",
+                    name="Query",
+                ).pk,
+                "new_ticket_type_name": "",
+                "user_type": Ticket.UserType.DOCTOR,
+                "source_system": Ticket.SourceSystem.IN_CLINIC,
+                "priority": Ticket.Priority.HIGH,
+                "status": Ticket.Status.NOT_STARTED,
+                "department": self.ticket.department.pk,
+                "campaign": self.campaign.pk,
+                "requester_name": "Doctor Widget User",
+                "requester_email": "doctor.widget.analytics@example.com",
+                "requester_number": "+915555000000",
+                "requester_company": "Clinic A",
+            },
+            follow=True,
+        )
+        self.assertEqual(raise_response.status_code, 200)
+
+        support_request.refresh_from_db()
+        self.assertIsNotNone(support_request.pm_ticket_raised_at)
+        self.assertEqual(
+            SupportWidgetEvent.objects.filter(source_system="In-clinic").count(),
+            2,
+        )
+
+        dashboard_data = get_support_dashboard_data()
+        widget_row = next(row for row in dashboard_data["widget_activity_rows"] if row["system"] == "In-clinic")
+        self.assertEqual(widget_row["widget_open_count"], 1)
+        self.assertEqual(widget_row["resolved_count"], 1)
+        self.assertEqual(widget_row["send_ticket_count"], 1)
+        self.assertEqual(widget_row["pm_raised_ticket_count"], 1)
 
     @patch("apps.dashboards.services.requests.get")
     @override_settings(EXTERNAL_TICKETING_SYNC_ENABLED=False)

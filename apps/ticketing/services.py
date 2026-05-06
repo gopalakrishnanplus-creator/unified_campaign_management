@@ -435,6 +435,7 @@ def resolve_ticket_classification(
 
 @transaction.atomic
 def create_ticket(**kwargs):
+    sync_external = kwargs.pop("sync_external", True)
     classification = resolve_ticket_classification(
         title=kwargs["title"],
         ticket_type_name=kwargs.get("ticket_type"),
@@ -453,7 +454,7 @@ def create_ticket(**kwargs):
     ticket = Ticket.objects.create(**kwargs)
     from .external_ticketing import should_sync_external_ticket, sync_external_ticket
 
-    if should_sync_external_ticket(ticket):
+    if sync_external and should_sync_external_ticket(ticket):
         transaction.on_commit(lambda ticket_id=ticket.pk: sync_external_ticket(ticket_id))
     return ticket
 

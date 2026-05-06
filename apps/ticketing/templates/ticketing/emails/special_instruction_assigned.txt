@@ -1,0 +1,20 @@
+Hello {{ ticket.current_assignee.full_name or ticket.current_assignee.email }},
+
+You have been assigned an RFA Special Instruction review.
+
+Ticket: {{ ticket.ticket_number }}
+Doctor ID: {{ review.doctor_id }}
+Doctor: {{ review.doctor_name or "Not provided" }}
+Doctor email: {{ review.doctor_email or "Not provided" }}
+Clinic: {{ review.clinic_name or "Not provided" }}
+Clinic phone: {{ review.clinic_phone or "Not provided" }}
+Campaign: {{ review.campaign_name or "Not provided" }}
+Brand: {{ review.brand_name or "Not provided" }}
+Assigned field rep: {{ review.assigned_field_rep_name or "Not provided" }}
+RFA status: {{ review.rfa_current_status or "Not provided" }}
+
+Download the uploaded document:
+{{ download_url }}
+
+Approve the Special Instruction:
+{{ approve_url }}

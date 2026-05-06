@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import Department, Ticket, TicketAttachment, TicketCategory, TicketNote, TicketRoutingEvent, TicketTypeDefinition
+from .models import (
+    Department,
+    SpecialInstructionReview,
+    Ticket,
+    TicketAttachment,
+    TicketCategory,
+    TicketNote,
+    TicketRoutingEvent,
+    TicketTypeDefinition,
+)
 
 
 @admin.register(Department)
@@ -72,3 +81,20 @@ class TicketNoteAdmin(admin.ModelAdmin):
 class TicketAttachmentAdmin(admin.ModelAdmin):
     list_display = ("note", "file", "created_at")
     search_fields = ("note__ticket__ticket_number",)
+
+
+@admin.register(SpecialInstructionReview)
+class SpecialInstructionReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        "doctor_id",
+        "doctor_name",
+        "clinic_name",
+        "campaign_name",
+        "rfa_current_status",
+        "ticket",
+        "approved_at",
+        "updated_at",
+    )
+    list_filter = ("rfa_status_code", "approved_at")
+    search_fields = ("doctor_id", "doctor_name", "doctor_email", "clinic_name", "campaign_name", "ticket__ticket_number")
+    readonly_fields = ("source_reference", "payload", "approve_response", "created_at", "updated_at")

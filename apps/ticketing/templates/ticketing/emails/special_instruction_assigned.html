@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f6f8fb;font-family:Arial,sans-serif;color:#172033;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f8fb;padding:24px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:94%;background:#ffffff;border:1px solid #e6ebf2;border-radius:8px;overflow:hidden;">
+                    <tr>
+                        <td style="padding:24px;background:#0f766e;color:#ffffff;">
+                            <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">RFA Special Instruction</div>
+                            <h1 style="margin:8px 0 0;font-size:24px;line-height:1.25;">Review assigned</h1>
+                            <p style="margin:8px 0 0;font-size:14px;line-height:1.6;">Ticket {{ ticket.ticket_number }}</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:24px;">
+                            <p style="margin:0 0 18px;font-size:15px;line-height:1.6;">Hello {{ ticket.current_assignee.full_name or ticket.current_assignee.email }}, please review the uploaded Special Instruction document and approve it after validation.</p>
+
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;">
+                                <tr><td style="padding:10px 0;color:#64748b;">Doctor ID</td><td style="padding:10px 0;font-weight:700;">{{ review.doctor_id }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">Doctor</td><td style="padding:10px 0;font-weight:700;">{{ review.doctor_name or "Not provided" }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">Doctor email</td><td style="padding:10px 0;">{{ review.doctor_email or "Not provided" }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">Clinic</td><td style="padding:10px 0;font-weight:700;">{{ review.clinic_name or "Not provided" }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">Clinic phone</td><td style="padding:10px 0;">{{ review.clinic_phone or "Not provided" }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">Campaign</td><td style="padding:10px 0;">{{ review.campaign_name or "Not provided" }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">Brand</td><td style="padding:10px 0;">{{ review.brand_name or "Not provided" }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">Assigned field rep</td><td style="padding:10px 0;">{{ review.assigned_field_rep_name or "Not provided" }}</td></tr>
+                                <tr><td style="padding:10px 0;color:#64748b;">RFA status</td><td style="padding:10px 0;">{{ review.rfa_current_status or "Not provided" }}</td></tr>
+                            </table>
+
+                            <div style="margin-top:22px;">
+                                <a href="{{ download_url }}" style="display:inline-block;margin:0 10px 10px 0;padding:12px 18px;border-radius:6px;background:#334155;color:#ffffff;text-decoration:none;font-weight:700;">Download</a>
+                                <a href="{{ approve_url }}" style="display:inline-block;margin:0 0 10px 0;padding:12px 18px;border-radius:6px;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:700;">Approve</a>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

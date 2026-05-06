@@ -985,6 +985,10 @@ EXTERNAL_TICKETING_BASE_URL=https://support.inditech.co.in
 EXTERNAL_TICKETING_API_TOKEN=
 EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK=
 
+SPECIAL_INSTRUCTION_BASE_URL=https://stage.red-flag-alerts.co.in
+SPECIAL_INSTRUCTION_PM_API_TOKEN=
+SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE=CAMP-OPS
+
 REPORTING_API_USE_LIVE=false
 REPORTING_API_RED_FLAG_ALERT_URL=https://reports.inditech.co.in/reporting/api/red_flag_alert/
 REPORTING_API_IN_CLINIC_URL=https://reports.inditech.co.in/reporting/api/in_clinic/
@@ -1015,6 +1019,10 @@ WORDPRESS_CERTIFICATE_COURSE_IDS=8693,9204
 | `EXTERNAL_TICKETING_SOURCE_SYSTEM` | No | `campaign_management` |
 | `EXTERNAL_TICKETING_TIMEOUT` | No | `10` seconds |
 | `EXTERNAL_TICKETING_REQUESTER_PHONE_FALLBACK` | Optional | Used when requester phone cannot be resolved |
+| `SPECIAL_INSTRUCTION_BASE_URL` | For RFA Special Instruction review | Defaults to `https://stage.red-flag-alerts.co.in` |
+| `SPECIAL_INSTRUCTION_PM_API_TOKEN` | For RFA Special Instruction review | Sent as `Authorization: Bearer <token>` when configured |
+| `SPECIAL_INSTRUCTION_TIMEOUT` | No | `10` seconds |
+| `SPECIAL_INSTRUCTION_REVIEW_DEPARTMENT_CODE` | No | Local department code used for PM review tickets; defaults to `CAMP-OPS` |
 | `REPORTING_API_USE_LIVE` | No | `true` |
 | `REPORTING_API_TIMEOUT` | No | `5` seconds |
 | `REPORTING_API_RED_FLAG_ALERT_URL` | If live reporting enabled | Live Red Flag Alert endpoint |
@@ -1023,6 +1031,15 @@ WORDPRESS_CERTIFICATE_COURSE_IDS=8693,9204
 | `WORDPRESS_HELPER_URL` | For external growth metrics | Defaults to `https://esapa.one/` |
 | `WORDPRESS_HELPER_SECRET` | For external growth metrics | Used in helper API calls |
 | `WORDPRESS_HELPER_TIMEOUT` | No | `20` seconds |
+
+RFA can create PM review tickets automatically by posting either the full ticket payload or `{ "doctor_id": "...", "campaign_id": "..." }` to:
+
+```text
+POST /app/special-instructions/webhook/
+Authorization: Bearer <SPECIAL_INSTRUCTION_PM_API_TOKEN>
+```
+
+The PM dashboard's manual Special Instruction fetch is a fallback for missed or replayed webhook deliveries.
 | `WORDPRESS_GROWTH_WEBINAR_FILTERS` | No | `SAPA Growth Clinics` |
 | `WORDPRESS_CERTIFICATE_COURSE_IDS` | No | `8693,9204` |
 | `STATUS_MONITOR_EXTRA_TARGETS_JSON` | Optional | JSON list of extra URL health-check targets |

@@ -9,8 +9,8 @@ from django.urls import reverse
 
 from apps.campaigns.models import Campaign
 from apps.reporting.services import build_live_performance_sections
-from apps.support_center.models import SupportRequest
-from apps.ticketing.models import Ticket
+from apps.support_center.models import SupportItem, SupportRequest, SupportWidgetEvent
+from apps.ticketing.models import SpecialInstructionReview, Ticket, TicketRoutingEvent
 from apps.ticketing.external_ticketing import sync_external_ticket_states
 from apps.ticketing.services import build_ticket_distribution_data
 
@@ -120,6 +120,146 @@ def _compress_category_rows(category_rows, campaign):
         }
     )
     return visible_rows
+
+
+SYSTEM_ACTIVITY_ORDER = [
+    "Customer support",
+    "Campaign performance",
+    "In-clinic",
+    "Red Flag Alert",
+    "Patient Education",
+]
+
+
+def _system_sort_key(system_name):
+    if system_name in SYSTEM_ACTIVITY_ORDER:
+        return (0, SYSTEM_ACTIVITY_ORDER.index(system_name), system_name)
+    return (1, system_name.lower())
+
+
+def _build_support_widget_activity_rows():
+    system_names = {
+        system_name
+        for system_name in SupportItem.objects.exclude(source_system="").values_list("source_system", flat=True)
+    }
+    system_names.update(
+        system_name
+        for system_name in SupportRequest.objects.exclude(source_system="").values_list("source_system", flat=True)
+    )
+    system_names.update(
+        system_name
+        for system_name in SupportWidgetEvent.objects.exclude(source_system="").values_list("source_system", flat=True)
+    )
+    ordered_systems = sorted(system_names, key=_system_sort_key)
+
+    opened_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.OPENED)
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+    resolved_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportWidgetEvent.objects.filter(event_type=SupportWidgetEvent.EventType.RESOLVED)
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+    widget_ticket_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportRequest.objects.filter(origin_channel=SupportRequest.OriginChannel.WIDGET)
+        .exclude(source_system="")
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+    pm_raised_counts = {
+        row["source_system"]: row["total"]
+        for row in SupportRequest.objects.filter(
+            origin_channel=SupportRequest.OriginChannel.WIDGET,
+            pm_ticket_raised_at__isnull=False,
+        )
+        .exclude(source_system="")
+        .values("source_system")
+        .annotate(total=Count("id"))
+    }
+
+    rows = []
+    for system_name in ordered_systems:
+        rows.append(
+            {
+                "system": system_name,
+                "widget_open_count": opened_counts.get(system_name, 0),
+                "resolved_count": resolved_counts.get(system_name, 0),
+                "send_ticket_count": widget_ticket_counts.get(system_name, 0),
+                "pm_raised_ticket_count": pm_raised_counts.get(system_name, 0),
+            }
+        )
+
+    totals = {
+        "widget_open_count": sum(row["widget_open_count"] for row in rows),
+        "resolved_count": sum(row["resolved_count"] for row in rows),
+        "send_ticket_count": sum(row["send_ticket_count"] for row in rows),
+        "pm_raised_ticket_count": sum(row["pm_raised_ticket_count"] for row in rows),
+    }
+    return rows, totals
+
+
+def _build_special_instruction_review_rows(campaign=None, limit=12):
+    queryset = SpecialInstructionReview.objects.select_related(
+        "ticket",
+        "ticket__campaign",
+        "ticket__current_assignee",
+        "ticket__direct_recipient",
+        "ticket__created_by",
+        "approved_by",
+    ).order_by("-updated_at")
+    if campaign:
+        queryset = queryset.filter(ticket__campaign=campaign)
+    reviews = list(queryset[:limit])
+    ticket_ids = [review.ticket_id for review in reviews]
+    returned_events = {}
+    for event in (
+        TicketRoutingEvent.objects.filter(ticket_id__in=ticket_ids, action=TicketRoutingEvent.Action.RETURNED)
+        .select_related("actor", "from_user", "to_user")
+        .order_by("ticket_id", "-created_at")
+    ):
+        returned_events.setdefault(event.ticket_id, event)
+
+    rows = []
+    for review in reviews:
+        ticket = review.ticket
+        returned_event = returned_events.get(ticket.pk)
+        if review.approved_at:
+            workflow_label = "Approved"
+            workflow_at = review.approved_at
+            workflow_badge = "status-success"
+        elif ticket.status == Ticket.Status.COMPLETED:
+            workflow_label = "Closed"
+            workflow_at = ticket.resolved_at
+            workflow_badge = "status-success"
+        elif returned_event and ticket.current_assignee_id == ticket.created_by_id:
+            workflow_label = "Returned"
+            workflow_at = returned_event.created_at
+            workflow_badge = "status-warning"
+        elif ticket.current_assignee_id != ticket.direct_recipient_id:
+            workflow_label = "Assigned"
+            workflow_at = ticket.updated_at
+            workflow_badge = "status-info"
+        else:
+            workflow_label = "Needs assignment"
+            workflow_at = ticket.created_at
+            workflow_badge = "status-warning"
+        rows.append(
+            {
+                "review": review,
+                "ticket": ticket,
+                "workflow_label": workflow_label,
+                "workflow_at": workflow_at,
+                "workflow_badge": workflow_badge,
+                "action_label": "Assign" if workflow_label in {"Needs assignment", "Returned"} else "Open",
+                "action_url": reverse("ticketing:detail", kwargs={"pk": ticket.pk}),
+            }
+        )
+    return rows
 
 
 def get_support_dashboard_data(campaign=None):
@@ -345,6 +485,8 @@ def get_support_dashboard_data(campaign=None):
         }
         for support_request in other_issue_requests
     ]
+    widget_activity_rows, widget_activity_totals = _build_support_widget_activity_rows()
+    special_instruction_rows = _build_special_instruction_review_rows(campaign)
 
     return {
         "overview_cards": overview_cards,
@@ -358,6 +500,7 @@ def get_support_dashboard_data(campaign=None):
         "category_breakdown": category_breakdown,
         "ticket_distribution": ticket_distribution,
         "other_issue_rows": other_issue_rows,
+        "special_instruction_rows": special_instruction_rows,
         "chart_data": {
             "category": {
                 "labels": [row["label"] for row in category_breakdown],
@@ -385,7 +528,10 @@ def get_support_dashboard_data(campaign=None):
             "completed_tickets": closed_count,
             "critical_tickets": critical_count,
             "other_issue_requests": len(other_issue_rows),
+            "special_instruction_reviews": len(special_instruction_rows),
         },
+        "widget_activity_rows": widget_activity_rows,
+        "widget_activity_totals": widget_activity_totals,
     }
 
 

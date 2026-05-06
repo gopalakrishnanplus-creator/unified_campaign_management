@@ -82,7 +82,13 @@ def external_ticketing_enabled():
 
 
 def should_sync_external_ticket(ticket):
-    return bool(external_ticketing_enabled() and not ticket.external_ticket_number)
+    if not external_ticketing_enabled() or ticket.external_ticket_number:
+        return False
+    try:
+        ticket.special_instruction_review
+    except Ticket.special_instruction_review.RelatedObjectDoesNotExist:
+        return True
+    return False
 
 
 def should_refresh_external_ticket(ticket, *, force=False):

@@ -4,6 +4,7 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from django.urls import reverse
 
 
 logger = logging.getLogger(__name__)
@@ -93,3 +94,46 @@ def send_ticket_escalation_email(ticket, actor):
             )
     except Exception:
         logger.exception("Ticket escalation email failed for %s", ticket.ticket_number)
+
+
+def send_special_instruction_assignment_email(ticket, actor, request):
+    try:
+        review = ticket.special_instruction_review
+    except Exception:
+        return
+    recipient = (ticket.current_assignee.email or "").strip().lower()
+    if not recipient:
+        return
+
+    context = {
+        "ticket": ticket,
+        "review": review,
+        "actor": actor,
+        "download_url": request.build_absolute_uri(
+            reverse("ticketing:special_instruction_download", kwargs={"pk": ticket.pk})
+        ),
+        "approve_url": request.build_absolute_uri(
+            reverse("ticketing:special_instruction_approve", kwargs={"pk": ticket.pk})
+        ),
+    }
+    subject = f"Special Instruction review assigned: {review.doctor_id} / {review.doctor_name or ticket.title}"
+    text_body = render_to_string("ticketing/emails/special_instruction_assigned.txt", context)
+    html_body = render_to_string("ticketing/emails/special_instruction_assigned.html", context)
+
+    try:
+        if settings.SENDGRID_API_KEY:
+            _send_email_via_sendgrid(
+                to_emails=[recipient],
+                subject=subject,
+                text_body=text_body,
+                html_body=html_body,
+            )
+        else:
+            _send_email_via_django(
+                to_emails=[recipient],
+                subject=subject,
+                text_body=text_body,
+                html_body=html_body,
+            )
+    except Exception:
+        logger.exception("Special Instruction assignment email failed for %s", ticket.ticket_number)

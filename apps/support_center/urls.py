@@ -15,7 +15,9 @@ from .views import (
     support_faq_combination_api,
     support_faq_page_api,
     support_faq_page_other_issue,
+    support_faq_page_widget_event,
     support_faq_links_api,
+    support_faq_widget_event,
 )
 
 
@@ -34,9 +36,19 @@ urlpatterns = [
         name="faq_page_other_issue",
     ),
     path(
+        "<str:user_type>/faq/page/<slug:page_slug>/widget-event/",
+        support_faq_page_widget_event,
+        name="faq_page_widget_event",
+    ),
+    path(
         "<str:user_type>/faq/<slug:super_slug>/<slug:category_slug>/other/",
         support_faq_other_issue,
         name="faq_other_issue",
+    ),
+    path(
+        "<str:user_type>/faq/<slug:super_slug>/<slug:category_slug>/widget-event/",
+        support_faq_widget_event,
+        name="faq_widget_event",
     ),
     path(
         "<str:user_type>/faq/page/<slug:page_slug>/widget/",

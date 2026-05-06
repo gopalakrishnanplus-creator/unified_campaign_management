@@ -211,7 +211,7 @@ class Ticket(models.Model):
             not self.is_externally_managed
             and user
             and user.is_authenticated
-            and (user == self.direct_recipient or user.is_superuser)
+            and (user in {self.direct_recipient, self.current_assignee} or user.is_superuser)
         )
 
     def can_view(self, user):
@@ -364,3 +364,55 @@ class TicketAttachment(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+
+class SpecialInstructionReview(models.Model):
+    ticket = models.OneToOneField(
+        Ticket,
+        on_delete=models.CASCADE,
+        related_name="special_instruction_review",
+    )
+    source_reference = models.CharField(max_length=255, unique=True)
+    doctor_id = models.CharField(max_length=64)
+    doctor_name = models.CharField(max_length=255, blank=True)
+    doctor_email = models.EmailField(blank=True)
+    clinic_name = models.CharField(max_length=255, blank=True)
+    clinic_phone = models.CharField(max_length=32, blank=True)
+    campaign_uuid = models.CharField(max_length=128, blank=True)
+    campaign_name = models.CharField(max_length=255, blank=True)
+    brand_name = models.CharField(max_length=255, blank=True)
+    campaign_field_rep_id = models.CharField(max_length=64, blank=True)
+    campaign_field_rep_internal_id = models.PositiveIntegerField(null=True, blank=True)
+    campaign_field_rep_name = models.CharField(max_length=255, blank=True)
+    assigned_field_rep_id = models.CharField(max_length=64, blank=True)
+    assigned_field_rep_internal_id = models.PositiveIntegerField(null=True, blank=True)
+    assigned_field_rep_name = models.CharField(max_length=255, blank=True)
+    rfa_current_status = models.CharField(max_length=120, blank=True)
+    rfa_status_code = models.CharField(max_length=64, blank=True)
+    uploaded_at = models.DateTimeField(null=True, blank=True)
+    download_url = models.URLField(max_length=1000, blank=True)
+    approve_url = models.URLField(max_length=1000, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    last_fetched_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="approved_special_instruction_reviews",
+    )
+    approve_response = models.JSONField(default=dict, blank=True)
+    approve_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.doctor_id} / {self.ticket.ticket_number}"
+
+    @property
+    def is_approved(self):
+        return bool(self.approved_at)

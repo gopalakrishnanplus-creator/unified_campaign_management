@@ -51,6 +51,34 @@
             </div>
         </div>
 
+        {% if special_instruction_review %}
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Special Instruction</h2>
+                    <div class="metric-row"><span>Doctor ID</span><strong>{{ special_instruction_review.doctor_id }}</strong></div>
+                    <div class="metric-row"><span>Doctor</span><strong>{{ special_instruction_review.doctor_name or 'Not provided' }}</strong></div>
+                    <div class="metric-row"><span>Clinic</span><strong>{{ special_instruction_review.clinic_name or 'Not provided' }}</strong></div>
+                    <div class="metric-row"><span>Campaign</span><strong>{{ special_instruction_review.campaign_name or 'Not provided' }}</strong></div>
+                    <div class="metric-row"><span>Brand</span><strong>{{ special_instruction_review.brand_name or 'Not provided' }}</strong></div>
+                    <div class="metric-row"><span>RFA status</span><strong>{{ special_instruction_review.rfa_current_status or 'Not provided' }}</strong></div>
+                    <div class="metric-row"><span>Uploaded</span><strong>{{ special_instruction_review.uploaded_at|india_datetime if special_instruction_review.uploaded_at else 'Not provided' }}</strong></div>
+                    <div class="metric-row"><span>Approved</span><strong>{{ special_instruction_review.approved_at|india_datetime if special_instruction_review.approved_at else 'Pending' }}</strong></div>
+                    {% if special_instruction_review.approved_by %}
+                        <div class="metric-row"><span>Approved by</span><strong>{{ special_instruction_review.approved_by.full_name or special_instruction_review.approved_by.email }}</strong></div>
+                    {% endif %}
+                    <div class="d-flex gap-2 flex-wrap mt-3">
+                        <a class="btn btn-sm btn-outline-secondary" href="{{ url('ticketing:special_instruction_download', pk=ticket.pk) }}">Download</a>
+                        {% if not special_instruction_review.approved_at %}
+                            <form method="post" action="{{ url('ticketing:special_instruction_approve', pk=ticket.pk) }}">
+                                {{ csrf_input }}
+                                <button class="btn btn-sm btn-primary" type="submit">Approve</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
         <div class="card shadow-sm border-0 rounded-4 mb-4">
             <div class="card-body">
                 <h2 class="h5 mb-3">Internal ticketing sync</h2>
@@ -99,12 +127,12 @@
 
             <div class="card shadow-sm border-0 rounded-4">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Delegate ticket</h2>
+                    <h2 class="h5 mb-3">{{ 'Assign reviewer' if special_instruction_review else 'Delegate ticket' }}</h2>
                     <form method="post" class="vstack gap-3">
                         {{ csrf_input }}
                         <input type="hidden" name="action" value="delegate">
                         {{ delegation_form.assignee }}
-                        <button class="btn btn-outline-primary" type="submit">Delegate</button>
+                        <button class="btn btn-outline-primary" type="submit">{{ 'Assign' if special_instruction_review else 'Delegate' }}</button>
                     </form>
                     {% if ticket.created_by %}
                         <form method="post" class="mt-3">

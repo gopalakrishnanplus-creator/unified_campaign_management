@@ -11,7 +11,7 @@ from django.utils.text import Truncator
 from apps.ticketing.models import Department, Ticket
 from apps.ticketing.services import create_ticket, resolve_ticket_classification
 
-from .models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory
+from .models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory, SupportWidgetEvent
 
 
 ROLE_VISIBILITY_FIELD = {
@@ -342,7 +342,30 @@ def send_pm_queue_confirmation_email(support_request):
         )
 
 
-def create_other_support_request(*, user_type, page, super_category, category, system_name, flow_name, form, request_user):
+def create_support_widget_event(
+    *,
+    event_type,
+    user_type,
+    page=None,
+    super_category=None,
+    category=None,
+    support_request=None,
+    system_name="",
+    flow_name="",
+):
+    return SupportWidgetEvent.objects.create(
+        user_type=user_type,
+        support_page=page,
+        support_super_category=super_category,
+        support_category=category,
+        support_request=support_request,
+        source_system=system_name or "",
+        source_flow="" if flow_name == GENERAL_SUPPORT_FLOW else (flow_name or ""),
+        event_type=event_type,
+    )
+
+
+def create_other_support_request(*, user_type, page, super_category, category, system_name, flow_name, form, request_user, origin_channel):
     support_request = form.save(commit=False)
     requester = _fallback_requester_identity(user_type, request_user)
     support_request.user_type = user_type
@@ -352,6 +375,7 @@ def create_other_support_request(*, user_type, page, super_category, category, s
     support_request.support_category = category
     support_request.source_system = system_name or ""
     support_request.source_flow = "" if flow_name == GENERAL_SUPPORT_FLOW else (flow_name or "")
+    support_request.origin_channel = origin_channel
     support_request.requester_name = (support_request.requester_name or requester["name"]).strip()
     support_request.requester_email = (support_request.requester_email or requester["email"]).strip()
     support_request.requester_number = (support_request.requester_number or requester["number"]).strip()

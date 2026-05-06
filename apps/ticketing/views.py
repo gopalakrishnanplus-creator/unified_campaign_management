@@ -5,6 +5,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.conf import settings
 from django.db.models import Case, IntegerField, Q, When
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -19,6 +20,7 @@ from .forms import (
     TicketStatusForm,
 )
 from .models import Department, Ticket, TicketTypeDefinition
+from .notifications import send_special_instruction_assignment_email
 from .services import (
     build_ticket_distribution_data,
     build_ticket_priority_summary,
@@ -27,6 +29,12 @@ from .services import (
     delegate_ticket,
     escalate_ticket,
     return_ticket_to_sender,
+)
+from .special_instructions import (
+    SpecialInstructionAPIError,
+    approve_special_instruction_review,
+    download_special_instruction_document,
+    get_special_instruction_review,
 )
 from .external_ticketing import (
     ExternalTicketingSyncError,
@@ -83,6 +91,30 @@ def _scoped_ticket_queryset(request):
     if not (user.is_superuser or user.is_project_manager):
         queryset = queryset.filter(Q(direct_recipient=user) | Q(current_assignee=user) | Q(created_by=user))
     return queryset
+
+
+def _special_instruction_action_target(request, pk):
+    ticket = get_object_or_404(
+        Ticket.objects.select_related(
+            "campaign",
+            "department",
+            "direct_recipient",
+            "current_assignee",
+            "created_by",
+            "special_instruction_review",
+        ),
+        pk=pk,
+    )
+    if not ticket.can_view(request.user):
+        raise PermissionDenied("You do not have access to this Special Instruction ticket.")
+    review = get_special_instruction_review(ticket)
+    if not review:
+        raise PermissionDenied("This ticket is not a Special Instruction review.")
+    if request.user not in {ticket.current_assignee, ticket.direct_recipient} and not (
+        request.user.is_superuser or request.user.is_project_manager
+    ):
+        raise PermissionDenied("Only the assigned reviewer or PM can use this Special Instruction action.")
+    return ticket, review
 
 
 class TicketListView(LoginRequiredMixin, ListView):
@@ -273,6 +305,7 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
                 "current_assignee",
                 "created_by",
                 "support_request",
+                "special_instruction_review",
                 "ticket_category",
                 "ticket_type_definition",
             ),
@@ -312,7 +345,7 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
             )
             return redirect("ticketing:detail", pk=self.object.pk)
         if not self.object.can_change_status(self.request.user):
-            messages.error(self.request, "Only the direct recipient can change ticket status.")
+            messages.error(self.request, "Only the current ticket owner can change ticket status.")
             return redirect("ticketing:detail", pk=self.object.pk)
         form = TicketStatusForm(self.request.POST, instance=self.object)
         if form.is_valid():
@@ -335,7 +368,12 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
         form = TicketDelegationForm(self.request.POST, user=self.request.user)
         if form.is_valid():
             delegate_ticket(self.object, self.request.user, form.cleaned_data["assignee"])
-            messages.success(self.request, "Ticket delegated.")
+            self.object.refresh_from_db()
+            if get_special_instruction_review(self.object):
+                send_special_instruction_assignment_email(self.object, self.request.user, self.request)
+                messages.success(self.request, "Special Instruction review assigned and email sent.")
+            else:
+                messages.success(self.request, "Ticket delegated.")
         else:
             messages.error(self.request, "Ticket delegation failed.")
         return redirect("ticketing:detail", pk=self.object.pk)
@@ -379,11 +417,52 @@ class TicketDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["ticket_management_locked"] = self.object.is_externally_managed
+        context["special_instruction_review"] = get_special_instruction_review(self.object)
         if not self.object.is_externally_managed:
             context["status_form"] = TicketStatusForm(instance=self.object)
             context["delegation_form"] = TicketDelegationForm(user=self.request.user)
         context["note_form"] = TicketNoteForm()
         return context
+
+
+class SpecialInstructionDownloadView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        ticket, review = _special_instruction_action_target(request, pk)
+        try:
+            response = download_special_instruction_document(review)
+        except SpecialInstructionAPIError as exc:
+            messages.error(request, f"Special Instruction download failed: {exc}")
+            return redirect("ticketing:detail", pk=ticket.pk)
+
+        content_type = response.headers.get("Content-Type") or "application/octet-stream"
+        outgoing_response = HttpResponse(response.content, content_type=content_type)
+        content_disposition = response.headers.get("Content-Disposition")
+        if content_disposition:
+            outgoing_response["Content-Disposition"] = content_disposition
+        else:
+            outgoing_response["Content-Disposition"] = f'attachment; filename="special-instruction-{review.doctor_id}"'
+        return outgoing_response
+
+
+class SpecialInstructionApproveView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        return self._approve(request, pk)
+
+    def post(self, request, pk):
+        return self._approve(request, pk)
+
+    def _approve(self, request, pk):
+        ticket, review = _special_instruction_action_target(request, pk)
+        if review.approved_at:
+            messages.info(request, "This Special Instruction has already been approved.")
+            return redirect("ticketing:detail", pk=ticket.pk)
+        try:
+            approve_special_instruction_review(review, request.user)
+        except SpecialInstructionAPIError as exc:
+            messages.error(request, f"Special Instruction approval failed: {exc}")
+            return redirect("ticketing:detail", pk=ticket.pk)
+        messages.success(request, "Special Instruction approved and RFA updated.")
+        return redirect("ticketing:detail", pk=ticket.pk)
 
 
 class TicketDistributionView(LoginRequiredMixin, TemplateView):

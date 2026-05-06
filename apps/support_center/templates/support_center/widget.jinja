@@ -282,6 +282,7 @@
             }
 
             const otherIssueUrl = getSameOriginUrl(payload.other_issue_url);
+            const eventUrl = getSameOriginUrl(payload.event_url);
             const transcriptElement = document.getElementById("transcript");
             const sectionPanel = document.getElementById("section-panel");
             const sectionListElement = document.getElementById("section-list");
@@ -341,6 +342,34 @@
             function clearStatus() {
                 statusMessageElement.className = "alert rounded-4 mt-4 d-none";
                 statusMessageElement.textContent = "";
+            }
+
+            async function trackResolvedEvent() {
+                if (!eventUrl || !state.selectedFaq) {
+                    return;
+                }
+                const formData = new FormData();
+                formData.set("event_type", "resolved");
+                formData.set("selected_faq_id", String(state.selectedFaq.id));
+                if (state.selectedSection) {
+                    formData.set("selected_section_slug", state.selectedSection.slug);
+                }
+                formData.set("context_referrer", document.referrer || "");
+                if (payload.source_system) {
+                    formData.set("source_system", payload.source_system);
+                }
+                if (payload.source_flow) {
+                    formData.set("source_flow", payload.source_flow);
+                }
+                try {
+                    await fetch(eventUrl, {
+                        method: "POST",
+                        body: formData,
+                        keepalive: true,
+                    });
+                } catch (error) {
+                    // Ignore analytics delivery failures so the widget flow stays responsive.
+                }
             }
 
             function resetPageFlow() {
@@ -479,8 +508,9 @@
             }
 
             resolutionPanel.querySelectorAll("button[data-resolution]").forEach((button) => {
-                button.addEventListener("click", () => {
+                button.addEventListener("click", async () => {
                     if (button.dataset.resolution === "resolved") {
+                        await trackResolvedEvent();
                         setStatus("You marked this issue as resolved. Restart the page if you need help with something else.", "success");
                         resolutionPanel.classList.add("d-none");
                         return;

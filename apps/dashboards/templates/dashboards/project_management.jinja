@@ -117,6 +117,117 @@
 </section>
 
 <section class="mb-4">
+    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+        <div>
+            <p class="eyebrow mb-1">Widget Activity</p>
+            <h2 class="h3 mb-0">System-wise support widget counts</h2>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>System</th>
+                        <th>Widget Opened</th>
+                        <th>Resolved</th>
+                        <th>Send Ticket</th>
+                        <th>PM Raised Ticket</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in support_data.widget_activity_rows %}
+                        <tr>
+                            <td class="fw-semibold">{{ row.system }}</td>
+                            <td>{{ row.widget_open_count }}</td>
+                            <td>{{ row.resolved_count }}</td>
+                            <td>{{ row.send_ticket_count }}</td>
+                            <td>{{ row.pm_raised_ticket_count }}</td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="5" class="text-secondary">No widget activity recorded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if support_data.widget_activity_rows %}
+                    <tfoot>
+                        <tr>
+                            <th>Total</th>
+                            <th>{{ support_data.widget_activity_totals.widget_open_count }}</th>
+                            <th>{{ support_data.widget_activity_totals.resolved_count }}</th>
+                            <th>{{ support_data.widget_activity_totals.send_ticket_count }}</th>
+                            <th>{{ support_data.widget_activity_totals.pm_raised_ticket_count }}</th>
+                        </tr>
+                    </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="mb-4" id="special-instruction-review">
+    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+        <div>
+            <p class="eyebrow mb-1">RFA Special Instructions</p>
+            <h2 class="h3 mb-0">Document approval queue</h2>
+        </div>
+        <div class="status-code-pill {{ 'status-warning' if support_data.support_cards.special_instruction_reviews else 'status-success' }}">
+            {{ support_data.support_cards.special_instruction_reviews }} active
+        </div>
+    </div>
+
+    <form method="post" action="{{ url('dashboards:special_instruction_fetch') }}" class="row g-2 align-items-end mb-3">
+        {{ csrf_input }}
+        <div class="col-12">
+            <div class="small text-secondary">Manual fallback when an RFA webhook delivery needs to be reloaded.</div>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="special-instruction-doctor-id">Doctor ID</label>
+            <input class="form-control" id="special-instruction-doctor-id" name="doctor_id" placeholder="DOC401" required>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="special-instruction-campaign-id">Campaign ID</label>
+            <input class="form-control" id="special-instruction-campaign-id" name="campaign_id" placeholder="Optional campaign UUID">
+        </div>
+        <div class="col-md-auto">
+            <button class="btn btn-primary" type="submit">Fetch ticket</button>
+        </div>
+    </form>
+
+    <div class="row g-3">
+        {% for row in support_data.special_instruction_rows %}
+            <div class="col-lg-6 col-xl-4">
+                <div class="card shadow-sm border-0 rounded-4 h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between gap-2 align-items-start mb-3">
+                            <div>
+                                <p class="eyebrow mb-1">Doctor ID {{ row.review.doctor_id }}</p>
+                                <h3 class="h5 mb-1">{{ row.review.doctor_name or 'Doctor not provided' }}</h3>
+                                <div class="text-secondary small">{{ row.review.clinic_name or 'Clinic not provided' }}</div>
+                            </div>
+                            <span class="status-code-pill {{ row.workflow_badge }}">{{ row.workflow_label }}</span>
+                        </div>
+                        <div class="metric-row"><span>Campaign</span><strong>{{ row.review.campaign_name or 'Not provided' }}</strong></div>
+                        <div class="metric-row"><span>Brand</span><strong>{{ row.review.brand_name or 'Not provided' }}</strong></div>
+                        <div class="metric-row"><span>RFA status</span><strong>{{ row.review.rfa_current_status or 'Not provided' }}</strong></div>
+                        <div class="metric-row"><span>Assignee</span><strong>{{ row.ticket.current_assignee.full_name or row.ticket.current_assignee.email }}</strong></div>
+                        <div class="metric-row"><span>Approved</span><strong>{{ row.review.approved_at|india_datetime if row.review.approved_at else 'Pending' }}</strong></div>
+                        <div class="metric-row"><span>Updated</span><strong>{{ row.workflow_at|india_datetime if row.workflow_at else 'Not available' }}</strong></div>
+                        <a class="btn btn-sm btn-primary mt-3" href="{{ row.action_url }}">{{ row.action_label }}</a>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="col-12">
+                <div class="card shadow-sm border-0 rounded-4">
+                    <div class="card-body text-secondary">No Special Instruction reviews have been fetched yet.</div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="mb-4">
     <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3" id="other-issue-review">
         <div>
             <p class="eyebrow mb-1">PM Queue</p>
