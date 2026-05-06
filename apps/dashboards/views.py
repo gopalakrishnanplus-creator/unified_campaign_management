@@ -91,6 +91,105 @@ def _special_instruction_request_token(request):
     return (request.headers.get("X-Special-Instruction-Token") or "").strip()
 
 
+def _json_object(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip().startswith("{"):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _parse_special_instruction_body(request):
+    content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
+    raw_body = (request.body or b"").strip()
+    if content_type == "application/json" or raw_body.startswith(b"{"):
+        try:
+            parsed = json.loads(raw_body.decode("utf-8") or "{}")
+        except ValueError as exc:
+            raise ValueError("Invalid JSON payload.") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("JSON payload must be an object.")
+        return parsed
+    if request.POST:
+        return request.POST.dict()
+    return {}
+
+
+def _looks_like_special_instruction_ticket(value):
+    return isinstance(value.get("doctor"), dict) and (
+        isinstance(value.get("special_instruction"), dict)
+        or isinstance(value.get("associated_campaign"), dict)
+        or isinstance(value.get("clinic"), dict)
+    )
+
+
+def _extract_special_instruction_payload(body, *, depth=0):
+    if depth > 3:
+        return {}
+    candidate = _json_object(body)
+    if not candidate:
+        return {}
+    if isinstance(candidate.get("ticket"), dict):
+        return candidate
+    if _looks_like_special_instruction_ticket(candidate):
+        return {"ok": candidate.get("ok", True), "ticket": candidate}
+    for key in ("payload", "data", "request", "ticket_payload", "ticketPayload", "body"):
+        nested_payload = _extract_special_instruction_payload(candidate.get(key), depth=depth + 1)
+        if nested_payload:
+            return nested_payload
+    return {}
+
+
+def _extract_special_instruction_identifiers(body, *, depth=0):
+    if depth > 3:
+        return "", ""
+    candidate = _json_object(body)
+    if not candidate:
+        return "", ""
+
+    ticket = _json_object(candidate.get("ticket"))
+    doctor = _json_object(candidate.get("doctor")) or _json_object(ticket.get("doctor"))
+    campaign = (
+        _json_object(candidate.get("associated_campaign"))
+        or _json_object(candidate.get("campaign"))
+        or _json_object(ticket.get("associated_campaign"))
+        or _json_object(ticket.get("campaign"))
+    )
+    doctor_id = (
+        candidate.get("doctor_id")
+        or candidate.get("doctorId")
+        or doctor.get("id")
+        or ticket.get("doctor_id")
+        or ticket.get("doctorId")
+        or ""
+    )
+    campaign_id = (
+        candidate.get("campaign_id")
+        or candidate.get("campaignId")
+        or campaign.get("campaign_id")
+        or campaign.get("campaignId")
+        or campaign.get("id")
+        or ticket.get("campaign_id")
+        or ticket.get("campaignId")
+        or ""
+    )
+    if doctor_id:
+        return str(doctor_id).strip(), str(campaign_id or "").strip()
+
+    for key in ("payload", "data", "request", "ticket_payload", "ticketPayload", "body"):
+        nested_doctor_id, nested_campaign_id = _extract_special_instruction_identifiers(
+            candidate.get(key),
+            depth=depth + 1,
+        )
+        if nested_doctor_id:
+            return nested_doctor_id, nested_campaign_id
+    return "", ""
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class SpecialInstructionWebhookView(View):
     def post(self, request, *args, **kwargs):
@@ -100,16 +199,14 @@ class SpecialInstructionWebhookView(View):
             return JsonResponse({"success": False, "error": "Unauthorized."}, status=403)
 
         try:
-            body = json.loads((request.body or b"{}").decode("utf-8") or "{}")
-        except ValueError:
-            return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
+            body = _parse_special_instruction_body(request)
+        except ValueError as exc:
+            return JsonResponse({"success": False, "error": str(exc)}, status=400)
 
         try:
-            if body.get("ticket"):
-                payload = body
-            else:
-                doctor_id = (body.get("doctor_id") or body.get("doctorId") or "").strip()
-                campaign_id = (body.get("campaign_id") or body.get("campaignId") or "").strip()
+            payload = _extract_special_instruction_payload(body)
+            if not payload:
+                doctor_id, campaign_id = _extract_special_instruction_identifiers(body)
                 if not doctor_id:
                     return JsonResponse({"success": False, "error": "doctor_id is required."}, status=400)
                 payload = fetch_special_instruction_ticket_payload(

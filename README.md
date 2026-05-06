@@ -1075,6 +1075,8 @@ POST /app/special-instructions/webhook/
 Authorization: Bearer <SPECIAL_INSTRUCTION_PM_API_TOKEN>
 ```
 
+The webhook also accepts `/app/special-instructions/webhook` without the trailing slash, JSON payloads wrapped under `data` or `payload`, and form-encoded doctor/campaign IDs for delivery retries.
+
 The PM dashboard's manual Special Instruction fetch is a fallback for missed or replayed webhook deliveries.
 | `WORDPRESS_GROWTH_WEBINAR_FILTERS` | No | `SAPA Growth Clinics` |
 | `WORDPRESS_CERTIFICATE_COURSE_IDS` | No | `8693,9204` |

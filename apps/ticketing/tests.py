@@ -132,6 +132,25 @@ class SpecialInstructionWorkflowTests(TestCase):
         self.assertEqual(review.ticket.current_assignee, self.pm_user)
         self.assertEqual(review.rfa_current_status, "Document in process")
 
+        self.client.force_login(self.pm_user)
+        dashboard_response = self.client.get(reverse("dashboards:home"))
+        self.assertContains(dashboard_response, "Doctor ID DOC401")
+        self.assertContains(dashboard_response, "Document approval queue")
+        self.assertContains(dashboard_response, "Needs assignment")
+
+    def test_rfa_webhook_accepts_wrapped_payload_without_trailing_slash(self):
+        response = self.client.post(
+            reverse("dashboards:special_instruction_webhook").rstrip("/"),
+            data=json.dumps({"data": self._payload()}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer test-token",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        review = SpecialInstructionReview.objects.select_related("ticket").get(doctor_id="DOC401")
+        self.assertEqual(response.json()["ticket_number"], review.ticket.ticket_number)
+
     @patch("apps.ticketing.special_instructions.requests.request")
     def test_rfa_webhook_can_fetch_payload_from_doctor_id(self, mock_request):
         def request_side_effect(method, url, headers=None, params=None, timeout=None, **kwargs):
@@ -147,6 +166,26 @@ class SpecialInstructionWorkflowTests(TestCase):
             data=json.dumps({"doctor_id": "DOC401", "campaign_id": "campaign-uuid"}),
             content_type="application/json",
             HTTP_X_SPECIAL_INSTRUCTION_TOKEN="test-token",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        self.assertTrue(SpecialInstructionReview.objects.filter(doctor_id="DOC401").exists())
+
+    @patch("apps.ticketing.special_instructions.requests.request")
+    def test_rfa_webhook_accepts_form_encoded_doctor_id(self, mock_request):
+        def request_side_effect(method, url, headers=None, params=None, timeout=None, **kwargs):
+            self.assertEqual(method, "GET")
+            self.assertTrue(url.endswith("/internal/special-instructions/DOC401/ticket/"))
+            self.assertEqual(params, {"campaign_id": "campaign-uuid"})
+            return self._json_response(self._payload(), url=url)
+
+        mock_request.side_effect = request_side_effect
+
+        response = self.client.post(
+            reverse("dashboards:special_instruction_webhook"),
+            data={"doctor_id": "DOC401", "campaign_id": "campaign-uuid"},
+            HTTP_AUTHORIZATION="Bearer test-token",
         )
 
         self.assertEqual(response.status_code, 200)
