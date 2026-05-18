@@ -48,9 +48,20 @@ class SupportItemAdmin(admin.ModelAdmin):
 
 @admin.register(SupportRequest)
 class SupportRequestAdmin(admin.ModelAdmin):
-    list_display = ("requester_name", "requester_email", "requester_number", "user_type", "origin_channel", "campaign", "status", "created_at")
-    list_filter = ("user_type", "origin_channel", "status", "campaign")
-    search_fields = ("requester_name", "requester_email", "requester_number", "subject", "free_text")
+    list_display = (
+        "requester_name",
+        "doctor_id",
+        "requester_email",
+        "requester_number",
+        "user_type",
+        "origin_channel",
+        "whatsapp_channel",
+        "campaign",
+        "status",
+        "created_at",
+    )
+    list_filter = ("user_type", "origin_channel", "whatsapp_channel", "status", "campaign")
+    search_fields = ("requester_name", "doctor_id", "requester_email", "requester_number", "subject", "free_text")
 
 
 @admin.register(SupportWidgetEvent)

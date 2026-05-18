@@ -83,3 +83,77 @@ class SupportOtherIssueForm(forms.ModelForm):
         if uploaded_file and uploaded_file.size > 8 * 1024 * 1024:
             raise forms.ValidationError("Please upload a file smaller than 8 MB.")
         return uploaded_file
+
+
+class WhatsAppChannelQueryForm(forms.ModelForm):
+    class Meta:
+        model = SupportRequest
+        fields = [
+            "whatsapp_channel",
+            "doctor_id",
+            "requester_name",
+            "requester_number",
+            "requester_email",
+            "requester_company",
+            "subject",
+            "free_text",
+        ]
+        widgets = {
+            "whatsapp_channel": forms.Select(attrs={"class": "form-select"}),
+            "doctor_id": forms.TextInput(attrs={"class": "form-control", "placeholder": "Doctor ID"}),
+            "requester_name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Doctor name"}),
+            "requester_number": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "WhatsApp mobile number", "inputmode": "tel"}
+            ),
+            "requester_email": forms.EmailInput(attrs={"class": "form-control", "placeholder": "Email address"}),
+            "requester_company": forms.TextInput(attrs={"class": "form-control", "placeholder": "Clinic or hospital name"}),
+            "subject": forms.TextInput(attrs={"class": "form-control", "placeholder": "Short query summary"}),
+            "free_text": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 5,
+                    "placeholder": "Write the message or question for moderator review.",
+                }
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["whatsapp_channel"].label = "Channel"
+        self.fields["whatsapp_channel"].choices = [("", "Select channel"), *SupportRequest.WhatsAppChannel.choices]
+        self.fields["doctor_id"].label = "Doctor ID"
+        self.fields["requester_name"].label = "Doctor Name"
+        self.fields["requester_number"].label = "WhatsApp Number"
+        self.fields["requester_email"].label = "Email Address"
+        self.fields["requester_company"].label = "Clinic / Hospital"
+        self.fields["subject"].label = "Query Summary"
+        self.fields["free_text"].label = "Message / Question"
+        for field_name in [
+            "whatsapp_channel",
+            "doctor_id",
+            "requester_name",
+            "requester_number",
+            "requester_email",
+            "requester_company",
+            "subject",
+            "free_text",
+        ]:
+            self.fields[field_name].required = True
+
+    def clean_doctor_id(self):
+        doctor_id = (self.cleaned_data.get("doctor_id") or "").strip()
+        if not doctor_id:
+            raise forms.ValidationError("Please enter the Doctor ID.")
+        return doctor_id
+
+    def clean_requester_number(self):
+        requester_number = (self.cleaned_data.get("requester_number") or "").strip()
+        if not requester_number:
+            raise forms.ValidationError("Please enter the WhatsApp number.")
+        return requester_number
+
+    def clean_free_text(self):
+        free_text = (self.cleaned_data.get("free_text") or "").strip()
+        if not free_text:
+            raise forms.ValidationError("Please enter the message or question.")
+        return free_text

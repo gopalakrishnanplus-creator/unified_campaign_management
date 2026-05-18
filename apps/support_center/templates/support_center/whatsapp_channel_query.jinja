@@ -1,0 +1,105 @@
+{% extends "base.jinja" %}
+{% block title %}WhatsApp Channel Query{% endblock %}
+{% block content %}
+<div class="row g-4 align-items-start">
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body p-4 p-lg-5">
+                <p class="eyebrow mb-2">Doctor Channel Support</p>
+                <h1 class="mb-3">Submit a WhatsApp Channel query</h1>
+                <p class="text-secondary mb-4">
+                    Use this form for RFA or SAPA channel messages that need moderator review before a response is shared back through the WhatsApp Channel.
+                </p>
+
+                <div class="vstack gap-3">
+                    <div class="d-flex gap-3">
+                        <span class="status-code-pill status-info">Admins post</span>
+                        <span class="status-code-pill status-secondary">Doctors submit</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Review queue</span>
+                        <strong>PM Dashboard</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Supported channels</span>
+                        <strong>RFA / SAPA</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Posting model</span>
+                        <strong>Moderator approved</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-4 p-lg-5">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+                    <div>
+                        <p class="eyebrow mb-1">Submit Query / Message</p>
+                        <h2 class="h3 mb-0">Channel moderation form</h2>
+                    </div>
+                    <span class="status-code-pill status-warning">Moderator review</span>
+                </div>
+
+                {% if form.non_field_errors() %}
+                    <div class="alert alert-danger rounded-4">{{ form.non_field_errors()|join(', ') }}</div>
+                {% endif %}
+
+                <form method="post" novalidate>
+                    {{ csrf_input }}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.whatsapp_channel.id_for_label }}">{{ form.whatsapp_channel.label }}</label>
+                            {{ form.whatsapp_channel }}
+                            {% if form.whatsapp_channel.errors %}<div class="text-danger small mt-1">{{ form.whatsapp_channel.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.doctor_id.id_for_label }}">{{ form.doctor_id.label }}</label>
+                            {{ form.doctor_id }}
+                            {% if form.doctor_id.errors %}<div class="text-danger small mt-1">{{ form.doctor_id.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.requester_name.id_for_label }}">{{ form.requester_name.label }}</label>
+                            {{ form.requester_name }}
+                            {% if form.requester_name.errors %}<div class="text-danger small mt-1">{{ form.requester_name.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.requester_number.id_for_label }}">{{ form.requester_number.label }}</label>
+                            {{ form.requester_number }}
+                            {% if form.requester_number.errors %}<div class="text-danger small mt-1">{{ form.requester_number.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.requester_email.id_for_label }}">{{ form.requester_email.label }}</label>
+                            {{ form.requester_email }}
+                            {% if form.requester_email.errors %}<div class="text-danger small mt-1">{{ form.requester_email.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.requester_company.id_for_label }}">{{ form.requester_company.label }}</label>
+                            {{ form.requester_company }}
+                            {% if form.requester_company.errors %}<div class="text-danger small mt-1">{{ form.requester_company.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="{{ form.subject.id_for_label }}">{{ form.subject.label }}</label>
+                            {{ form.subject }}
+                            {% if form.subject.errors %}<div class="text-danger small mt-1">{{ form.subject.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="{{ form.free_text.id_for_label }}">{{ form.free_text.label }}</label>
+                            {{ form.free_text }}
+                            {% if form.free_text.errors %}<div class="text-danger small mt-1">{{ form.free_text.errors|join(', ') }}</div>{% endif %}
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 flex-wrap mt-4">
+                        <button class="btn btn-primary" type="submit">Submit for review</button>
+                        <a class="btn btn-outline-secondary" href="{{ url('home') }}">Return home</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

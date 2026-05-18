@@ -6,7 +6,13 @@
             <div class="card-body p-4 p-lg-5 text-center">
                 <p class="eyebrow mb-1">Customer Support</p>
                 <h1 class="mb-3">Support request logged</h1>
-                {% if support_request.status == 'pending_pm_review' %}
+                {% if support_request.origin_channel == 'whatsapp_channel' %}
+                    <p class="text-secondary mb-3">Your WhatsApp Channel message is in moderator review. We will review it and get back to you within {{ pm_queue_estimated_response_time }}.</p>
+                    <div class="d-inline-flex flex-column gap-2 align-items-center rounded-4 border bg-light px-4 py-3 mb-4">
+                        <span class="text-secondary small">Ticket ID</span>
+                        <strong>{{ support_request.queue_ticket_number }}</strong>
+                    </div>
+                {% elif support_request.status == 'pending_pm_review' %}
                     <p class="text-secondary mb-3">Your issue is in our PM review queue. We will review it and get back to you within {{ pm_queue_estimated_response_time }}.</p>
                     <div class="d-inline-flex flex-column gap-2 align-items-center rounded-4 border bg-light px-4 py-3 mb-4">
                         <span class="text-secondary small">Ticket ID</span>

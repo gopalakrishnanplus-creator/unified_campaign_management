@@ -26,12 +26,13 @@ from apps.ticketing.external_ticketing import (
 from apps.ticketing.models import Department, TicketAttachment, TicketNote, TicketTypeDefinition
 from apps.ticketing.services import create_ticket
 
-from .forms import SupportOtherIssueForm, SupportRequestForm
+from .forms import SupportOtherIssueForm, SupportRequestForm, WhatsAppChannelQueryForm
 from .models import SupportItem, SupportPage, SupportRequest, SupportWidgetEvent
 from .services import (
     GENERAL_SUPPORT_FLOW,
     build_pm_queue_success_message,
     create_support_widget_event,
+    create_whatsapp_channel_query,
     build_support_request_ticket_initial,
     create_other_support_request,
     get_available_categories,
@@ -380,6 +381,26 @@ class SupportLandingView(SupportAudienceMixin, TemplateView):
         else:
             messages.info(request, error_message or "Support request recorded.")
         return redirect("support_center:success", user_type=self.user_type, request_id=support_request.pk)
+
+
+class WhatsAppChannelQueryView(TemplateView):
+    template_name = "support_center/whatsapp_channel_query.jinja"
+    template_engine = "jinja2"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form"] = kwargs.get("form") or WhatsAppChannelQueryForm()
+        return context
+
+    def post(self, request, *args, **kwargs):
+        form = WhatsAppChannelQueryForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "Please complete the WhatsApp Channel query fields.")
+            return self.render_to_response(self.get_context_data(form=form))
+
+        support_request = create_whatsapp_channel_query(form=form, request_user=request.user)
+        messages.success(request, build_pm_queue_success_message(support_request))
+        return redirect("support_center:success", user_type="doctor", request_id=support_request.pk)
 
 
 class SupportFaqSuperCategoryView(SupportAudienceMixin, TemplateView):

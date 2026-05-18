@@ -36,6 +36,7 @@ class SeededIntegrationTestCase(TestCase):
     def test_public_pages_render(self):
         paths = [
             reverse("home"),
+            reverse("support_center:whatsapp_channel_query"),
             reverse("support_center:landing", kwargs={"user_type": "doctor"}),
             reverse("support_center:landing", kwargs={"user_type": "clinic_staff"}),
             reverse("support_center:landing", kwargs={"user_type": "brand_manager"}),
@@ -50,6 +51,53 @@ class SeededIntegrationTestCase(TestCase):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
+
+    @patch("apps.dashboards.services.requests.get")
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_whatsapp_channel_query_submission_reaches_pm_dashboard(self, mock_get):
+        mock_get.return_value = Mock(status_code=200)
+        query_url = reverse("support_center:whatsapp_channel_query")
+
+        page_response = self.client.get(query_url)
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, "Submit a WhatsApp Channel query")
+        self.assertContains(page_response, 'value="rfa"', html=False)
+        self.assertContains(page_response, 'value="sapa"', html=False)
+
+        response = self.client.post(
+            query_url,
+            data={
+                "whatsapp_channel": SupportRequest.WhatsAppChannel.RFA,
+                "doctor_id": "DOC-WA-401",
+                "requester_name": "Dr. Channel Doctor",
+                "requester_number": "+919876543210",
+                "requester_email": "channel.doctor@example.com",
+                "requester_company": "Channel Clinic",
+                "subject": "Can this campaign update be shared?",
+                "free_text": "Please review this question before it is shared in the RFA WhatsApp Channel.",
+            },
+            follow=True,
+        )
+
+        support_request = SupportRequest.objects.get(doctor_id="DOC-WA-401")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(support_request.status, SupportRequest.Status.PENDING_PM_REVIEW)
+        self.assertEqual(support_request.origin_channel, SupportRequest.OriginChannel.WHATSAPP_CHANNEL)
+        self.assertEqual(support_request.whatsapp_channel, SupportRequest.WhatsAppChannel.RFA)
+        self.assertEqual(support_request.source_system, "Red Flag Alert")
+        self.assertEqual(support_request.source_flow, "WhatsApp Channel")
+        self.assertTrue(support_request.queue_ticket_number.startswith("PMQ-"))
+        self.assertContains(response, "Your WhatsApp Channel message is in moderator review.")
+        self.assertContains(response, support_request.queue_ticket_number)
+        self.assertEqual(len(mail.outbox), 1)
+
+        self.client.force_login(self.pm_user)
+        dashboard_response = self.client.get(reverse("dashboards:home"))
+        self.assertContains(dashboard_response, "WhatsApp Channel")
+        self.assertContains(dashboard_response, "Doctor ID DOC-WA-401")
+        self.assertContains(dashboard_response, "Dr. Channel Doctor")
+        self.assertContains(dashboard_response, "Red Flag Alert")
+        self.assertContains(dashboard_response, "Please review this question before it is shared")
 
     def test_dev_login_redirects_to_dashboard(self):
         response = self.client.get(reverse("accounts:dev_login"))

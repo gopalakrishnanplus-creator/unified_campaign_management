@@ -151,6 +151,11 @@ class SupportRequest(models.Model):
         DIRECT = "direct", "Direct"
         ASSISTANT = "assistant", "Assistant"
         WIDGET = "widget", "Widget"
+        WHATSAPP_CHANNEL = "whatsapp_channel", "WhatsApp Channel"
+
+    class WhatsAppChannel(models.TextChoices):
+        RFA = "rfa", "RFA"
+        SAPA = "sapa", "SAPA"
 
     class DeviceType(models.TextChoices):
         ANDROID = "android", "Android"
@@ -172,6 +177,8 @@ class SupportRequest(models.Model):
     requester_email = models.EmailField()
     requester_number = models.CharField(max_length=32, blank=True)
     requester_company = models.CharField(max_length=255, blank=True)
+    doctor_id = models.CharField(max_length=64, blank=True)
+    whatsapp_channel = models.CharField(max_length=32, choices=WhatsAppChannel.choices, blank=True)
     device_type = models.CharField(max_length=16, choices=DeviceType.choices, blank=True)
     device = models.CharField(max_length=16, choices=Device.choices, blank=True)
     campaign = models.ForeignKey("campaigns.Campaign", null=True, blank=True, on_delete=models.SET_NULL, related_name="support_requests")

@@ -24,6 +24,12 @@
                     <span>Flow</span>
                     <strong>{{ support_request.source_flow or 'General support' }}</strong>
                 </div>
+                {% if support_request.whatsapp_channel %}
+                    <div class="metric-row">
+                        <span>WhatsApp Channel</span>
+                        <strong>{{ support_request.get_whatsapp_channel_display() }}</strong>
+                    </div>
+                {% endif %}
                 <div class="metric-row">
                     <span>Page</span>
                     <strong>{{ support_request.page_label or 'Not specified' }}</strong>
@@ -61,6 +67,9 @@
                 <div class="mt-3">
                     <h2 class="h6 mb-2">Requester</h2>
                     <div class="text-secondary small">Name: {{ support_request.requester_name or 'Not provided' }}</div>
+                    {% if support_request.doctor_id %}
+                        <div class="text-secondary small">Doctor ID: {{ support_request.doctor_id }}</div>
+                    {% endif %}
                     <div class="text-secondary small">Email: {{ support_request.requester_email or 'Not provided' }}</div>
                     <div class="text-secondary small">Phone: {{ support_request.requester_number or 'Not provided' }}</div>
                     <div class="text-secondary small">Company: {{ support_request.requester_company or 'Not provided' }}</div>

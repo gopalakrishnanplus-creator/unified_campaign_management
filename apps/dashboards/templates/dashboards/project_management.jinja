@@ -388,18 +388,27 @@
                             <td>
                                 <div class="fw-semibold">{{ row.request.queue_ticket_number }}</div>
                                 <div class="text-secondary small">{{ row.request.created_at|india_datetime }}</div>
+                                {% if row.request.origin_channel == 'whatsapp_channel' %}
+                                    <div class="mt-1"><span class="status-code-pill status-info">WhatsApp Channel</span></div>
+                                {% endif %}
                                 {% if row.request.is_escalated %}
                                     <div class="mt-1"><span class="status-code-pill status-danger">High Priority / Escalated</span></div>
                                 {% endif %}
                             </td>
                             <td>
                                 <div>{{ row.request.requester_name or 'Not provided' }}</div>
+                                {% if row.request.doctor_id %}
+                                    <div class="text-secondary small">Doctor ID {{ row.request.doctor_id }}</div>
+                                {% endif %}
                                 <div class="text-secondary small">{{ row.request.requester_email or 'Email not provided' }}</div>
                                 <div class="text-secondary small">{{ row.request.requester_number or 'Phone not provided' }}</div>
                             </td>
                             <td>
                                 {{ row.request.source_system or 'Not provided' }}
                                 <div class="text-secondary small">{{ row.request.user_type.replace('_', ' ').title() }}</div>
+                                {% if row.request.whatsapp_channel %}
+                                    <div class="text-secondary small">Channel: {{ row.request.get_whatsapp_channel_display() }}</div>
+                                {% endif %}
                                 <div class="text-secondary small">Flow: {{ row.request.source_flow or 'General support' }}</div>
                                 <div class="text-secondary small">Page: {{ row.request.page_label or 'Not specified' }}</div>
                                 <div class="text-secondary small">Section: {{ row.request.section_label or 'Not specified' }}</div>

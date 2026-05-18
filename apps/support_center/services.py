@@ -25,6 +25,11 @@ ROLE_VISIBILITY_FIELD = {
     "expert": "is_visible_to_experts",
 }
 GENERAL_SUPPORT_FLOW = "General support"
+WHATSAPP_CHANNEL_FLOW = "WhatsApp Channel"
+WHATSAPP_CHANNEL_SOURCE_SYSTEMS = {
+    SupportRequest.WhatsAppChannel.RFA: "Red Flag Alert",
+    SupportRequest.WhatsAppChannel.SAPA: "SAPA",
+}
 SOURCE_SYSTEM_TO_TICKET_SOURCE = {
     "In-clinic": Ticket.SourceSystem.IN_CLINIC,
     "Red Flag Alert": Ticket.SourceSystem.RED_FLAG_ALERT,
@@ -389,6 +394,30 @@ def create_other_support_request(*, user_type, page, super_category, category, s
     return support_request
 
 
+def create_whatsapp_channel_query(*, form, request_user):
+    support_request = form.save(commit=False)
+    support_request.user_type = "doctor"
+    support_request.item = None
+    support_request.support_page = None
+    support_request.support_super_category = None
+    support_request.support_category = None
+    support_request.source_system = WHATSAPP_CHANNEL_SOURCE_SYSTEMS.get(
+        support_request.whatsapp_channel,
+        support_request.get_whatsapp_channel_display() or "",
+    )
+    support_request.source_flow = WHATSAPP_CHANNEL_FLOW
+    support_request.origin_channel = SupportRequest.OriginChannel.WHATSAPP_CHANNEL
+    support_request.status = SupportRequest.Status.PENDING_PM_REVIEW
+    if request_user and request_user.is_authenticated:
+        support_request.requester_number = support_request.requester_number or request_user.phone_number or ""
+    support_request.subject = Truncator(
+        f"{support_request.source_system} WhatsApp Channel - {support_request.subject}"
+    ).chars(255)
+    support_request.save()
+    send_pm_queue_confirmation_email(support_request)
+    return support_request
+
+
 def resolve_support_request_context(*, selected_faq=None, selected_system="", selected_flow=""):
     system_name = selected_system or ""
     flow_name = selected_flow or ""
@@ -418,6 +447,8 @@ def build_support_request_ticket_initial(support_request):
         f"Screen / Section: {support_request.screen_label or 'Not specified'}",
         f"User type: {support_request.user_type.replace('_', ' ').title()}",
         f"Requester name: {support_request.requester_name or 'Not provided'}",
+        f"Doctor ID: {support_request.doctor_id or 'Not provided'}",
+        f"WhatsApp channel: {support_request.get_whatsapp_channel_display() if support_request.whatsapp_channel else 'Not provided'}",
         f"Requester email: {support_request.requester_email or 'Not provided'}",
         f"Requester phone: {support_request.requester_number or 'Not provided'}",
         f"Requester company: {support_request.requester_company or 'Not provided'}",
