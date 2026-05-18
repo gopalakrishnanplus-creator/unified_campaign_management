@@ -60,14 +60,17 @@ class SeededIntegrationTestCase(TestCase):
 
         page_response = self.client.get(query_url)
         self.assertEqual(page_response.status_code, 200)
-        self.assertContains(page_response, "Submit a WhatsApp Channel query")
-        self.assertContains(page_response, 'value="rfa"', html=False)
-        self.assertContains(page_response, 'value="sapa"', html=False)
+        self.assertContains(page_response, 'enctype="multipart/form-data"', html=False)
+        self.assertContains(page_response, 'name="uploaded_file"', html=False)
+        self.assertContains(page_response, "Upload image")
+        self.assertNotContains(page_response, "Select channel")
+        self.assertNotContains(page_response, "Doctor Channel Support")
+        self.assertNotContains(page_response, "Campaign Management")
+        self.assertNotContains(page_response, "Return home")
 
         response = self.client.post(
             query_url,
             data={
-                "whatsapp_channel": SupportRequest.WhatsAppChannel.RFA,
                 "doctor_id": "DOC-WA-401",
                 "requester_name": "Dr. Channel Doctor",
                 "requester_number": "+919876543210",
@@ -75,6 +78,7 @@ class SeededIntegrationTestCase(TestCase):
                 "requester_company": "Channel Clinic",
                 "subject": "Can this campaign update be shared?",
                 "free_text": "Please review this question before it is shared in the RFA WhatsApp Channel.",
+                "uploaded_file": SimpleUploadedFile("channel-query.png", b"image-bytes", content_type="image/png"),
             },
             follow=True,
         )
@@ -86,6 +90,7 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.whatsapp_channel, SupportRequest.WhatsAppChannel.RFA)
         self.assertEqual(support_request.source_system, "Red Flag Alert")
         self.assertEqual(support_request.source_flow, "WhatsApp Channel")
+        self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
         self.assertTrue(support_request.queue_ticket_number.startswith("PMQ-"))
         self.assertContains(response, "Your WhatsApp Channel message is in moderator review.")
         self.assertContains(response, support_request.queue_ticket_number)
@@ -98,6 +103,7 @@ class SeededIntegrationTestCase(TestCase):
         self.assertContains(dashboard_response, "Dr. Channel Doctor")
         self.assertContains(dashboard_response, "Red Flag Alert")
         self.assertContains(dashboard_response, "Please review this question before it is shared")
+        self.assertContains(dashboard_response, "channel-query.png")
 
     def test_dev_login_redirects_to_dashboard(self):
         response = self.client.get(reverse("accounts:dev_login"))

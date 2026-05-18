@@ -387,18 +387,33 @@ class WhatsAppChannelQueryView(TemplateView):
     template_name = "support_center/whatsapp_channel_query.jinja"
     template_engine = "jinja2"
 
+    def _channel_value(self):
+        requested_channel = (
+            self.request.POST.get("whatsapp_channel")
+            or self.request.GET.get("channel")
+            or SupportRequest.WhatsAppChannel.RFA
+        )
+        if requested_channel not in dict(SupportRequest.WhatsAppChannel.choices):
+            return SupportRequest.WhatsAppChannel.RFA
+        return requested_channel
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["form"] = kwargs.get("form") or WhatsAppChannelQueryForm()
+        context["whatsapp_channel"] = self._channel_value()
         return context
 
     def post(self, request, *args, **kwargs):
-        form = WhatsAppChannelQueryForm(request.POST)
+        form = WhatsAppChannelQueryForm(request.POST, request.FILES)
         if not form.is_valid():
             messages.error(request, "Please complete the WhatsApp Channel query fields.")
             return self.render_to_response(self.get_context_data(form=form))
 
-        support_request = create_whatsapp_channel_query(form=form, request_user=request.user)
+        support_request = create_whatsapp_channel_query(
+            form=form,
+            request_user=request.user,
+            whatsapp_channel=self._channel_value(),
+        )
         messages.success(request, build_pm_queue_success_message(support_request))
         return redirect("support_center:success", user_type="doctor", request_id=support_request.pk)
 

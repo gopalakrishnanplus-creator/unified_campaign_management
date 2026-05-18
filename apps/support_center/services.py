@@ -394,13 +394,14 @@ def create_other_support_request(*, user_type, page, super_category, category, s
     return support_request
 
 
-def create_whatsapp_channel_query(*, form, request_user):
+def create_whatsapp_channel_query(*, form, request_user, whatsapp_channel=None):
     support_request = form.save(commit=False)
     support_request.user_type = "doctor"
     support_request.item = None
     support_request.support_page = None
     support_request.support_super_category = None
     support_request.support_category = None
+    support_request.whatsapp_channel = whatsapp_channel or SupportRequest.WhatsAppChannel.RFA
     support_request.source_system = WHATSAPP_CHANNEL_SOURCE_SYSTEMS.get(
         support_request.whatsapp_channel,
         support_request.get_whatsapp_channel_display() or "",

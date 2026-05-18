@@ -89,7 +89,6 @@ class WhatsAppChannelQueryForm(forms.ModelForm):
     class Meta:
         model = SupportRequest
         fields = [
-            "whatsapp_channel",
             "doctor_id",
             "requester_name",
             "requester_number",
@@ -97,9 +96,9 @@ class WhatsAppChannelQueryForm(forms.ModelForm):
             "requester_company",
             "subject",
             "free_text",
+            "uploaded_file",
         ]
         widgets = {
-            "whatsapp_channel": forms.Select(attrs={"class": "form-select"}),
             "doctor_id": forms.TextInput(attrs={"class": "form-control", "placeholder": "Doctor ID"}),
             "requester_name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Doctor name"}),
             "requester_number": forms.TextInput(
@@ -115,12 +114,16 @@ class WhatsAppChannelQueryForm(forms.ModelForm):
                     "placeholder": "Write the message or question for moderator review.",
                 }
             ),
+            "uploaded_file": forms.ClearableFileInput(
+                attrs={
+                    "class": "form-control",
+                    "accept": ".jpg,.jpeg,.png,.heic,.svg,.webp",
+                }
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["whatsapp_channel"].label = "Channel"
-        self.fields["whatsapp_channel"].choices = [("", "Select channel"), *SupportRequest.WhatsAppChannel.choices]
         self.fields["doctor_id"].label = "Doctor ID"
         self.fields["requester_name"].label = "Doctor Name"
         self.fields["requester_number"].label = "WhatsApp Number"
@@ -128,8 +131,8 @@ class WhatsAppChannelQueryForm(forms.ModelForm):
         self.fields["requester_company"].label = "Clinic / Hospital"
         self.fields["subject"].label = "Query Summary"
         self.fields["free_text"].label = "Message / Question"
+        self.fields["uploaded_file"].label = "Upload image"
         for field_name in [
-            "whatsapp_channel",
             "doctor_id",
             "requester_name",
             "requester_number",
@@ -157,3 +160,9 @@ class WhatsAppChannelQueryForm(forms.ModelForm):
         if not free_text:
             raise forms.ValidationError("Please enter the message or question.")
         return free_text
+
+    def clean_uploaded_file(self):
+        uploaded_file = self.cleaned_data.get("uploaded_file")
+        if uploaded_file and uploaded_file.size > 8 * 1024 * 1024:
+            raise forms.ValidationError("Please upload a file smaller than 8 MB.")
+        return uploaded_file
