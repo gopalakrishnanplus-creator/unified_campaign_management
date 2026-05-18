@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import unquote
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
@@ -92,18 +93,39 @@ class SeededIntegrationTestCase(TestCase):
         self.assertEqual(support_request.source_flow, "WhatsApp Channel")
         self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
         self.assertTrue(support_request.queue_ticket_number.startswith("PMQ-"))
-        self.assertContains(response, "Your WhatsApp Channel message is in moderator review.")
-        self.assertContains(response, support_request.queue_ticket_number)
+        self.assertContains(response, "Your WhatsApp Channel query has been submitted for moderator review.")
+        self.assertNotContains(response, "Ticket ID")
+        self.assertNotContains(response, support_request.queue_ticket_number)
+        self.assertNotContains(response, "Return home")
+        self.assertNotContains(response, "View tickets")
+        self.assertNotContains(response, "Campaign Management")
         self.assertEqual(len(mail.outbox), 1)
 
         self.client.force_login(self.pm_user)
         dashboard_response = self.client.get(reverse("dashboards:home"))
+        self.assertContains(dashboard_response, "WhatsApp Channel Queries")
+        self.assertContains(dashboard_response, "View and approve")
         self.assertContains(dashboard_response, "WhatsApp Channel")
         self.assertContains(dashboard_response, "Doctor ID DOC-WA-401")
         self.assertContains(dashboard_response, "Dr. Channel Doctor")
         self.assertContains(dashboard_response, "Red Flag Alert")
         self.assertContains(dashboard_response, "Please review this question before it is shared")
         self.assertContains(dashboard_response, "channel-query.png")
+
+        approve_response = self.client.post(
+            reverse("support_center:approve_whatsapp_channel_request", kwargs={"request_id": support_request.pk}),
+            data={"moderator_response": "Approved response for the channel."},
+        )
+        support_request.refresh_from_db()
+        self.assertEqual(approve_response.status_code, 302)
+        self.assertTrue(approve_response["Location"].startswith("https://wa.me/?text="))
+        whatsapp_text = unquote(approve_response["Location"])
+        self.assertIn("Please review this question before it is shared", whatsapp_text)
+        self.assertIn("Approved response for the channel.", whatsapp_text)
+        self.assertEqual(support_request.status, SupportRequest.Status.SOLUTION_PROVIDED)
+        self.assertEqual(support_request.moderator_response, "Approved response for the channel.")
+        self.assertEqual(support_request.whatsapp_approved_by, self.pm_user)
+        self.assertIsNotNone(support_request.whatsapp_approved_at)
 
     def test_dev_login_redirects_to_dashboard(self):
         response = self.client.get(reverse("accounts:dev_login"))

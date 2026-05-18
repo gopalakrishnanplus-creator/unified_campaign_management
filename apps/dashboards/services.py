@@ -538,14 +538,20 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
     ]
 
     ticket_distribution = build_ticket_distribution_data(tickets, period_days=30)
-    other_issue_requests = (
+    pending_support_requests = (
         SupportRequest.objects.filter(status=SupportRequest.Status.PENDING_PM_REVIEW)
         .select_related("campaign", "support_page", "support_super_category", "support_category__super_category", "ticket_link")
         .order_by("-is_escalated", "-created_at")
     )
     if campaign:
-        other_issue_requests = other_issue_requests.filter(campaign=campaign)
+        pending_support_requests = pending_support_requests.filter(campaign=campaign)
 
+    whatsapp_channel_requests = pending_support_requests.filter(
+        origin_channel=SupportRequest.OriginChannel.WHATSAPP_CHANNEL
+    )
+    other_issue_requests = pending_support_requests.exclude(
+        origin_channel=SupportRequest.OriginChannel.WHATSAPP_CHANNEL
+    )
     other_issue_rows = [
         {
             "request": support_request,
@@ -558,6 +564,19 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
             "raise_ticket_url": reverse("support_center:raise_ticket", kwargs={"request_id": support_request.pk}),
         }
         for support_request in other_issue_requests
+    ]
+    whatsapp_channel_rows = [
+        {
+            "request": support_request,
+            "uploaded_file_name": support_request.uploaded_file.name.split("/")[-1] if support_request.uploaded_file else "",
+            "uploaded_file_is_image": (
+                support_request.uploaded_file.name.lower().endswith((".jpg", ".jpeg", ".png", ".heic", ".svg", ".webp"))
+                if support_request.uploaded_file
+                else False
+            ),
+            "approve_url": reverse("support_center:approve_whatsapp_channel_request", kwargs={"request_id": support_request.pk}),
+        }
+        for support_request in whatsapp_channel_requests
     ]
     widget_activity_rows, widget_activity_totals = _build_support_widget_activity_rows()
     special_instruction_rows, special_instruction_pagination = _build_special_instruction_review_rows(
@@ -578,6 +597,7 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
         "priority_breakdown": priority_breakdown,
         "category_breakdown": category_breakdown,
         "ticket_distribution": ticket_distribution,
+        "whatsapp_channel_rows": whatsapp_channel_rows,
         "other_issue_rows": other_issue_rows,
         "special_instruction_rows": special_instruction_rows,
         "special_instruction_archive_rows": special_instruction_archive_rows,
@@ -608,6 +628,7 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
             "in_progress_tickets": in_progress_count,
             "completed_tickets": closed_count,
             "critical_tickets": critical_count,
+            "whatsapp_channel_requests": len(whatsapp_channel_rows),
             "other_issue_requests": len(other_issue_rows),
             "special_instruction_reviews": special_instruction_pagination["active_count"],
             "archived_special_instruction_reviews": special_instruction_pagination["archived_count"],

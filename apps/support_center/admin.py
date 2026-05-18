@@ -58,9 +58,10 @@ class SupportRequestAdmin(admin.ModelAdmin):
         "whatsapp_channel",
         "campaign",
         "status",
+        "whatsapp_approved_at",
         "created_at",
     )
-    list_filter = ("user_type", "origin_channel", "whatsapp_channel", "status", "campaign")
+    list_filter = ("user_type", "origin_channel", "whatsapp_channel", "status", "campaign", "whatsapp_approved_at")
     search_fields = ("requester_name", "doctor_id", "requester_email", "requester_number", "subject", "free_text")
 
 

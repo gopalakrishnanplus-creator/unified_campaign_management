@@ -1,6 +1,6 @@
 import os
 from collections import OrderedDict
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
@@ -31,6 +31,7 @@ from .models import SupportItem, SupportPage, SupportRequest, SupportWidgetEvent
 from .services import (
     GENERAL_SUPPORT_FLOW,
     build_pm_queue_success_message,
+    build_whatsapp_channel_approval_message,
     create_support_widget_event,
     create_whatsapp_channel_query,
     build_support_request_ticket_initial,
@@ -880,11 +881,48 @@ class SupportSuccessView(TemplateView):
     template_name = "support_center/success.jinja"
     template_engine = "jinja2"
 
+    def dispatch(self, request, *args, **kwargs):
+        self.support_request = get_object_or_404(SupportRequest, pk=kwargs["request_id"])
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_template_names(self):
+        if self.support_request.origin_channel == SupportRequest.OriginChannel.WHATSAPP_CHANNEL:
+            return ["support_center/whatsapp_channel_success.jinja"]
+        return [self.template_name]
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["support_request"] = get_object_or_404(SupportRequest, pk=kwargs["request_id"])
+        context["support_request"] = self.support_request
         context["pm_queue_estimated_response_time"] = get_pm_queue_estimated_response_time()
         return context
+
+
+class SupportRequestWhatsAppApproveView(ProjectManagerAccessMixin, View):
+    def post(self, request, *args, **kwargs):
+        support_request = get_object_or_404(
+            SupportRequest,
+            pk=kwargs["request_id"],
+            origin_channel=SupportRequest.OriginChannel.WHATSAPP_CHANNEL,
+        )
+        response_text = (request.POST.get("moderator_response") or "").strip()
+        if not response_text:
+            messages.error(request, "Please type a response before approving the WhatsApp Channel query.")
+            return redirect(f"{reverse('dashboards:home')}#whatsapp-channel-review")
+
+        support_request.moderator_response = response_text
+        support_request.status = SupportRequest.Status.SOLUTION_PROVIDED
+        support_request.whatsapp_approved_at = timezone.now()
+        support_request.whatsapp_approved_by = request.user
+        support_request.save(
+            update_fields=[
+                "moderator_response",
+                "status",
+                "whatsapp_approved_at",
+                "whatsapp_approved_by",
+            ]
+        )
+        whatsapp_message = build_whatsapp_channel_approval_message(support_request, response_text)
+        return redirect(f"https://wa.me/?text={quote(whatsapp_message)}")
 
 
 class SupportRequestEscalateView(ProjectManagerAccessMixin, View):

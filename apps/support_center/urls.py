@@ -10,6 +10,7 @@ from .views import (
     SupportLandingView,
     SupportRequestEscalateView,
     SupportRequestRaiseTicketView,
+    SupportRequestWhatsAppApproveView,
     SupportSuccessView,
     WhatsAppChannelQueryView,
     support_faq_other_issue,
@@ -65,6 +66,11 @@ urlpatterns = [
     path("<str:user_type>/assistant/", SupportAssistantView.as_view(), name="assistant"),
     path("<str:user_type>/request/<int:request_id>/success/", SupportSuccessView.as_view(), name="success"),
     path("requests/<int:request_id>/escalate/", SupportRequestEscalateView.as_view(), name="escalate_request"),
+    path(
+        "requests/<int:request_id>/approve-whatsapp/",
+        SupportRequestWhatsAppApproveView.as_view(),
+        name="approve_whatsapp_channel_request",
+    ),
     path("requests/<int:request_id>/raise-ticket/", SupportRequestRaiseTicketView.as_view(), name="raise_ticket"),
     path(
         "<str:user_type>/<slug:super_slug>/<slug:category_slug>/<slug:item_slug>/",

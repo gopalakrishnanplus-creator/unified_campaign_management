@@ -419,6 +419,23 @@ def create_whatsapp_channel_query(*, form, request_user, whatsapp_channel=None):
     return support_request
 
 
+def build_whatsapp_channel_approval_message(support_request, response_text):
+    return "\n".join(
+        [
+            f"{support_request.get_whatsapp_channel_display()} WhatsApp Channel",
+            f"Doctor: {support_request.requester_name or 'Not provided'}",
+            f"Doctor ID: {support_request.doctor_id or 'Not provided'}",
+            f"Clinic: {support_request.requester_company or 'Not provided'}",
+            "",
+            "Query:",
+            support_request.free_text.strip() or support_request.subject,
+            "",
+            "Response:",
+            response_text.strip(),
+        ]
+    )
+
+
 def resolve_support_request_context(*, selected_faq=None, selected_system="", selected_flow=""):
     system_name = selected_system or ""
     flow_name = selected_flow or ""
