@@ -11,7 +11,15 @@ from django.utils.text import Truncator
 from apps.ticketing.models import Department, Ticket
 from apps.ticketing.services import create_ticket, resolve_ticket_classification
 
-from .models import SupportCategory, SupportItem, SupportPage, SupportRequest, SupportSuperCategory, SupportWidgetEvent
+from .models import (
+    SupportCategory,
+    SupportItem,
+    SupportPage,
+    SupportRequest,
+    SupportRequestImage,
+    SupportSuperCategory,
+    SupportWidgetEvent,
+)
 
 
 ROLE_VISIBILITY_FIELD = {
@@ -411,10 +419,10 @@ def create_whatsapp_channel_query(*, form, request_user, whatsapp_channel=None):
     support_request.status = SupportRequest.Status.PENDING_PM_REVIEW
     if request_user and request_user.is_authenticated:
         support_request.requester_number = support_request.requester_number or request_user.phone_number or ""
-    support_request.subject = Truncator(
-        f"{support_request.source_system} WhatsApp Channel - {support_request.subject}"
-    ).chars(255)
+    support_request.subject = Truncator(f"{support_request.source_system} WhatsApp Channel Query").chars(255)
     support_request.save()
+    for image in form.cleaned_data.get("images") or []:
+        SupportRequestImage.objects.create(support_request=support_request, image=image)
     send_pm_queue_confirmation_email(support_request)
     return support_request
 
@@ -422,10 +430,7 @@ def create_whatsapp_channel_query(*, form, request_user, whatsapp_channel=None):
 def build_whatsapp_channel_approval_message(support_request, response_text):
     return "\n".join(
         [
-            f"{support_request.get_whatsapp_channel_display()} WhatsApp Channel",
-            f"Doctor: {support_request.requester_name or 'Not provided'}",
-            f"Doctor ID: {support_request.doctor_id or 'Not provided'}",
-            f"Clinic: {support_request.requester_company or 'Not provided'}",
+            f"Doctor Name: {support_request.requester_name or 'Not provided'}",
             "",
             "Query:",
             support_request.free_text.strip() or support_request.subject,

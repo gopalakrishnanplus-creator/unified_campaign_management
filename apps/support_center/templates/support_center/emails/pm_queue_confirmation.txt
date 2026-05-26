@@ -6,7 +6,6 @@ Ticket ID: {{ ticket_id }}
 Estimated response time: {{ estimated_response_time }}
 {% if support_request.origin_channel == "whatsapp_channel" %}
 Channel: {{ support_request.get_whatsapp_channel_display() }}
-Doctor ID: {{ support_request.doctor_id or "Not provided" }}
 {% endif %}
 
 Issue summary:

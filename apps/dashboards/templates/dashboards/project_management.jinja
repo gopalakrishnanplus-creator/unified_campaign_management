@@ -377,7 +377,7 @@
                         <th>Doctor</th>
                         <th>Channel</th>
                         <th>Query</th>
-                        <th>Uploaded file</th>
+                        <th>Uploaded images</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -390,37 +390,32 @@
                             </td>
                             <td>
                                 <div>{{ row.request.requester_name or 'Not provided' }}</div>
-                                {% if row.request.doctor_id %}
-                                    <div class="text-secondary small">Doctor ID {{ row.request.doctor_id }}</div>
-                                {% endif %}
                                 <div class="text-secondary small">{{ row.request.requester_email or 'Email not provided' }}</div>
                                 <div class="text-secondary small">{{ row.request.requester_number or 'Phone not provided' }}</div>
-                                <div class="text-secondary small">{{ row.request.requester_company or 'Clinic not provided' }}</div>
                             </td>
                             <td>
                                 <span class="status-code-pill status-info">{{ row.request.get_whatsapp_channel_display() }}</span>
                                 <div class="text-secondary small mt-1">{{ row.request.source_system or 'Not provided' }}</div>
                             </td>
                             <td>
-                                <div class="fw-semibold">{{ row.request.subject }}</div>
-                                <div class="text-secondary small">{{ row.request.free_text }}</div>
+                                {{ row.request.free_text }}
                             </td>
                             <td>
-                                {% if row.request.uploaded_file %}
+                                {% if row.uploaded_images %}
                                     <div class="d-flex flex-column gap-2 align-items-start">
-                                        <a class="btn btn-sm btn-outline-secondary" href="{{ row.request.uploaded_file.url }}" target="_blank" rel="noreferrer">Open file</a>
-                                        <span class="small text-secondary">{{ row.uploaded_file_name }}</span>
-                                        {% if row.uploaded_file_is_image %}
+                                        {% for image in row.uploaded_images %}
+                                            <a class="btn btn-sm btn-outline-secondary" href="{{ image.file.url }}" target="_blank" rel="noreferrer">Open image {{ loop.index }}</a>
+                                            <span class="small text-secondary">{{ image.file_name }}</span>
                                             <img
-                                                src="{{ row.request.uploaded_file.url }}"
+                                                src="{{ image.file.url }}"
                                                 alt="WhatsApp query evidence preview"
                                                 class="rounded-3 border"
                                                 style="width: 84px; height: 84px; object-fit: cover;"
                                             >
-                                        {% endif %}
+                                        {% endfor %}
                                     </div>
                                 {% else %}
-                                    <span class="text-secondary">No file</span>
+                                    <span class="text-secondary">No images</span>
                                 {% endif %}
                             </td>
                             <td>
@@ -433,9 +428,6 @@
                                     data-ticket="{{ row.request.queue_ticket_number }}"
                                     data-channel="{{ row.request.get_whatsapp_channel_display() }}"
                                     data-doctor="{{ row.request.requester_name or 'Not provided' }}"
-                                    data-doctor-id="{{ row.request.doctor_id or 'Not provided' }}"
-                                    data-clinic="{{ row.request.requester_company or 'Not provided' }}"
-                                    data-subject="{{ row.request.subject }}"
                                     data-query="{{ row.request.free_text }}"
                                 >
                                     View and approve
@@ -463,16 +455,9 @@
                 <form method="post" id="whatsapp-channel-approve-form" target="_blank">
                     <div class="modal-body">
                         {{ csrf_input }}
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-6">
-                                <div class="metric-row"><span>Channel</span><strong id="whatsapp-channel-approve-channel">Not provided</strong></div>
-                                <div class="metric-row"><span>Doctor</span><strong id="whatsapp-channel-approve-doctor">Not provided</strong></div>
-                                <div class="metric-row"><span>Doctor ID</span><strong id="whatsapp-channel-approve-doctor-id">Not provided</strong></div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="metric-row"><span>Clinic</span><strong id="whatsapp-channel-approve-clinic">Not provided</strong></div>
-                                <div class="metric-row"><span>Subject</span><strong id="whatsapp-channel-approve-subject">Not provided</strong></div>
-                            </div>
+                        <div class="mb-3">
+                            <div class="metric-row"><span>Channel</span><strong id="whatsapp-channel-approve-channel">Not provided</strong></div>
+                            <div class="metric-row"><span>Doctor</span><strong id="whatsapp-channel-approve-doctor">Not provided</strong></div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label" for="whatsapp-channel-approve-query">Doctor query</label>
@@ -774,9 +759,6 @@
     const whatsappApproveTitle = document.getElementById("whatsapp-channel-approve-title");
     const whatsappApproveChannel = document.getElementById("whatsapp-channel-approve-channel");
     const whatsappApproveDoctor = document.getElementById("whatsapp-channel-approve-doctor");
-    const whatsappApproveDoctorId = document.getElementById("whatsapp-channel-approve-doctor-id");
-    const whatsappApproveClinic = document.getElementById("whatsapp-channel-approve-clinic");
-    const whatsappApproveSubject = document.getElementById("whatsapp-channel-approve-subject");
     const whatsappApproveQuery = document.getElementById("whatsapp-channel-approve-query");
     const whatsappApproveResponse = document.getElementById("whatsapp-channel-response");
     let chartsInitialized = false;
@@ -833,15 +815,6 @@
             }
             if (whatsappApproveDoctor) {
                 whatsappApproveDoctor.textContent = trigger.dataset.doctor || "Not provided";
-            }
-            if (whatsappApproveDoctorId) {
-                whatsappApproveDoctorId.textContent = trigger.dataset.doctorId || "Not provided";
-            }
-            if (whatsappApproveClinic) {
-                whatsappApproveClinic.textContent = trigger.dataset.clinic || "Not provided";
-            }
-            if (whatsappApproveSubject) {
-                whatsappApproveSubject.textContent = trigger.dataset.subject || "Not provided";
             }
             if (whatsappApproveQuery) {
                 whatsappApproveQuery.value = trigger.dataset.query || "";

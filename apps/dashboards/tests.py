@@ -62,8 +62,12 @@ class SeededIntegrationTestCase(TestCase):
         page_response = self.client.get(query_url)
         self.assertEqual(page_response.status_code, 200)
         self.assertContains(page_response, 'enctype="multipart/form-data"', html=False)
-        self.assertContains(page_response, 'name="uploaded_file"', html=False)
-        self.assertContains(page_response, "Upload image")
+        self.assertContains(page_response, 'name="images"', html=False)
+        self.assertContains(page_response, "Upload images")
+        self.assertContains(page_response, "Upload up to 5 images.")
+        self.assertNotContains(page_response, "Doctor ID")
+        self.assertNotContains(page_response, "Clinic / Hospital")
+        self.assertNotContains(page_response, "Query Summary")
         self.assertNotContains(page_response, "Select channel")
         self.assertNotContains(page_response, "Doctor Channel Support")
         self.assertNotContains(page_response, "Campaign Management")
@@ -72,26 +76,30 @@ class SeededIntegrationTestCase(TestCase):
         response = self.client.post(
             query_url,
             data={
-                "doctor_id": "DOC-WA-401",
                 "requester_name": "Dr. Channel Doctor",
                 "requester_number": "+919876543210",
                 "requester_email": "channel.doctor@example.com",
-                "requester_company": "Channel Clinic",
-                "subject": "Can this campaign update be shared?",
-                "free_text": "Please review this question before it is shared in the RFA WhatsApp Channel.",
-                "uploaded_file": SimpleUploadedFile("channel-query.png", b"image-bytes", content_type="image/png"),
+                "free_text": "Please review this question before it is shared.",
+                "images": [
+                    SimpleUploadedFile("channel-query-1.png", b"image-bytes-1", content_type="image/png"),
+                    SimpleUploadedFile("channel-query-2.jpg", b"image-bytes-2", content_type="image/jpeg"),
+                ],
             },
             follow=True,
         )
 
-        support_request = SupportRequest.objects.get(doctor_id="DOC-WA-401")
+        support_request = SupportRequest.objects.get(requester_email="channel.doctor@example.com")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(support_request.status, SupportRequest.Status.PENDING_PM_REVIEW)
         self.assertEqual(support_request.origin_channel, SupportRequest.OriginChannel.WHATSAPP_CHANNEL)
         self.assertEqual(support_request.whatsapp_channel, SupportRequest.WhatsAppChannel.RFA)
         self.assertEqual(support_request.source_system, "Red Flag Alert")
         self.assertEqual(support_request.source_flow, "WhatsApp Channel")
-        self.assertTrue(support_request.uploaded_file.name.endswith(".png"))
+        self.assertEqual(support_request.doctor_id, "")
+        self.assertEqual(support_request.requester_company, "")
+        self.assertEqual(support_request.subject, "Red Flag Alert WhatsApp Channel Query")
+        self.assertFalse(support_request.uploaded_file)
+        self.assertEqual(support_request.images.count(), 2)
         self.assertTrue(support_request.queue_ticket_number.startswith("PMQ-"))
         self.assertContains(response, "Your WhatsApp Channel query has been submitted for moderator review.")
         self.assertNotContains(response, "Ticket ID")
@@ -106,24 +114,30 @@ class SeededIntegrationTestCase(TestCase):
         self.assertContains(dashboard_response, "WhatsApp Channel Queries")
         self.assertContains(dashboard_response, "View and approve")
         self.assertContains(dashboard_response, "WhatsApp Channel")
-        self.assertContains(dashboard_response, "Doctor ID DOC-WA-401")
         self.assertContains(dashboard_response, "Dr. Channel Doctor")
         self.assertContains(dashboard_response, "Red Flag Alert")
-        self.assertContains(dashboard_response, "Please review this question before it is shared")
-        self.assertContains(dashboard_response, "channel-query.png")
+        self.assertContains(dashboard_response, "Please review this question before it is shared.")
+        self.assertContains(dashboard_response, "channel-query-1.png")
+        self.assertContains(dashboard_response, "channel-query-2.jpg")
+        self.assertNotContains(dashboard_response, "DOC-WA-401")
+        self.assertNotContains(dashboard_response, "Channel Clinic")
 
         approve_response = self.client.post(
             reverse("support_center:approve_whatsapp_channel_request", kwargs={"request_id": support_request.pk}),
-            data={"moderator_response": "Approved response for the channel."},
+            data={"moderator_response": "Approved response for doctors."},
         )
         support_request.refresh_from_db()
         self.assertEqual(approve_response.status_code, 302)
         self.assertTrue(approve_response["Location"].startswith("https://wa.me/?text="))
         whatsapp_text = unquote(approve_response["Location"])
-        self.assertIn("Please review this question before it is shared", whatsapp_text)
-        self.assertIn("Approved response for the channel.", whatsapp_text)
+        self.assertIn("Doctor Name: Dr. Channel Doctor", whatsapp_text)
+        self.assertIn("Query:\nPlease review this question before it is shared.", whatsapp_text)
+        self.assertIn("Response:\nApproved response for doctors.", whatsapp_text)
+        self.assertNotIn("Doctor ID", whatsapp_text)
+        self.assertNotIn("Clinic", whatsapp_text)
+        self.assertNotIn("WhatsApp Channel", whatsapp_text)
         self.assertEqual(support_request.status, SupportRequest.Status.SOLUTION_PROVIDED)
-        self.assertEqual(support_request.moderator_response, "Approved response for the channel.")
+        self.assertEqual(support_request.moderator_response, "Approved response for doctors.")
         self.assertEqual(support_request.whatsapp_approved_by, self.pm_user)
         self.assertIsNotNone(support_request.whatsapp_approved_at)
 

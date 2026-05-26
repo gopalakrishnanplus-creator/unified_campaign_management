@@ -30,11 +30,6 @@
                             <input type="hidden" name="whatsapp_channel" value="{{ whatsapp_channel }}">
                             <div class="row g-3">
                                 <div class="col-md-6">
-                                    <label class="form-label" for="{{ form.doctor_id.id_for_label }}">{{ form.doctor_id.label }}</label>
-                                    {{ form.doctor_id }}
-                                    {% if form.doctor_id.errors %}<div class="text-danger small mt-1">{{ form.doctor_id.errors|join(', ') }}</div>{% endif %}
-                                </div>
-                                <div class="col-md-6">
                                     <label class="form-label" for="{{ form.requester_name.id_for_label }}">{{ form.requester_name.label }}</label>
                                     {{ form.requester_name }}
                                     {% if form.requester_name.errors %}<div class="text-danger small mt-1">{{ form.requester_name.errors|join(', ') }}</div>{% endif %}
@@ -50,24 +45,15 @@
                                     {% if form.requester_email.errors %}<div class="text-danger small mt-1">{{ form.requester_email.errors|join(', ') }}</div>{% endif %}
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label" for="{{ form.requester_company.id_for_label }}">{{ form.requester_company.label }}</label>
-                                    {{ form.requester_company }}
-                                    {% if form.requester_company.errors %}<div class="text-danger small mt-1">{{ form.requester_company.errors|join(', ') }}</div>{% endif %}
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label" for="{{ form.subject.id_for_label }}">{{ form.subject.label }}</label>
-                                    {{ form.subject }}
-                                    {% if form.subject.errors %}<div class="text-danger small mt-1">{{ form.subject.errors|join(', ') }}</div>{% endif %}
-                                </div>
-                                <div class="col-12">
                                     <label class="form-label" for="{{ form.free_text.id_for_label }}">{{ form.free_text.label }}</label>
                                     {{ form.free_text }}
                                     {% if form.free_text.errors %}<div class="text-danger small mt-1">{{ form.free_text.errors|join(', ') }}</div>{% endif %}
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label" for="{{ form.uploaded_file.id_for_label }}">{{ form.uploaded_file.label }}</label>
-                                    {{ form.uploaded_file }}
-                                    {% if form.uploaded_file.errors %}<div class="text-danger small mt-1">{{ form.uploaded_file.errors|join(', ') }}</div>{% endif %}
+                                    <label class="form-label" for="{{ form.images.id_for_label }}">{{ form.images.label }}</label>
+                                    {{ form.images }}
+                                    <div class="form-text">Upload up to 5 images.</div>
+                                    {% if form.images.errors %}<div class="text-danger small mt-1">{{ form.images.errors|join(', ') }}</div>{% endif %}
                                 </div>
                             </div>
 

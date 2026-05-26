@@ -336,6 +336,25 @@ def _build_special_instruction_archive_rows(campaign=None):
     return _build_special_instruction_rows(reviews)
 
 
+def _support_request_image_entries(support_request):
+    entries = [
+        {
+            "file": image.image,
+            "file_name": image.image.name.split("/")[-1],
+        }
+        for image in support_request.images.all()
+        if image.image
+    ]
+    if not entries and support_request.uploaded_file:
+        entries.append(
+            {
+                "file": support_request.uploaded_file,
+                "file_name": support_request.uploaded_file.name.split("/")[-1],
+            }
+        )
+    return entries
+
+
 def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, special_instruction_scope="active"):
     tickets = (
         Ticket.objects.select_related(
@@ -541,6 +560,7 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
     pending_support_requests = (
         SupportRequest.objects.filter(status=SupportRequest.Status.PENDING_PM_REVIEW)
         .select_related("campaign", "support_page", "support_super_category", "support_category__super_category", "ticket_link")
+        .prefetch_related("images")
         .order_by("-is_escalated", "-created_at")
     )
     if campaign:
@@ -568,12 +588,7 @@ def get_support_dashboard_data(campaign=None, *, special_instruction_page=1, spe
     whatsapp_channel_rows = [
         {
             "request": support_request,
-            "uploaded_file_name": support_request.uploaded_file.name.split("/")[-1] if support_request.uploaded_file else "",
-            "uploaded_file_is_image": (
-                support_request.uploaded_file.name.lower().endswith((".jpg", ".jpeg", ".png", ".heic", ".svg", ".webp"))
-                if support_request.uploaded_file
-                else False
-            ),
+            "uploaded_images": _support_request_image_entries(support_request),
             "approve_url": reverse("support_center:approve_whatsapp_channel_request", kwargs={"request_id": support_request.pk}),
         }
         for support_request in whatsapp_channel_requests

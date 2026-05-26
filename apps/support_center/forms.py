@@ -1,8 +1,24 @@
 from django import forms
+from django.core.validators import FileExtensionValidator
 
 from apps.campaigns.models import Campaign
 
 from .models import SupportRequest
+
+
+ALLOWED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "heic", "svg", "webp"]
+
+
+class MultipleImageInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleImageField(forms.FileField):
+    def clean(self, data, initial=None):
+        if not data:
+            return []
+        file_list = data if isinstance(data, (list, tuple)) else [data]
+        return [super(MultipleImageField, self).clean(uploaded_file, initial) for uploaded_file in file_list]
 
 
 class SupportRequestForm(forms.ModelForm):
@@ -86,27 +102,32 @@ class SupportOtherIssueForm(forms.ModelForm):
 
 
 class WhatsAppChannelQueryForm(forms.ModelForm):
+    images = MultipleImageField(
+        required=False,
+        label="Upload images",
+        widget=MultipleImageInput(
+            attrs={
+                "class": "form-control",
+                "accept": ".jpg,.jpeg,.png,.heic,.svg,.webp",
+                "multiple": True,
+            }
+        ),
+    )
+
     class Meta:
         model = SupportRequest
         fields = [
-            "doctor_id",
             "requester_name",
             "requester_number",
             "requester_email",
-            "requester_company",
-            "subject",
             "free_text",
-            "uploaded_file",
         ]
         widgets = {
-            "doctor_id": forms.TextInput(attrs={"class": "form-control", "placeholder": "Doctor ID"}),
             "requester_name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Doctor name"}),
             "requester_number": forms.TextInput(
                 attrs={"class": "form-control", "placeholder": "WhatsApp mobile number", "inputmode": "tel"}
             ),
             "requester_email": forms.EmailInput(attrs={"class": "form-control", "placeholder": "Email address"}),
-            "requester_company": forms.TextInput(attrs={"class": "form-control", "placeholder": "Clinic or hospital name"}),
-            "subject": forms.TextInput(attrs={"class": "form-control", "placeholder": "Short query summary"}),
             "free_text": forms.Textarea(
                 attrs={
                     "class": "form-control",
@@ -114,40 +135,22 @@ class WhatsAppChannelQueryForm(forms.ModelForm):
                     "placeholder": "Write the message or question for moderator review.",
                 }
             ),
-            "uploaded_file": forms.ClearableFileInput(
-                attrs={
-                    "class": "form-control",
-                    "accept": ".jpg,.jpeg,.png,.heic,.svg,.webp",
-                }
-            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["doctor_id"].label = "Doctor ID"
         self.fields["requester_name"].label = "Doctor Name"
         self.fields["requester_number"].label = "WhatsApp Number"
         self.fields["requester_email"].label = "Email Address"
-        self.fields["requester_company"].label = "Clinic / Hospital"
-        self.fields["subject"].label = "Query Summary"
         self.fields["free_text"].label = "Message / Question"
-        self.fields["uploaded_file"].label = "Upload image"
+        self.fields["images"].label = "Upload images"
         for field_name in [
-            "doctor_id",
             "requester_name",
             "requester_number",
             "requester_email",
-            "requester_company",
-            "subject",
             "free_text",
         ]:
             self.fields[field_name].required = True
-
-    def clean_doctor_id(self):
-        doctor_id = (self.cleaned_data.get("doctor_id") or "").strip()
-        if not doctor_id:
-            raise forms.ValidationError("Please enter the Doctor ID.")
-        return doctor_id
 
     def clean_requester_number(self):
         requester_number = (self.cleaned_data.get("requester_number") or "").strip()
@@ -161,8 +164,13 @@ class WhatsAppChannelQueryForm(forms.ModelForm):
             raise forms.ValidationError("Please enter the message or question.")
         return free_text
 
-    def clean_uploaded_file(self):
-        uploaded_file = self.cleaned_data.get("uploaded_file")
-        if uploaded_file and uploaded_file.size > 8 * 1024 * 1024:
-            raise forms.ValidationError("Please upload a file smaller than 8 MB.")
-        return uploaded_file
+    def clean_images(self):
+        images = self.cleaned_data.get("images") or []
+        if len(images) > 5:
+            raise forms.ValidationError("Please upload no more than 5 images.")
+        extension_validator = FileExtensionValidator(allowed_extensions=ALLOWED_IMAGE_EXTENSIONS)
+        for image in images:
+            extension_validator(image)
+            if image.size > 8 * 1024 * 1024:
+                raise forms.ValidationError("Please upload images smaller than 8 MB each.")
+        return images

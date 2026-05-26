@@ -5,6 +5,7 @@ from .models import (
     SupportItem,
     SupportPage,
     SupportRequest,
+    SupportRequestImage,
     SupportSuperCategory,
     SupportWidgetEvent,
     SupportWidgetMetricReset,
@@ -14,6 +15,12 @@ from .models import (
 class SupportCategoryInline(admin.TabularInline):
     model = SupportCategory
     extra = 0
+
+
+class SupportRequestImageInline(admin.TabularInline):
+    model = SupportRequestImage
+    extra = 0
+    readonly_fields = ("created_at",)
 
 
 @admin.register(SupportSuperCategory)
@@ -63,6 +70,7 @@ class SupportRequestAdmin(admin.ModelAdmin):
     )
     list_filter = ("user_type", "origin_channel", "whatsapp_channel", "status", "campaign", "whatsapp_approved_at")
     search_fields = ("requester_name", "doctor_id", "requester_email", "requester_number", "subject", "free_text")
+    inlines = (SupportRequestImageInline,)
 
 
 @admin.register(SupportWidgetEvent)

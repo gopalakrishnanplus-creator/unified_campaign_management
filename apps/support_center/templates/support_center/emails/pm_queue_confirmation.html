@@ -11,7 +11,6 @@
                 <p style="margin:0;"><strong>Estimated response time:</strong> {{ estimated_response_time }}</p>
                 {% if support_request.origin_channel == "whatsapp_channel" %}
                     <p style="margin:8px 0 0;"><strong>Channel:</strong> {{ support_request.get_whatsapp_channel_display() }}</p>
-                    <p style="margin:8px 0 0;"><strong>Doctor ID:</strong> {{ support_request.doctor_id or "Not provided" }}</p>
                 {% endif %}
             </div>
             <p style="margin:0 0 8px;font-weight:700;">Issue summary</p>

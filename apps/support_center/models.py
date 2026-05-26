@@ -268,6 +268,21 @@ class SupportRequest(models.Model):
         return "High Priority / Escalated" if self.is_escalated else "Standard"
 
 
+class SupportRequestImage(models.Model):
+    support_request = models.ForeignKey(SupportRequest, on_delete=models.CASCADE, related_name="images")
+    image = models.FileField(
+        upload_to=support_request_upload_to,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "heic", "svg", "webp"])],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.image.name.split("/")[-1] if self.image else "Support request image"
+
+
 class SupportWidgetEvent(models.Model):
     class EventType(models.TextChoices):
         OPENED = "opened", "Opened"
